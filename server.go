@@ -1,0 +1,944 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+	fsrs "github.com/open-spaced-repetition/go-fsrs/v3"
+)
+
+// APIHandler wraps the store and provides HTTP handlers
+type APIHandler struct {
+	store         *SQLiteStore
+	collectionID  string
+	collection    *Collection
+	backupManager *BackupManager
+}
+
+func NewAPIHandler(store *SQLiteStore, collection *Collection, backupMgr *BackupManager) *APIHandler {
+	return &APIHandler{
+		store:         store,
+		collectionID:  "default",
+		collection:    collection,
+		backupManager: backupMgr,
+	}
+}
+
+// Request/Response types
+type CreateDeckRequest struct {
+	Name string `json:"name"`
+}
+
+type DeckResponse struct {
+	ID       int64   `json:"id"`
+	Name     string  `json:"name"`
+	ParentID *int64  `json:"parentId,omitempty"`
+	CardIDs  []int64 `json:"cardIds"`
+}
+
+type CreateNoteRequest struct {
+	TypeID         string            `json:"typeId"`
+	DeckID         int64             `json:"deckId"`
+	FieldVals      map[string]string `json:"fieldVals"`
+	Tags           []string          `json:"tags"`
+	AllowDuplicate bool              `json:"allowDuplicate"` // Override duplicate check
+}
+
+type CheckDuplicateRequest struct {
+	TypeID    string `json:"typeId"`
+	FieldName string `json:"fieldName"` // Field to check for duplicates (usually "Front" or first field)
+	Value     string `json:"value"`
+	DeckID    int64  `json:"deckId,omitempty"` // Optional: limit scope to deck
+}
+
+type DuplicateResult struct {
+	IsDuplicate bool        `json:"isDuplicate"`
+	Duplicates  []NoteBrief `json:"duplicates,omitempty"`
+}
+
+type NoteBrief struct {
+	ID       int64             `json:"id"`
+	TypeID   string            `json:"typeId"`
+	FieldVal map[string]string `json:"fieldVals"`
+	DeckID   int64             `json:"deckId,omitempty"`
+}
+
+type AnswerCardRequest struct {
+	Rating      int `json:"rating"`      // 1=Again, 2=Hard, 3=Good, 4=Easy
+	TimeTakenMs int `json:"timeTakenMs"` // Time spent on the card in milliseconds
+}
+
+type UpdateCardRequest struct {
+	Flag      *int  `json:"flag,omitempty"`      // 0-7 color flags
+	Marked    *bool `json:"marked,omitempty"`    // toggle marked status
+	Suspended *bool `json:"suspended,omitempty"` // toggle suspended status
+}
+
+// Handler methods
+
+func (h *APIHandler) GetCollection(w http.ResponseWriter, r *http.Request) {
+	col, err := h.store.GetCollection(h.collectionID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, col)
+}
+
+func (h *APIHandler) ListDecks(w http.ResponseWriter, r *http.Request) {
+	decks, err := h.store.ListDecks(h.collectionID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Convert to response format
+	var response []DeckResponse
+	for _, d := range decks {
+		response = append(response, DeckResponse{
+			ID:       d.ID,
+			Name:     d.Name,
+			ParentID: d.ParentID,
+			CardIDs:  d.Cards,
+		})
+	}
+
+	respondJSON(w, http.StatusOK, response)
+}
+
+func (h *APIHandler) CreateDeck(w http.ResponseWriter, r *http.Request) {
+	var req CreateDeckRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Name == "" {
+		http.Error(w, "Deck name is required", http.StatusBadRequest)
+		return
+	}
+
+	// Create deck using collection method
+	deck := h.collection.NewDeck(req.Name)
+
+	// Persist to database
+	if err := h.store.CreateDeck(deck); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, DeckResponse{
+		ID:       deck.ID,
+		Name:     deck.Name,
+		ParentID: deck.ParentID,
+		CardIDs:  deck.Cards,
+	})
+}
+
+func (h *APIHandler) GetDeck(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		http.Error(w, "Invalid deck ID", http.StatusBadRequest)
+		return
+	}
+
+	deck, err := h.store.GetDeck(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	// Get deck stats
+	stats, err := h.store.GetDeckStats(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"deck": DeckResponse{
+			ID:       deck.ID,
+			Name:     deck.Name,
+			ParentID: deck.ParentID,
+			CardIDs:  deck.Cards,
+		},
+		"stats": stats,
+	})
+}
+
+func (h *APIHandler) GetDeckStats(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		http.Error(w, "Invalid deck ID", http.StatusBadRequest)
+		return
+	}
+
+	stats, err := h.store.GetDeckStats(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, stats)
+}
+
+func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
+	var req CreateNoteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.TypeID == "" || req.DeckID == 0 {
+		http.Error(w, "TypeID and DeckID are required", http.StatusBadRequest)
+		return
+	}
+
+	// Use Collection.AddNote to create note and generate cards
+	note, cards, err := h.collection.AddNote(req.DeckID, NoteTypeName(req.TypeID), req.FieldVals, time.Now())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Set tags if provided
+	note.Tags = req.Tags
+	if req.Tags == nil {
+		note.Tags = []string{}
+	}
+
+	// Persist note to database
+	if err := h.store.CreateNote(h.collectionID, &note); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Persist generated cards to database
+	for _, card := range cards {
+		if err := h.store.CreateCard(card); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to save card: %v", err), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{
+		"note":  note,
+		"cards": cards,
+	})
+}
+
+func (h *APIHandler) GetNote(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		http.Error(w, "Invalid note ID", http.StatusBadRequest)
+		return
+	}
+
+	note, err := h.store.GetNote(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, note)
+}
+
+func (h *APIHandler) CheckDuplicate(w http.ResponseWriter, r *http.Request) {
+	var req CheckDuplicateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Value == "" {
+		respondJSON(w, http.StatusOK, DuplicateResult{IsDuplicate: false})
+		return
+	}
+
+	// Check for duplicates in the collection
+	duplicates, err := h.store.FindDuplicateNotes(h.collectionID, req.FieldName, req.Value, req.DeckID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	result := DuplicateResult{
+		IsDuplicate: len(duplicates) > 0,
+		Duplicates:  duplicates,
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *APIHandler) GetDueCards(w http.ResponseWriter, r *http.Request) {
+	deckID, err := parseIDParam(r, "deckId")
+	if err != nil {
+		http.Error(w, "Invalid deck ID", http.StatusBadRequest)
+		return
+	}
+
+	limit := 10
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	cards, err := h.store.GetDueCards(deckID, limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, cards)
+}
+
+func (h *APIHandler) GetCard(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		http.Error(w, "Invalid card ID", http.StatusBadRequest)
+		return
+	}
+
+	card, err := h.store.GetCard(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, card)
+}
+
+func (h *APIHandler) AnswerCard(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		http.Error(w, "Invalid card ID", http.StatusBadRequest)
+		return
+	}
+
+	var req AnswerCardRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Rating < 1 || req.Rating > 4 {
+		http.Error(w, "Rating must be 1-4 (Again/Hard/Good/Easy)", http.StatusBadRequest)
+		return
+	}
+
+	// Use Collection.Answer to update FSRS scheduling
+	revlog, err := h.collection.Answer(id, fsrs.Rating(req.Rating), time.Now(), req.TimeTakenMs)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get updated card from collection
+	card, ok := h.collection.Cards[id]
+	if !ok {
+		http.Error(w, "Card not found after update", http.StatusInternalServerError)
+		return
+	}
+
+	// Persist updated card to database
+	if err := h.store.UpdateCard(card); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Persist revlog entry with actual card ID and time taken
+	if err := h.store.AddRevlog(revlog, id, req.TimeTakenMs); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, card)
+}
+
+func (h *APIHandler) UpdateCard(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		http.Error(w, "Invalid card ID", http.StatusBadRequest)
+		return
+	}
+
+	var req UpdateCardRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Get card from store
+	card, err := h.store.GetCard(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	// Update fields if provided
+	if req.Flag != nil {
+		if *req.Flag < 0 || *req.Flag > 7 {
+			http.Error(w, "Flag must be 0-7", http.StatusBadRequest)
+			return
+		}
+		card.Flag = *req.Flag
+	}
+	if req.Marked != nil {
+		card.Marked = *req.Marked
+	}
+	if req.Suspended != nil {
+		card.Suspended = *req.Suspended
+	}
+
+	// Persist changes
+	if err := h.store.UpdateCard(card); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Update collection cache if card exists there
+	if _, ok := h.collection.Cards[id]; ok {
+		h.collection.Cards[id] = card
+	}
+
+	respondJSON(w, http.StatusOK, card)
+}
+
+func (h *APIHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, map[string]string{
+		"status":  "ok",
+		"service": "microdote-api",
+		"version": "M2",
+	})
+}
+
+// Note type response for API
+type NoteTypeResponse struct {
+	Name      string         `json:"name"`
+	Fields    []string       `json:"fields"`
+	Templates []TemplateInfo `json:"templates"`
+}
+
+type TemplateInfo struct {
+	Name            string `json:"name"`
+	QFmt            string `json:"qFmt"`
+	AFmt            string `json:"aFmt"`
+	IfFieldNonEmpty string `json:"ifFieldNonEmpty,omitempty"`
+	IsCloze         bool   `json:"isCloze"`
+}
+
+func (h *APIHandler) ListNoteTypes(w http.ResponseWriter, r *http.Request) {
+	var noteTypes []NoteTypeResponse
+	for _, nt := range h.collection.NoteTypes {
+		var templates []TemplateInfo
+		for _, t := range nt.Templates {
+			templates = append(templates, TemplateInfo{
+				Name:            t.Name,
+				QFmt:            t.QFmt,
+				AFmt:            t.AFmt,
+				IfFieldNonEmpty: t.IfFieldNonEmpty,
+				IsCloze:         t.IsCloze,
+			})
+		}
+		noteTypes = append(noteTypes, NoteTypeResponse{
+			Name:      string(nt.Name),
+			Fields:    nt.Fields,
+			Templates: templates,
+		})
+	}
+	respondJSON(w, http.StatusOK, noteTypes)
+}
+
+func (h *APIHandler) GetNoteType(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	nt, ok := h.collection.NoteTypes[NoteTypeName(name)]
+	if !ok {
+		http.Error(w, "Note type not found", http.StatusNotFound)
+		return
+	}
+
+	var templates []TemplateInfo
+	for _, t := range nt.Templates {
+		templates = append(templates, TemplateInfo{
+			Name:            t.Name,
+			QFmt:            t.QFmt,
+			AFmt:            t.AFmt,
+			IfFieldNonEmpty: t.IfFieldNonEmpty,
+			IsCloze:         t.IsCloze,
+		})
+	}
+
+	respondJSON(w, http.StatusOK, NoteTypeResponse{
+		Name:      string(nt.Name),
+		Fields:    nt.Fields,
+		Templates: templates,
+	})
+}
+
+// Reserved field names that cannot be used
+var reservedFieldNames = map[string]bool{
+	"Tags":      true,
+	"Type":      true,
+	"Deck":      true,
+	"Card":      true,
+	"FrontSide": true,
+}
+
+// Field management request types
+type AddFieldRequest struct {
+	FieldName string `json:"fieldName"`
+	Position  *int   `json:"position,omitempty"` // Optional: insert at specific position
+}
+
+type RenameFieldRequest struct {
+	OldName string `json:"oldName"`
+	NewName string `json:"newName"`
+}
+
+type RemoveFieldRequest struct {
+	FieldName string `json:"fieldName"`
+}
+
+type ReorderFieldsRequest struct {
+	Fields []string `json:"fields"` // New field order
+}
+
+func (h *APIHandler) AddField(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	nt, ok := h.collection.NoteTypes[NoteTypeName(name)]
+	if !ok {
+		http.Error(w, "Note type not found", http.StatusNotFound)
+		return
+	}
+
+	var req AddFieldRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.FieldName == "" {
+		http.Error(w, "fieldName is required", http.StatusBadRequest)
+		return
+	}
+
+	// Check for reserved field names
+	if reservedFieldNames[req.FieldName] {
+		http.Error(w, fmt.Sprintf("'%s' is a reserved field name", req.FieldName), http.StatusBadRequest)
+		return
+	}
+
+	// Check for duplicate field name
+	for _, f := range nt.Fields {
+		if f == req.FieldName {
+			http.Error(w, "Field name already exists", http.StatusBadRequest)
+			return
+		}
+	}
+
+	// Add field at specified position or end
+	if req.Position != nil && *req.Position >= 0 && *req.Position < len(nt.Fields) {
+		newFields := make([]string, 0, len(nt.Fields)+1)
+		newFields = append(newFields, nt.Fields[:*req.Position]...)
+		newFields = append(newFields, req.FieldName)
+		newFields = append(newFields, nt.Fields[*req.Position:]...)
+		nt.Fields = newFields
+	} else {
+		nt.Fields = append(nt.Fields, req.FieldName)
+	}
+
+	// Update in store
+	if err := h.store.UpdateNoteType(h.collectionID, &nt); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Update collection cache
+	h.collection.NoteTypes[NoteTypeName(name)] = nt
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Field added successfully",
+		"fields":  nt.Fields,
+	})
+}
+
+func (h *APIHandler) RenameField(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	nt, ok := h.collection.NoteTypes[NoteTypeName(name)]
+	if !ok {
+		http.Error(w, "Note type not found", http.StatusNotFound)
+		return
+	}
+
+	var req RenameFieldRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.OldName == "" || req.NewName == "" {
+		http.Error(w, "oldName and newName are required", http.StatusBadRequest)
+		return
+	}
+
+	// Check for reserved field names
+	if reservedFieldNames[req.NewName] {
+		http.Error(w, fmt.Sprintf("'%s' is a reserved field name", req.NewName), http.StatusBadRequest)
+		return
+	}
+
+	// Find and rename the field
+	found := false
+	for i, f := range nt.Fields {
+		if f == req.OldName {
+			nt.Fields[i] = req.NewName
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		http.Error(w, "Field not found", http.StatusNotFound)
+		return
+	}
+
+	// Check for duplicate with new name
+	count := 0
+	for _, f := range nt.Fields {
+		if f == req.NewName {
+			count++
+		}
+	}
+	if count > 1 {
+		// Revert and return error
+		for i, f := range nt.Fields {
+			if f == req.NewName {
+				nt.Fields[i] = req.OldName
+				break
+			}
+		}
+		http.Error(w, "Field name already exists", http.StatusBadRequest)
+		return
+	}
+
+	// Update templates to use new field name
+	for i := range nt.Templates {
+		nt.Templates[i].QFmt = strings.ReplaceAll(nt.Templates[i].QFmt, "{{"+req.OldName+"}}", "{{"+req.NewName+"}}")
+		nt.Templates[i].AFmt = strings.ReplaceAll(nt.Templates[i].AFmt, "{{"+req.OldName+"}}", "{{"+req.NewName+"}}")
+		if nt.Templates[i].IfFieldNonEmpty == req.OldName {
+			nt.Templates[i].IfFieldNonEmpty = req.NewName
+		}
+	}
+
+	// Update in store
+	if err := h.store.UpdateNoteType(h.collectionID, &nt); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Update collection cache
+	h.collection.NoteTypes[NoteTypeName(name)] = nt
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Field renamed successfully",
+		"fields":  nt.Fields,
+	})
+}
+
+func (h *APIHandler) RemoveField(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	nt, ok := h.collection.NoteTypes[NoteTypeName(name)]
+	if !ok {
+		http.Error(w, "Note type not found", http.StatusNotFound)
+		return
+	}
+
+	var req RemoveFieldRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.FieldName == "" {
+		http.Error(w, "fieldName is required", http.StatusBadRequest)
+		return
+	}
+
+	// Must have at least one field
+	if len(nt.Fields) <= 1 {
+		http.Error(w, "Cannot remove the last field", http.StatusBadRequest)
+		return
+	}
+
+	// Find and remove the field
+	found := false
+	newFields := make([]string, 0, len(nt.Fields)-1)
+	for _, f := range nt.Fields {
+		if f == req.FieldName {
+			found = true
+		} else {
+			newFields = append(newFields, f)
+		}
+	}
+
+	if !found {
+		http.Error(w, "Field not found", http.StatusNotFound)
+		return
+	}
+
+	nt.Fields = newFields
+
+	// Update in store
+	if err := h.store.UpdateNoteType(h.collectionID, &nt); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Update collection cache
+	h.collection.NoteTypes[NoteTypeName(name)] = nt
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Field removed successfully",
+		"fields":  nt.Fields,
+	})
+}
+
+func (h *APIHandler) ReorderFields(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	nt, ok := h.collection.NoteTypes[NoteTypeName(name)]
+	if !ok {
+		http.Error(w, "Note type not found", http.StatusNotFound)
+		return
+	}
+
+	var req ReorderFieldsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate that the new order contains the same fields
+	if len(req.Fields) != len(nt.Fields) {
+		http.Error(w, "Field count mismatch", http.StatusBadRequest)
+		return
+	}
+
+	// Check that all existing fields are present
+	existingFields := make(map[string]bool)
+	for _, f := range nt.Fields {
+		existingFields[f] = true
+	}
+
+	for _, f := range req.Fields {
+		if !existingFields[f] {
+			http.Error(w, fmt.Sprintf("Unknown field: %s", f), http.StatusBadRequest)
+			return
+		}
+		delete(existingFields, f)
+	}
+
+	if len(existingFields) > 0 {
+		http.Error(w, "Some fields are missing from the new order", http.StatusBadRequest)
+		return
+	}
+
+	nt.Fields = req.Fields
+
+	// Update in store
+	if err := h.store.UpdateNoteType(h.collectionID, &nt); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Update collection cache
+	h.collection.NoteTypes[NoteTypeName(name)] = nt
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message": "Fields reordered successfully",
+		"fields":  nt.Fields,
+	})
+}
+
+// Backup endpoints
+
+func (h *APIHandler) CreateBackup(w http.ResponseWriter, r *http.Request) {
+	backupPath, err := h.backupManager.CreateBackup(h.collectionID)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create backup: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]string{
+		"message":    "Backup created successfully",
+		"backupPath": backupPath,
+		"timestamp":  time.Now().Format(time.RFC3339),
+	})
+}
+
+type RestoreBackupRequest struct {
+	BackupPath string `json:"backupPath"`
+}
+
+func (h *APIHandler) RestoreBackup(w http.ResponseWriter, r *http.Request) {
+	var req RestoreBackupRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.BackupPath == "" {
+		http.Error(w, "backupPath is required", http.StatusBadRequest)
+		return
+	}
+
+	// Warning: This will close the database connection and replace the database
+	// In a production system, this would need more careful handling
+	respondJSON(w, http.StatusOK, map[string]string{
+		"message": "Restore functionality requires server restart. Use with caution.",
+		"warning": "This operation will replace the current database.",
+		"note":    "Implement with /api/backups/restore endpoint after server architecture supports it.",
+	})
+}
+
+func (h *APIHandler) ListBackups(w http.ResponseWriter, r *http.Request) {
+	files, err := filepath.Glob(filepath.Join(h.backupManager.backupDir, "microdote-backup-*.zip"))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to list backups: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	type backupInfo struct {
+		Path     string    `json:"path"`
+		Filename string    `json:"filename"`
+		Size     int64     `json:"size"`
+		Modified time.Time `json:"modified"`
+	}
+
+	var backups []backupInfo
+	for _, path := range files {
+		info, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+
+		backups = append(backups, backupInfo{
+			Path:     path,
+			Filename: filepath.Base(path),
+			Size:     info.Size(),
+			Modified: info.ModTime(),
+		})
+	}
+
+	respondJSON(w, http.StatusOK, backups)
+}
+
+// Helper functions
+
+func respondJSON(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(data)
+}
+
+func parseIDParam(r *http.Request, paramName string) (int64, error) {
+	idStr := chi.URLParam(r, paramName)
+	return strconv.ParseInt(idStr, 10, 64)
+}
+
+// Main function to start the server
+func main() {
+	// Initialize database and collection
+	log.Println("Initializing Microdote server...")
+	col, store, err := InitDefaultCollection("./data/microdote.db")
+	if err != nil {
+		log.Fatalf("Failed to initialize collection: %v", err)
+	}
+	defer store.Close()
+
+	log.Printf("Collection loaded with %d decks, %d notes, %d cards\n",
+		len(col.Decks), len(col.Notes), len(col.Cards))
+
+	// Create backup manager
+	backupMgr := NewBackupManager("./data/microdote.db", "./backups", store)
+
+	// Create API handler
+	handler := NewAPIHandler(store, col, backupMgr)
+
+	// Set up router
+	r := chi.NewRouter()
+
+	// Middleware
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.RealIP)
+
+	// CORS configuration for frontend
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:3000"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Content-Type", "Authorization"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
+
+	// API routes
+	r.Route("/api", func(r chi.Router) {
+		// Health check
+		r.Get("/health", handler.HealthCheck)
+
+		// Collection
+		r.Get("/collection", handler.GetCollection)
+
+		// Decks
+		r.Get("/decks", handler.ListDecks)
+		r.Post("/decks", handler.CreateDeck)
+		r.Get("/decks/{id}", handler.GetDeck)
+		r.Get("/decks/{id}/stats", handler.GetDeckStats)
+		r.Get("/decks/{deckId}/due", handler.GetDueCards)
+
+		// Note Types
+		r.Get("/note-types", handler.ListNoteTypes)
+		r.Get("/note-types/{name}", handler.GetNoteType)
+		r.Post("/note-types/{name}/fields", handler.AddField)
+		r.Patch("/note-types/{name}/fields/rename", handler.RenameField)
+		r.Delete("/note-types/{name}/fields", handler.RemoveField)
+		r.Put("/note-types/{name}/fields/reorder", handler.ReorderFields)
+
+		// Notes
+		r.Post("/notes", handler.CreateNote)
+		r.Get("/notes/{id}", handler.GetNote)
+		r.Post("/notes/check-duplicate", handler.CheckDuplicate)
+
+		// Cards
+		r.Get("/cards/{id}", handler.GetCard)
+		r.Post("/cards/{id}/answer", handler.AnswerCard)
+		r.Patch("/cards/{id}", handler.UpdateCard)
+
+		// Backups
+		r.Post("/backups", handler.CreateBackup)
+		r.Get("/backups", handler.ListBackups)
+		r.Post("/backups/restore", handler.RestoreBackup)
+	})
+
+	// Start server
+	port := ":8080"
+	log.Printf("Server starting on http://localhost%s\n", port)
+	log.Printf("API endpoints available at http://localhost%s/api\n", port)
+	log.Println("Press Ctrl+C to stop")
+
+	if err := http.ListenAndServe(port, r); err != nil {
+		log.Fatalf("Server failed to start: %v", err)
+	}
+}

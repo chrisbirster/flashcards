@@ -29,12 +29,23 @@ type CardTemplate struct {
 	Styling         string `json:"styling"`
 	IfFieldNonEmpty string `json:"ifFieldNonEmpty"`
 	IsCloze         bool   `json:"isCloze"`
+	DeckOverride    string `json:"deckOverride,omitempty"` // Optional deck name to override default
+	BrowserQFmt     string `json:"browserQFmt,omitempty"`  // Simplified front template for browser view
+	BrowserAFmt     string `json:"browserAFmt,omitempty"`  // Simplified back template for browser view
+}
+
+type FieldOptions struct {
+	Font     string `json:"font,omitempty"`     // Font family (e.g., "Arial", "Times New Roman")
+	FontSize int    `json:"fontSize,omitempty"` // Font size in pixels
+	RTL      bool   `json:"rtl,omitempty"`      // Right-to-left text direction
 }
 
 type NoteType struct {
-	Name      NoteTypeName   `json:"name"`
-	Fields    []string       `json:"fields"`
-	Templates []CardTemplate `json:"templates"`
+	Name           NoteTypeName            `json:"name"`
+	Fields         []string                `json:"fields"`
+	Templates      []CardTemplate          `json:"templates"`
+	SortFieldIndex int                     `json:"sortFieldIndex"`         // Index of the field used for sorting (default 0)
+	FieldOptions   map[string]FieldOptions `json:"fieldOptions,omitempty"` // Per-field editing options
 }
 
 type Note struct {
@@ -193,7 +204,7 @@ func (c *Collection) AddNote(deckID int64, ntName NoteTypeName, fields map[strin
 	}
 	c.Notes[noteID] = n
 
-	genCards, err := generateCardsFromNote(nt, n, deckID, now)
+	genCards, err := c.generateCardsFromNote(nt, n, deckID, now)
 	if err != nil {
 		return Note{}, nil, err
 	}
@@ -231,7 +242,7 @@ func (c *Collection) GenerateCards(note *Note, deckID int64, now time.Time) ([]*
 	}
 
 	// Generate fresh cards based on current templates
-	newCards, err := generateCardsFromNote(nt, *note, deckID, now)
+	newCards, err := c.generateCardsFromNote(nt, *note, deckID, now)
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +312,7 @@ var fieldTokenRe = regexp.MustCompile(`\{\{([^}]+)\}\}`)
 // Cloze pattern like {{c1::1969}} or {{c2::answer::hint}}
 var clozeRe = regexp.MustCompile(`\{\{c(\d+)::(.*?)(?:::([^}]*))?\}\}`)
 
-func generateCardsFromNote(nt NoteType, n Note, deckID int64, now time.Time) ([]*Card, error) {
+func (c *Collection) generateCardsFromNote(nt NoteType, n Note, deckID int64, now time.Time) ([]*Card, error) {
 	var cards []*Card
 
 	for _, tmpl := range nt.Templates {
@@ -312,6 +323,19 @@ func generateCardsFromNote(nt NoteType, n Note, deckID int64, now time.Time) ([]
 			}
 		}
 
+		// Determine which deck to use for this template
+		targetDeckID := deckID // Default to the note's deck
+		if tmpl.DeckOverride != "" {
+			// Look up deck by name
+			for id, deck := range c.Decks {
+				if deck.Name == tmpl.DeckOverride {
+					targetDeckID = id
+					break
+				}
+			}
+			// If deck not found, fall back to default deck
+		}
+
 		if tmpl.IsCloze {
 			textField := n.FieldMap["Text"]
 			ordinals := extractClozeOrdinals(textField)
@@ -320,7 +344,7 @@ func generateCardsFromNote(nt NoteType, n Note, deckID int64, now time.Time) ([]
 				a := renderTemplateWithCloze(tmpl.AFmt, n.FieldMap, ord, true)
 				card := &Card{
 					NoteID:       n.ID,
-					DeckID:       deckID,
+					DeckID:       targetDeckID,
 					TemplateName: tmpl.Name,
 					Ordinal:      ord,
 					Front:        q,
@@ -337,7 +361,7 @@ func generateCardsFromNote(nt NoteType, n Note, deckID int64, now time.Time) ([]
 
 		card := &Card{
 			NoteID:       n.ID,
-			DeckID:       deckID,
+			DeckID:       targetDeckID,
 			TemplateName: tmpl.Name,
 			Ordinal:      0,
 			Front:        q,

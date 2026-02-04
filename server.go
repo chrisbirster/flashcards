@@ -448,9 +448,11 @@ func (h *APIHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 
 // Note type response for API
 type NoteTypeResponse struct {
-	Name      string         `json:"name"`
-	Fields    []string       `json:"fields"`
-	Templates []TemplateInfo `json:"templates"`
+	Name           string                  `json:"name"`
+	Fields         []string                `json:"fields"`
+	Templates      []TemplateInfo          `json:"templates"`
+	SortFieldIndex int                     `json:"sortFieldIndex"`
+	FieldOptions   map[string]FieldOptions `json:"fieldOptions,omitempty"`
 }
 
 type TemplateInfo struct {
@@ -460,12 +462,28 @@ type TemplateInfo struct {
 	Styling         string `json:"styling"`
 	IfFieldNonEmpty string `json:"ifFieldNonEmpty,omitempty"`
 	IsCloze         bool   `json:"isCloze"`
+	DeckOverride    string `json:"deckOverride,omitempty"`
+	BrowserQFmt     string `json:"browserQFmt,omitempty"`
+	BrowserAFmt     string `json:"browserAFmt,omitempty"`
+}
+
+type SetSortFieldRequest struct {
+	FieldIndex int `json:"fieldIndex"` // Index of the field to use as sort field
+}
+
+type SetFieldOptionsRequest struct {
+	FieldName string       `json:"fieldName"`
+	Options   FieldOptions `json:"options"`
 }
 
 type UpdateTemplateRequest struct {
-	QFmt    *string `json:"qFmt,omitempty"`
-	AFmt    *string `json:"aFmt,omitempty"`
-	Styling *string `json:"styling,omitempty"`
+	QFmt            *string `json:"qFmt,omitempty"`
+	AFmt            *string `json:"aFmt,omitempty"`
+	Styling         *string `json:"styling,omitempty"`
+	IfFieldNonEmpty *string `json:"ifFieldNonEmpty,omitempty"`
+	DeckOverride    *string `json:"deckOverride,omitempty"`
+	BrowserQFmt     *string `json:"browserQFmt,omitempty"`
+	BrowserAFmt     *string `json:"browserAFmt,omitempty"`
 }
 
 type TemplatesResponse struct {
@@ -485,12 +503,17 @@ func (h *APIHandler) ListNoteTypes(w http.ResponseWriter, r *http.Request) {
 				Styling:         t.Styling,
 				IfFieldNonEmpty: t.IfFieldNonEmpty,
 				IsCloze:         t.IsCloze,
+				DeckOverride:    t.DeckOverride,
+				BrowserQFmt:     t.BrowserQFmt,
+				BrowserAFmt:     t.BrowserAFmt,
 			})
 		}
 		noteTypes = append(noteTypes, NoteTypeResponse{
-			Name:      string(nt.Name),
-			Fields:    nt.Fields,
-			Templates: templates,
+			Name:           string(nt.Name),
+			Fields:         nt.Fields,
+			Templates:      templates,
+			SortFieldIndex: nt.SortFieldIndex,
+			FieldOptions:   nt.FieldOptions,
 		})
 	}
 	respondJSON(w, http.StatusOK, noteTypes)
@@ -513,13 +536,18 @@ func (h *APIHandler) GetNoteType(w http.ResponseWriter, r *http.Request) {
 			Styling:         t.Styling,
 			IfFieldNonEmpty: t.IfFieldNonEmpty,
 			IsCloze:         t.IsCloze,
+			DeckOverride:    t.DeckOverride,
+			BrowserQFmt:     t.BrowserQFmt,
+			BrowserAFmt:     t.BrowserAFmt,
 		})
 	}
 
 	respondJSON(w, http.StatusOK, NoteTypeResponse{
-		Name:      string(nt.Name),
-		Fields:    nt.Fields,
-		Templates: templates,
+		Name:           string(nt.Name),
+		Fields:         nt.Fields,
+		Templates:      templates,
+		SortFieldIndex: nt.SortFieldIndex,
+		FieldOptions:   nt.FieldOptions,
 	})
 }
 
@@ -813,6 +841,94 @@ func (h *APIHandler) ReorderFields(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *APIHandler) SetSortField(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	nt, ok := h.collection.NoteTypes[NoteTypeName(name)]
+	if !ok {
+		http.Error(w, "Note type not found", http.StatusNotFound)
+		return
+	}
+
+	var req SetSortFieldRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate field index
+	if req.FieldIndex < 0 || req.FieldIndex >= len(nt.Fields) {
+		http.Error(w, "Invalid field index", http.StatusBadRequest)
+		return
+	}
+
+	nt.SortFieldIndex = req.FieldIndex
+
+	// Update in store
+	if err := h.store.UpdateNoteType(h.collectionID, &nt); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Update collection cache
+	h.collection.NoteTypes[NoteTypeName(name)] = nt
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message":        "Sort field updated successfully",
+		"sortFieldIndex": nt.SortFieldIndex,
+		"sortFieldName":  nt.Fields[nt.SortFieldIndex],
+	})
+}
+
+func (h *APIHandler) SetFieldOptions(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	nt, ok := h.collection.NoteTypes[NoteTypeName(name)]
+	if !ok {
+		http.Error(w, "Note type not found", http.StatusNotFound)
+		return
+	}
+
+	var req SetFieldOptionsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate field exists
+	fieldExists := false
+	for _, f := range nt.Fields {
+		if f == req.FieldName {
+			fieldExists = true
+			break
+		}
+	}
+	if !fieldExists {
+		http.Error(w, "Field not found", http.StatusBadRequest)
+		return
+	}
+
+	// Initialize FieldOptions map if nil
+	if nt.FieldOptions == nil {
+		nt.FieldOptions = make(map[string]FieldOptions)
+	}
+
+	// Update field options
+	nt.FieldOptions[req.FieldName] = req.Options
+
+	// Update in store
+	if err := h.store.UpdateNoteType(h.collectionID, &nt); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Update collection cache
+	h.collection.NoteTypes[NoteTypeName(name)] = nt
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"message":      "Field options updated successfully",
+		"fieldOptions": nt.FieldOptions,
+	})
+}
+
 func (h *APIHandler) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 	noteTypeName := chi.URLParam(r, "name")
 	templateName := chi.URLParam(r, "templateName")
@@ -853,6 +969,18 @@ func (h *APIHandler) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 	if req.Styling != nil {
 		nt.Templates[templateIndex].Styling = sanitizeHTML(*req.Styling)
 	}
+	if req.IfFieldNonEmpty != nil {
+		nt.Templates[templateIndex].IfFieldNonEmpty = sanitizeHTML(*req.IfFieldNonEmpty)
+	}
+	if req.DeckOverride != nil {
+		nt.Templates[templateIndex].DeckOverride = sanitizeHTML(*req.DeckOverride)
+	}
+	if req.BrowserQFmt != nil {
+		nt.Templates[templateIndex].BrowserQFmt = sanitizeHTML(*req.BrowserQFmt)
+	}
+	if req.BrowserAFmt != nil {
+		nt.Templates[templateIndex].BrowserAFmt = sanitizeHTML(*req.BrowserAFmt)
+	}
 
 	// Update in store
 	if err := h.store.UpdateNoteType(h.collectionID, &nt); err != nil {
@@ -862,6 +990,13 @@ func (h *APIHandler) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 
 	// Update collection cache
 	h.collection.NoteTypes[NoteTypeName(noteTypeName)] = nt
+
+	// Regenerate cards for all notes of this type
+	// This ensures cards reflect the updated templates
+	if err := h.regenerateCardsForNoteType(noteTypeName); err != nil {
+		log.Printf("Warning: Failed to regenerate cards after template update: %v", err)
+		// Don't fail the request - template was updated successfully
+	}
 
 	// Build response with updated templates
 	var templates []TemplateInfo
@@ -873,6 +1008,9 @@ func (h *APIHandler) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 			Styling:         t.Styling,
 			IfFieldNonEmpty: t.IfFieldNonEmpty,
 			IsCloze:         t.IsCloze,
+			DeckOverride:    t.DeckOverride,
+			BrowserQFmt:     t.BrowserQFmt,
+			BrowserAFmt:     t.BrowserAFmt,
 		})
 	}
 
@@ -880,6 +1018,225 @@ func (h *APIHandler) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 		Message:   "Template updated successfully",
 		Templates: templates,
 	})
+}
+
+// regenerateCardsForNoteType regenerates cards for all notes of a given note type.
+// This preserves existing card scheduling data (SRS state, flags, etc.) while updating content.
+func (h *APIHandler) regenerateCardsForNoteType(noteTypeName string) error {
+	// Get all notes of this type
+	notes, err := h.store.GetNotesByType(h.collectionID, noteTypeName)
+	if err != nil {
+		return fmt.Errorf("failed to get notes: %w", err)
+	}
+
+	for _, note := range notes {
+		// Get the deck ID from one of the note's existing cards
+		// If the note has no cards, we'll use the default deck
+		deckID := int64(1) // default deck
+		existingCards, err := h.store.GetCardsByNote(note.ID)
+		if err == nil && len(existingCards) > 0 {
+			deckID = existingCards[0].DeckID
+		}
+
+		// Generate new cards based on current templates
+		newCards, err := h.collection.GenerateCards(&note, deckID, time.Now())
+		if err != nil {
+			log.Printf("Warning: Failed to regenerate cards for note %d: %v", note.ID, err)
+			continue
+		}
+
+		// Build a map of existing cards by template name and ordinal
+		existingCardMap := make(map[string]*Card)
+		for _, card := range existingCards {
+			key := fmt.Sprintf("%s:%d", card.TemplateName, card.Ordinal)
+			existingCardMap[key] = &card
+		}
+
+		// Process each newly generated card
+		for _, newCard := range newCards {
+			key := fmt.Sprintf("%s:%d", newCard.TemplateName, newCard.Ordinal)
+
+			if existingCard, exists := existingCardMap[key]; exists {
+				// Card already exists - update content but preserve SRS state
+				existingCard.Front = newCard.Front
+				existingCard.Back = newCard.Back
+				if err := h.store.UpdateCard(existingCard); err != nil {
+					log.Printf("Warning: Failed to update card %d: %v", existingCard.ID, err)
+				}
+				// Remove from map so we know it was processed
+				delete(existingCardMap, key)
+			} else {
+				// New card needs to be created
+				if err := h.store.CreateCard(newCard); err != nil {
+					log.Printf("Warning: Failed to create new card for note %d: %v", note.ID, err)
+				}
+			}
+		}
+
+		// Any remaining cards in the map no longer match templates and should be deleted
+		// (e.g., ifFieldNonEmpty condition no longer met, or template removed)
+		for _, orphanCard := range existingCardMap {
+			if err := h.store.DeleteCard(orphanCard.ID); err != nil {
+				log.Printf("Warning: Failed to delete orphaned card %d: %v", orphanCard.ID, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// Empty cards detection and cleanup
+
+type EmptyCardInfo struct {
+	CardID       int64  `json:"cardId"`
+	NoteID       int64  `json:"noteId"`
+	DeckID       int64  `json:"deckId"`
+	TemplateName string `json:"templateName"`
+	Ordinal      int    `json:"ordinal"`
+	Front        string `json:"front"`
+	Back         string `json:"back"`
+	Reason       string `json:"reason"` // Why this card is considered empty
+}
+
+type EmptyCardsResponse struct {
+	Count      int             `json:"count"`
+	EmptyCards []EmptyCardInfo `json:"emptyCards"`
+}
+
+// FindEmptyCards detects cards that have no meaningful content
+// This primarily targets cloze cards where the cloze deletion was removed
+func (h *APIHandler) FindEmptyCards(w http.ResponseWriter, r *http.Request) {
+	// Get all notes
+	notes, err := h.store.ListNotes(h.collectionID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var emptyCards []EmptyCardInfo
+
+	for _, note := range notes {
+		// Get note type to check if it's cloze
+		nt, ok := h.collection.NoteTypes[note.Type]
+		if !ok {
+			continue
+		}
+
+		// Get cards for this note
+		cards, err := h.store.GetCardsByNote(note.ID)
+		if err != nil {
+			log.Printf("Warning: Failed to get cards for note %d: %v", note.ID, err)
+			continue
+		}
+
+		for _, card := range cards {
+			// Check if this is a cloze card
+			isCloze := false
+			for _, tmpl := range nt.Templates {
+				if tmpl.Name == card.TemplateName && tmpl.IsCloze {
+					isCloze = true
+					break
+				}
+			}
+
+			if isCloze {
+				// Check if the cloze ordinal still exists in the text
+				textField := note.FieldMap["Text"]
+				ordinals := extractClozeOrdinals(textField)
+
+				hasOrdinal := false
+				for _, ord := range ordinals {
+					if ord == card.Ordinal {
+						hasOrdinal = true
+						break
+					}
+				}
+
+				if !hasOrdinal {
+					emptyCards = append(emptyCards, EmptyCardInfo{
+						CardID:       card.ID,
+						NoteID:       note.ID,
+						DeckID:       card.DeckID,
+						TemplateName: card.TemplateName,
+						Ordinal:      card.Ordinal,
+						Front:        card.Front,
+						Back:         card.Back,
+						Reason:       fmt.Sprintf("Cloze deletion c%d no longer exists in note", card.Ordinal),
+					})
+				}
+			} else {
+				// For non-cloze cards, check if front and back are essentially empty
+				// Strip HTML tags and check if there's meaningful content
+				frontStripped := stripHTML(card.Front)
+				backStripped := stripHTML(card.Back)
+
+				if strings.TrimSpace(frontStripped) == "" && strings.TrimSpace(backStripped) == "" {
+					emptyCards = append(emptyCards, EmptyCardInfo{
+						CardID:       card.ID,
+						NoteID:       note.ID,
+						DeckID:       card.DeckID,
+						TemplateName: card.TemplateName,
+						Ordinal:      card.Ordinal,
+						Front:        card.Front,
+						Back:         card.Back,
+						Reason:       "Card has no content (both front and back are empty)",
+					})
+				}
+			}
+		}
+	}
+
+	respondJSON(w, http.StatusOK, EmptyCardsResponse{
+		Count:      len(emptyCards),
+		EmptyCards: emptyCards,
+	})
+}
+
+type DeleteEmptyCardsRequest struct {
+	CardIDs []int64 `json:"cardIds"` // List of card IDs to delete
+}
+
+type DeleteEmptyCardsResponse struct {
+	Deleted int      `json:"deleted"`
+	Failed  []string `json:"failed,omitempty"` // Error messages for failed deletions
+}
+
+// DeleteEmptyCards deletes specified empty cards
+func (h *APIHandler) DeleteEmptyCards(w http.ResponseWriter, r *http.Request) {
+	var req DeleteEmptyCardsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.CardIDs) == 0 {
+		http.Error(w, "No card IDs provided", http.StatusBadRequest)
+		return
+	}
+
+	deleted := 0
+	var failed []string
+
+	for _, cardID := range req.CardIDs {
+		if err := h.store.DeleteCard(cardID); err != nil {
+			failed = append(failed, fmt.Sprintf("Card %d: %v", cardID, err))
+			log.Printf("Failed to delete card %d: %v", cardID, err)
+		} else {
+			deleted++
+			// Remove from collection cache
+			delete(h.collection.Cards, cardID)
+		}
+	}
+
+	respondJSON(w, http.StatusOK, DeleteEmptyCardsResponse{
+		Deleted: deleted,
+		Failed:  failed,
+	})
+}
+
+// stripHTML removes HTML tags and returns plain text
+func stripHTML(html string) string {
+	return htmlPolicy.Sanitize(html)
 }
 
 // Backup endpoints
@@ -1026,6 +1383,8 @@ func main() {
 		r.Patch("/note-types/{name}/fields/rename", handler.RenameField)
 		r.Delete("/note-types/{name}/fields", handler.RemoveField)
 		r.Put("/note-types/{name}/fields/reorder", handler.ReorderFields)
+		r.Put("/note-types/{name}/sort-field", handler.SetSortField)
+		r.Put("/note-types/{name}/fields/options", handler.SetFieldOptions)
 		r.Patch("/note-types/{name}/templates/{templateName}", handler.UpdateTemplate)
 
 		// Notes
@@ -1037,6 +1396,8 @@ func main() {
 		r.Get("/cards/{id}", handler.GetCard)
 		r.Post("/cards/{id}/answer", handler.AnswerCard)
 		r.Patch("/cards/{id}", handler.UpdateCard)
+		r.Get("/cards/empty", handler.FindEmptyCards)
+		r.Post("/cards/empty/delete", handler.DeleteEmptyCards)
 
 		// Backups
 		r.Post("/backups", handler.CreateBackup)

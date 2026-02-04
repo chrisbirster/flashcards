@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { updateTemplate } from '#/lib/api'
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
+import { updateTemplate, fetchDecks } from '#/lib/api'
 import type { NoteType, CardTemplate } from '#/lib/api'
 import DOMPurify from 'dompurify'
 
@@ -18,9 +18,17 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
   const [qFmt, setQFmt] = useState(selectedTemplate?.qFmt || '')
   const [aFmt, setAFmt] = useState(selectedTemplate?.aFmt || '')
   const [styling, setStyling] = useState(selectedTemplate?.styling || '')
+  const [ifFieldNonEmpty, setIfFieldNonEmpty] = useState(selectedTemplate?.ifFieldNonEmpty || '')
+  const [deckOverride, setDeckOverride] = useState(selectedTemplate?.deckOverride || '')
   const [sampleFieldVals, setSampleFieldVals] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
+
+  // Fetch decks for deck override dropdown
+  const { data: decks = [] } = useQuery({
+    queryKey: ['decks'],
+    queryFn: fetchDecks,
+  })
 
   // Initialize sample field values
   useEffect(() => {
@@ -37,9 +45,24 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
       setQFmt(selectedTemplate.qFmt)
       setAFmt(selectedTemplate.aFmt)
       setStyling(selectedTemplate.styling || '')
+      setIfFieldNonEmpty(selectedTemplate.ifFieldNonEmpty || '')
+      setDeckOverride(selectedTemplate.deckOverride || '')
       setHasChanges(false)
     }
   }, [selectedTemplate])
+
+  // Validate cloze templates contain {{cloze:Field}} pattern
+  const validateClozeTemplate = (frontTemplate: string): string | null => {
+    if (!selectedTemplate?.isCloze) return null
+    
+    const clozePattern = /\{\{cloze:\w+\}\}/
+    if (!clozePattern.test(frontTemplate)) {
+      return 'Cloze templates must contain at least one {{cloze:FieldName}} tag'
+    }
+    return null
+  }
+
+  const clozeValidationError = validateClozeTemplate(qFmt)
 
   const invalidateNoteTypes = () => {
     queryClient.invalidateQueries({ queryKey: ['note-types'] })
@@ -52,6 +75,8 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
         qFmt,
         aFmt,
         styling,
+        ifFieldNonEmpty: ifFieldNonEmpty || undefined,
+        deckOverride: deckOverride || undefined,
       }),
     onSuccess: (data) => {
       // Update selected template with new data
@@ -67,6 +92,10 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
   })
 
   const handleSave = () => {
+    if (clozeValidationError) {
+      setError(clozeValidationError)
+      return
+    }
     updateTemplateMutation.mutate()
   }
 
@@ -146,6 +175,18 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
             </div>
           )}
 
+          {/* Cloze validation warning */}
+          {clozeValidationError && !error && (
+            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md text-yellow-800 text-sm">
+              <div className="flex items-start gap-2">
+                <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                <div>{clozeValidationError}</div>
+              </div>
+            </div>
+          )}
+
           {/* Template selector (for note types with multiple templates) */}
           {noteType.templates.length > 1 && (
             <div className="mb-4">
@@ -166,6 +207,64 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
               </select>
             </div>
           )}
+
+          {/* Conditional generation */}
+          {!selectedTemplate?.isCloze && (
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Conditional Generation
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600 whitespace-nowrap">Only generate card if</span>
+                <select
+                  value={ifFieldNonEmpty}
+                  onChange={(e) => {
+                    setIfFieldNonEmpty(e.target.value)
+                    setHasChanges(true)
+                  }}
+                  className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  data-testid="if-field-non-empty"
+                >
+                  <option value="">(always generate)</option>
+                  {noteType.fields.map((field) => (
+                    <option key={field} value={field}>
+                      {field}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-sm text-gray-600 whitespace-nowrap">is not empty</span>
+              </div>
+              <p className="mt-2 text-xs text-gray-500">
+                If set, this template will only create a card when the selected field has content.
+              </p>
+            </div>
+          )}
+
+          {/* Deck override */}
+          <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-md">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Deck Override
+            </label>
+            <select
+              value={deckOverride}
+              onChange={(e) => {
+                setDeckOverride(e.target.value)
+                setHasChanges(true)
+              }}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              data-testid="deck-override"
+            >
+              <option value="">(use note's deck)</option>
+              {decks.map((deck) => (
+                <option key={deck.id} value={deck.name}>
+                  {deck.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs text-gray-500">
+              If set, cards from this template will be placed in the specified deck instead of the note's deck.
+            </p>
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             {/* Left side: Editor */}
@@ -205,6 +304,10 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
               <p className="mt-2 text-xs text-gray-500">
                 {activeTab === 'styling' ? (
                   <>CSS styling applied to both front and back of cards.</>
+                ) : selectedTemplate?.isCloze && activeTab === 'front' ? (
+                  <>
+                    Use {'{{cloze:FieldName}}'} to mark text for cloze deletion. Regular field tags like {'{{FieldName}}'} also work.
+                  </>
                 ) : (
                   <>
                     Use {'{{FieldName}}'} to insert field values.
@@ -285,7 +388,7 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
             </button>
             <button
               onClick={handleSave}
-              disabled={!hasChanges || updateTemplateMutation.isPending}
+              disabled={!hasChanges || updateTemplateMutation.isPending || !!clozeValidationError}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
               data-testid="save-template"
             >

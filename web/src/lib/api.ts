@@ -48,12 +48,23 @@ export interface CardTemplate {
   styling: string
   ifFieldNonEmpty?: string
   isCloze: boolean
+  deckOverride?: string
+  browserQFmt?: string
+  browserAFmt?: string
+}
+
+export interface FieldOptions {
+  font?: string
+  fontSize?: number
+  rtl?: boolean
 }
 
 export interface NoteType {
   name: string
   fields: string[]
   templates: CardTemplate[]
+  sortFieldIndex: number
+  fieldOptions?: Record<string, FieldOptions>
 }
 
 export interface CreateDeckRequest {
@@ -161,6 +172,10 @@ export interface UpdateTemplateRequest {
   qFmt?: string
   aFmt?: string
   styling?: string
+  ifFieldNonEmpty?: string
+  deckOverride?: string
+  browserQFmt?: string
+  browserAFmt?: string
 }
 
 export interface TemplatesResponse {
@@ -216,6 +231,40 @@ export async function reorderFields(noteTypeName: string, req: ReorderFieldsRequ
   if (!res.ok) {
     const text = await res.text()
     throw new Error(text || 'Failed to reorder fields')
+  }
+  return res.json()
+}
+
+export interface SetSortFieldRequest {
+  fieldIndex: number
+}
+
+export async function setSortField(noteTypeName: string, req: SetSortFieldRequest): Promise<{message: string; sortFieldIndex: number; sortFieldName: string}> {
+  const res = await fetch(`${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/sort-field`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || 'Failed to set sort field')
+  }
+  return res.json()
+}
+
+export async function setFieldOptions(
+  noteTypeName: string,
+  fieldName: string,
+  options: FieldOptions
+): Promise<{message: string; fieldOptions: Record<string, FieldOptions>}> {
+  const res = await fetch(`${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/fields/options`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({fieldName, options}),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || 'Failed to set field options')
   }
   return res.json()
 }
@@ -303,6 +352,48 @@ export async function updateCard(id: number, req: UpdateCardRequest): Promise<Ca
     body: JSON.stringify(req),
   })
   if (!res.ok) throw new Error('Failed to update card')
+  return res.json()
+}
+
+// Empty cards endpoints
+export interface EmptyCardInfo {
+  cardId: number
+  noteId: number
+  deckId: number
+  templateName: string
+  ordinal: number
+  front: string
+  back: string
+  reason: string
+}
+
+export interface EmptyCardsResponse {
+  count: number
+  emptyCards: EmptyCardInfo[]
+}
+
+export interface DeleteEmptyCardsRequest {
+  cardIds: number[]
+}
+
+export interface DeleteEmptyCardsResponse {
+  deleted: number
+  failed?: string[]
+}
+
+export async function findEmptyCards(): Promise<EmptyCardsResponse> {
+  const res = await fetch(`${API_BASE}/cards/empty`)
+  if (!res.ok) throw new Error('Failed to find empty cards')
+  return res.json()
+}
+
+export async function deleteEmptyCards(req: DeleteEmptyCardsRequest): Promise<DeleteEmptyCardsResponse> {
+  const res = await fetch(`${API_BASE}/cards/empty/delete`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) throw new Error('Failed to delete empty cards')
   return res.json()
 }
 

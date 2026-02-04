@@ -497,6 +497,46 @@ func (s *SQLiteStore) ListNotes(collectionID string) (map[int64]Note, error) {
 	return notes, nil
 }
 
+// GetNotesByType returns all notes of a specific note type
+func (s *SQLiteStore) GetNotesByType(collectionID string, noteTypeName string) ([]Note, error) {
+	query := `SELECT id, type_id, field_vals, tags, usn, created_at, modified_at 
+	          FROM notes 
+	          WHERE collection_id = ? AND type_id = ?`
+	rows, err := s.db.Query(query, collectionID, noteTypeName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var notes []Note
+	for rows.Next() {
+		var note Note
+		var typeID string
+		var fieldValsJSON, tagsJSON []byte
+		var createdAt, modifiedAt int64
+
+		err := rows.Scan(&note.ID, &typeID, &fieldValsJSON, &tagsJSON, &note.USN, &createdAt, &modifiedAt)
+		if err != nil {
+			return nil, err
+		}
+
+		note.Type = NoteTypeName(typeID)
+		note.CreatedAt = time.Unix(createdAt, 0)
+		note.ModifiedAt = time.Unix(modifiedAt, 0)
+
+		if err := json.Unmarshal(fieldValsJSON, &note.FieldMap); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(tagsJSON, &note.Tags); err != nil {
+			return nil, err
+		}
+
+		notes = append(notes, note)
+	}
+
+	return notes, rows.Err()
+}
+
 func (s *SQLiteStore) FindDuplicateNotes(collectionID, fieldName, value string, deckID int64) ([]NoteBrief, error) {
 	// Search notes where the specified field contains the value
 	query := `SELECT id, type_id, field_vals FROM notes WHERE collection_id = ?`
@@ -568,6 +608,48 @@ func (s *SQLiteStore) CreateCard(c *Card) error {
 	_, err = s.db.Exec(query, c.ID, c.NoteID, c.DeckID, c.TemplateName, c.Ordinal, c.Front, c.Back,
 		c.SRS.Due.Unix(), int(c.SRS.State), fsrsJSON, c.Flag, c.Marked, c.Suspended, c.USN)
 	return err
+}
+
+// GetCardsByNote returns all cards for a given note
+func (s *SQLiteStore) GetCardsByNote(noteID int64) ([]Card, error) {
+	query := `
+		SELECT id, note_id, deck_id, template_name, ordinal, front, back,
+		       due, state, fsrs_data, flag, marked, suspended, usn
+		FROM cards WHERE note_id = ?
+	`
+	rows, err := s.db.Query(query, noteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var cards []Card
+	for rows.Next() {
+		var card Card
+		var dueUnix int64
+		var state int
+		var fsrsJSON []byte
+		var marked, suspended int
+
+		err := rows.Scan(&card.ID, &card.NoteID, &card.DeckID, &card.TemplateName, &card.Ordinal,
+			&card.Front, &card.Back, &dueUnix, &state, &fsrsJSON, &card.Flag, &marked, &suspended, &card.USN)
+		if err != nil {
+			return nil, err
+		}
+
+		card.SRS.Due = time.Unix(dueUnix, 0)
+		card.SRS.State = fsrs.State(state)
+		card.Marked = marked != 0
+		card.Suspended = suspended != 0
+
+		if err := json.Unmarshal(fsrsJSON, &card.SRS); err != nil {
+			return nil, err
+		}
+
+		cards = append(cards, card)
+	}
+
+	return cards, rows.Err()
 }
 
 func (s *SQLiteStore) GetCard(id int64) (*Card, error) {

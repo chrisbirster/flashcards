@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { addField, renameField, removeField, reorderFields } from '#/lib/api'
+import { addField, renameField, removeField, reorderFields, setSortField } from '#/lib/api'
 import type { NoteType } from '#/lib/api'
 
 interface FieldEditorProps {
@@ -11,6 +11,7 @@ interface FieldEditorProps {
 export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
   const queryClient = useQueryClient()
   const [fields, setFields] = useState<string[]>(noteType.fields)
+  const [sortFieldIndex, setSortFieldIndexState] = useState<number>(noteType.sortFieldIndex || 0)
   const [newFieldName, setNewFieldName] = useState('')
   const [editingField, setEditingField] = useState<string | null>(null)
   const [editFieldName, setEditFieldName] = useState('')
@@ -100,8 +101,22 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
     reorderFieldsMutation.mutate(newFields)
   }
 
+  const setSortFieldMutation = useMutation({
+    mutationFn: (fieldIndex: number) => setSortField(noteType.name, { fieldIndex }),
+    onSuccess: (data) => {
+      setSortFieldIndexState(data.sortFieldIndex)
+      setError(null)
+      invalidateNoteTypes()
+    },
+    onError: (err: Error) => setError(err.message),
+  })
+
+  const handleSetSortField = (index: number) => {
+    setSortFieldMutation.mutate(index)
+  }
+
   const isPending = addFieldMutation.isPending || renameFieldMutation.isPending ||
-    removeFieldMutation.isPending || reorderFieldsMutation.isPending
+    removeFieldMutation.isPending || reorderFieldsMutation.isPending || setSortFieldMutation.isPending
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -129,7 +144,14 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
           )}
 
           {/* Field list */}
-          <div className="space-y-2 mb-4">
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-medium text-gray-700">Fields</h3>
+              <div className="text-xs text-gray-500">
+                Sort field: <span className="font-medium text-blue-600">{fields[sortFieldIndex]}</span>
+              </div>
+            </div>
+            <div className="space-y-2">
             {fields.map((field, index) => (
               <div
                 key={field}
@@ -158,7 +180,22 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
                     title="Click to rename"
                   >
                     {field}
+                    {sortFieldIndex === index && (
+                      <span className="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">Sort</span>
+                    )}
                   </span>
+                )}
+
+                {/* Set as sort field */}
+                {sortFieldIndex !== index && (
+                  <button
+                    onClick={() => handleSetSortField(index)}
+                    className="text-xs text-gray-500 hover:text-blue-600 px-2 py-1"
+                    title="Set as sort field"
+                    disabled={isPending}
+                  >
+                    Set Sort
+                  </button>
                 )}
 
                 {/* Move up/down buttons */}
@@ -196,6 +233,7 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
                 </button>
               </div>
             ))}
+          </div>
           </div>
 
           {/* Add new field */}

@@ -23,50 +23,51 @@ Microdote single-file prototype:
 type NoteTypeName string
 
 type CardTemplate struct {
-	Name            string
-	QFmt            string
-	AFmt            string
-	IfFieldNonEmpty string // if set, template only generates when this field has text
-	IsCloze         bool
+	Name            string `json:"name"`
+	QFmt            string `json:"qFmt"`
+	AFmt            string `json:"aFmt"`
+	Styling         string `json:"styling"`
+	IfFieldNonEmpty string `json:"ifFieldNonEmpty"`
+	IsCloze         bool   `json:"isCloze"`
 }
 
 type NoteType struct {
-	Name      NoteTypeName
-	Fields    []string
-	Templates []CardTemplate
+	Name      NoteTypeName   `json:"name"`
+	Fields    []string       `json:"fields"`
+	Templates []CardTemplate `json:"templates"`
 }
 
 type Note struct {
-	ID         int64
-	Type       NoteTypeName
-	FieldMap   map[string]string // field name -> value
-	Tags       []string          // user-defined tags for organization
-	USN        int64             // Update Sequence Number for sync
-	CreatedAt  time.Time         // when note was created
-	ModifiedAt time.Time         // when note was last modified
+	ID         int64             `json:"id"`
+	Type       NoteTypeName      `json:"type"`
+	FieldMap   map[string]string `json:"fieldMap"`   // field name -> value
+	Tags       []string          `json:"tags"`       // user-defined tags for organization
+	USN        int64             `json:"usn"`        // Update Sequence Number for sync
+	CreatedAt  time.Time         `json:"createdAt"`  // when note was created
+	ModifiedAt time.Time         `json:"modifiedAt"` // when note was last modified
 }
 
 type Card struct {
-	ID           int64
-	NoteID       int64
-	DeckID       int64
-	TemplateName string
-	Ordinal      int // e.g. cloze c1,c2 => ordinal=1,2; non-cloze => 0
+	ID           int64  `json:"id"`
+	NoteID       int64  `json:"noteId"`
+	DeckID       int64  `json:"deckId"`
+	TemplateName string `json:"templateName"` // which template generated this card
+	Ordinal      int    `json:"ordinal"`      // e.g. cloze c1,c2 => ordinal=1,2; non-cloze => 0
 
-	Front string
-	Back  string
+	Front string `json:"front"`
+	Back  string `json:"back"`
 
-	SRS fsrs.Card // FSRS state: due, stability, difficulty, reps, lapses, etc.
+	SRS fsrs.Card `json:"srs"` // FSRS state: due, stability, difficulty, reps, lapses, etc.
 
 	// Additional metadata for Anki parity
-	Flag      int   // 0=none, 1-7=color flags for marking cards
-	Marked    bool  // special "marked" tag for review
-	Suspended bool  // whether card is suspended (excluded from study)
-	USN       int64 // Update Sequence Number for sync
+	Flag      int   `json:"flag"`      // 0=none, 1-7=color flags for marking cards
+	Marked    bool  `json:"marked"`    // special "marked" tag for review
+	Suspended bool  `json:"suspended"` // whether card is suspended (excluded from study)
+	USN       int64 `json:"usn"`       // Update Sequence Number for sync
 }
 
 type Deck struct {
-	ID        int64
+	ID        int64 `json:"id"`
 	Name      string
 	Cards     []int64 // card IDs
 	ParentID  *int64  // for deck hierarchy (nil if root deck)
@@ -122,22 +123,22 @@ type Collection struct {
 	nextCardID int64
 	nextDeckID int64
 
-	NoteTypes map[NoteTypeName]NoteType
-	Notes     map[int64]Note
-	Cards     map[int64]*Card
-	Decks     map[int64]*Deck
+	NoteTypes map[NoteTypeName]NoteType `json:"noteTypes"`
+	Notes     map[int64]Note            `json:"notes"`
+	Cards     map[int64]*Card           `json:"cards"`
+	Decks     map[int64]*Deck           `json:"decks"`
 
 	// FSRS config (in a real app: per preset)
-	Params fsrs.Parameters
+	Params fsrs.Parameters `json:"params"`
 
-	Revlog []fsrs.ReviewLog
+	Revlog []fsrs.ReviewLog `json:"revlog"`
 
 	// Media storage
-	Media map[string]*MediaRef // filename -> media ref
+	Media map[string]*MediaRef `json:"media"` // filename -> media ref
 
 	// Sync metadata
-	USN      int64     // Update Sequence Number (increments on each change)
-	LastSync time.Time // when collection was last synced
+	USN      int64     `json:"usn"`      // Update Sequence Number (increments on each change)
+	LastSync time.Time `json:"lastSync"` // when collection was last synced
 }
 
 func NewCollection() *Collection {

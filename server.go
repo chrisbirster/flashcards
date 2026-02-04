@@ -14,8 +14,15 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/microcosm-cc/bluemonday"
 	fsrs "github.com/open-spaced-repetition/go-fsrs/v3"
 )
+
+var htmlPolicy = bluemonday.UGCPolicy()
+
+func sanitizeHTML(input string) string {
+	return htmlPolicy.Sanitize(input)
+}
 
 // APIHandler wraps the store and provides HTTP handlers
 type APIHandler struct {
@@ -129,8 +136,11 @@ func (h *APIHandler) CreateDeck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sanitize deck name to prevent XSS
+	sanitizedName := sanitizeHTML(req.Name)
+
 	// Create deck using collection method
-	deck := h.collection.NewDeck(req.Name)
+	deck := h.collection.NewDeck(sanitizedName)
 
 	// Persist to database
 	if err := h.store.CreateDeck(deck); err != nil {
@@ -205,16 +215,28 @@ func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sanitize field values to prevent XSS
+	sanitizedFieldVals := make(map[string]string)
+	for field, value := range req.FieldVals {
+		sanitizedFieldVals[field] = sanitizeHTML(value)
+	}
+
+	// Sanitize tags (strip HTML since tags should be plain text)
+	sanitizedTags := make([]string, len(req.Tags))
+	for i, tag := range req.Tags {
+		sanitizedTags[i] = sanitizeHTML(tag)
+	}
+
 	// Use Collection.AddNote to create note and generate cards
-	note, cards, err := h.collection.AddNote(req.DeckID, NoteTypeName(req.TypeID), req.FieldVals, time.Now())
+	note, cards, err := h.collection.AddNote(req.DeckID, NoteTypeName(req.TypeID), sanitizedFieldVals, time.Now())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Set tags if provided
-	note.Tags = req.Tags
-	if req.Tags == nil {
+	// Set tags if provided (use sanitized tags)
+	note.Tags = sanitizedTags
+	if sanitizedTags == nil {
 		note.Tags = []string{}
 	}
 
@@ -435,8 +457,20 @@ type TemplateInfo struct {
 	Name            string `json:"name"`
 	QFmt            string `json:"qFmt"`
 	AFmt            string `json:"aFmt"`
+	Styling         string `json:"styling"`
 	IfFieldNonEmpty string `json:"ifFieldNonEmpty,omitempty"`
 	IsCloze         bool   `json:"isCloze"`
+}
+
+type UpdateTemplateRequest struct {
+	QFmt    *string `json:"qFmt,omitempty"`
+	AFmt    *string `json:"aFmt,omitempty"`
+	Styling *string `json:"styling,omitempty"`
+}
+
+type TemplatesResponse struct {
+	Message   string         `json:"message"`
+	Templates []TemplateInfo `json:"templates"`
 }
 
 func (h *APIHandler) ListNoteTypes(w http.ResponseWriter, r *http.Request) {
@@ -448,6 +482,7 @@ func (h *APIHandler) ListNoteTypes(w http.ResponseWriter, r *http.Request) {
 				Name:            t.Name,
 				QFmt:            t.QFmt,
 				AFmt:            t.AFmt,
+				Styling:         t.Styling,
 				IfFieldNonEmpty: t.IfFieldNonEmpty,
 				IsCloze:         t.IsCloze,
 			})
@@ -475,6 +510,7 @@ func (h *APIHandler) GetNoteType(w http.ResponseWriter, r *http.Request) {
 			Name:            t.Name,
 			QFmt:            t.QFmt,
 			AFmt:            t.AFmt,
+			Styling:         t.Styling,
 			IfFieldNonEmpty: t.IfFieldNonEmpty,
 			IsCloze:         t.IsCloze,
 		})
@@ -534,15 +570,18 @@ func (h *APIHandler) AddField(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sanitize field name to prevent XSS
+	sanitizedFieldName := sanitizeHTML(req.FieldName)
+
 	// Check for reserved field names
-	if reservedFieldNames[req.FieldName] {
-		http.Error(w, fmt.Sprintf("'%s' is a reserved field name", req.FieldName), http.StatusBadRequest)
+	if reservedFieldNames[sanitizedFieldName] {
+		http.Error(w, fmt.Sprintf("'%s' is a reserved field name", sanitizedFieldName), http.StatusBadRequest)
 		return
 	}
 
 	// Check for duplicate field name
 	for _, f := range nt.Fields {
-		if f == req.FieldName {
+		if f == sanitizedFieldName {
 			http.Error(w, "Field name already exists", http.StatusBadRequest)
 			return
 		}
@@ -552,11 +591,11 @@ func (h *APIHandler) AddField(w http.ResponseWriter, r *http.Request) {
 	if req.Position != nil && *req.Position >= 0 && *req.Position < len(nt.Fields) {
 		newFields := make([]string, 0, len(nt.Fields)+1)
 		newFields = append(newFields, nt.Fields[:*req.Position]...)
-		newFields = append(newFields, req.FieldName)
+		newFields = append(newFields, sanitizedFieldName)
 		newFields = append(newFields, nt.Fields[*req.Position:]...)
 		nt.Fields = newFields
 	} else {
-		nt.Fields = append(nt.Fields, req.FieldName)
+		nt.Fields = append(nt.Fields, sanitizedFieldName)
 	}
 
 	// Update in store
@@ -593,9 +632,12 @@ func (h *APIHandler) RenameField(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sanitize new field name to prevent XSS
+	sanitizedNewName := sanitizeHTML(req.NewName)
+
 	// Check for reserved field names
-	if reservedFieldNames[req.NewName] {
-		http.Error(w, fmt.Sprintf("'%s' is a reserved field name", req.NewName), http.StatusBadRequest)
+	if reservedFieldNames[sanitizedNewName] {
+		http.Error(w, fmt.Sprintf("'%s' is a reserved field name", sanitizedNewName), http.StatusBadRequest)
 		return
 	}
 
@@ -603,7 +645,7 @@ func (h *APIHandler) RenameField(w http.ResponseWriter, r *http.Request) {
 	found := false
 	for i, f := range nt.Fields {
 		if f == req.OldName {
-			nt.Fields[i] = req.NewName
+			nt.Fields[i] = sanitizedNewName
 			found = true
 			break
 		}
@@ -617,14 +659,14 @@ func (h *APIHandler) RenameField(w http.ResponseWriter, r *http.Request) {
 	// Check for duplicate with new name
 	count := 0
 	for _, f := range nt.Fields {
-		if f == req.NewName {
+		if f == sanitizedNewName {
 			count++
 		}
 	}
 	if count > 1 {
 		// Revert and return error
 		for i, f := range nt.Fields {
-			if f == req.NewName {
+			if f == sanitizedNewName {
 				nt.Fields[i] = req.OldName
 				break
 			}
@@ -635,10 +677,10 @@ func (h *APIHandler) RenameField(w http.ResponseWriter, r *http.Request) {
 
 	// Update templates to use new field name
 	for i := range nt.Templates {
-		nt.Templates[i].QFmt = strings.ReplaceAll(nt.Templates[i].QFmt, "{{"+req.OldName+"}}", "{{"+req.NewName+"}}")
-		nt.Templates[i].AFmt = strings.ReplaceAll(nt.Templates[i].AFmt, "{{"+req.OldName+"}}", "{{"+req.NewName+"}}")
+		nt.Templates[i].QFmt = strings.ReplaceAll(nt.Templates[i].QFmt, "{{"+req.OldName+"}}", "{{"+sanitizedNewName+"}}")
+		nt.Templates[i].AFmt = strings.ReplaceAll(nt.Templates[i].AFmt, "{{"+req.OldName+"}}", "{{"+sanitizedNewName+"}}")
 		if nt.Templates[i].IfFieldNonEmpty == req.OldName {
-			nt.Templates[i].IfFieldNonEmpty = req.NewName
+			nt.Templates[i].IfFieldNonEmpty = sanitizedNewName
 		}
 	}
 
@@ -771,6 +813,75 @@ func (h *APIHandler) ReorderFields(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *APIHandler) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
+	noteTypeName := chi.URLParam(r, "name")
+	templateName := chi.URLParam(r, "templateName")
+
+	nt, ok := h.collection.NoteTypes[NoteTypeName(noteTypeName)]
+	if !ok {
+		http.Error(w, "Note type not found", http.StatusNotFound)
+		return
+	}
+
+	var req UpdateTemplateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Find and update the template
+	templateIndex := -1
+	for i, t := range nt.Templates {
+		if t.Name == templateName {
+			templateIndex = i
+			break
+		}
+	}
+
+	if templateIndex == -1 {
+		http.Error(w, "Template not found", http.StatusNotFound)
+		return
+	}
+
+	// Update fields if provided
+	if req.QFmt != nil {
+		nt.Templates[templateIndex].QFmt = sanitizeHTML(*req.QFmt)
+	}
+	if req.AFmt != nil {
+		nt.Templates[templateIndex].AFmt = sanitizeHTML(*req.AFmt)
+	}
+	if req.Styling != nil {
+		nt.Templates[templateIndex].Styling = sanitizeHTML(*req.Styling)
+	}
+
+	// Update in store
+	if err := h.store.UpdateNoteType(h.collectionID, &nt); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Update collection cache
+	h.collection.NoteTypes[NoteTypeName(noteTypeName)] = nt
+
+	// Build response with updated templates
+	var templates []TemplateInfo
+	for _, t := range nt.Templates {
+		templates = append(templates, TemplateInfo{
+			Name:            t.Name,
+			QFmt:            t.QFmt,
+			AFmt:            t.AFmt,
+			Styling:         t.Styling,
+			IfFieldNonEmpty: t.IfFieldNonEmpty,
+			IsCloze:         t.IsCloze,
+		})
+	}
+
+	respondJSON(w, http.StatusOK, TemplatesResponse{
+		Message:   "Template updated successfully",
+		Templates: templates,
+	})
+}
+
 // Backup endpoints
 
 func (h *APIHandler) CreateBackup(w http.ResponseWriter, r *http.Request) {
@@ -887,7 +998,7 @@ func main() {
 	// CORS configuration for frontend
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:3000"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Content-Type", "Authorization"},
 		AllowCredentials: true,
 		MaxAge:           300,
@@ -915,6 +1026,7 @@ func main() {
 		r.Patch("/note-types/{name}/fields/rename", handler.RenameField)
 		r.Delete("/note-types/{name}/fields", handler.RemoveField)
 		r.Put("/note-types/{name}/fields/reorder", handler.ReorderFields)
+		r.Patch("/note-types/{name}/templates/{templateName}", handler.UpdateTemplate)
 
 		// Notes
 		r.Post("/notes", handler.CreateNote)

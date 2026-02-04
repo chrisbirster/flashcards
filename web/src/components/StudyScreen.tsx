@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchDueCards, answerCard, updateCard } from '#/lib/api'
+import DOMPurify from 'dompurify';
 
 // Flag colors matching Anki
 const FLAG_COLORS = [
@@ -32,6 +33,7 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
     queryFn: () => fetchDueCards(deckId, 50),
   })
 
+
   const answerMutation = useMutation({
     mutationFn: ({ cardId, rating, timeTakenMs }: { cardId: number; rating: number; timeTakenMs: number }) =>
       answerCard(cardId, { rating, timeTakenMs }),
@@ -61,6 +63,8 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
   })
 
   const currentCard = cards?.[currentCardIndex]
+
+  console.log({ currentCard })
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -184,11 +188,10 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
           <div className="relative">
             <button
               onClick={() => setShowFlagMenu(!showFlagMenu)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1 ${
-                currentCard.flag > 0
+              className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1 ${currentCard.flag > 0
                   ? `${FLAG_COLORS[currentCard.flag].color} ${FLAG_COLORS[currentCard.flag].textColor}`
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
+                }`}
               data-testid="flag-button"
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -217,11 +220,10 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
           {/* Mark button */}
           <button
             onClick={() => updateCardMutation.mutate({ cardId: currentCard.id, marked: !currentCard.marked })}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1 ${
-              currentCard.marked
+            className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1 ${currentCard.marked
                 ? 'bg-yellow-500 text-white'
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
+              }`}
             data-testid="mark-button"
           >
             <svg className="w-4 h-4" fill={currentCard.marked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
@@ -252,9 +254,9 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
             <div className="text-sm text-gray-500 mb-2">Question</div>
             <div
               className="text-xl prose max-w-none"
-              dangerouslySetInnerHTML={{ __html: currentCard.front }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(currentCard.front) }}
             />
-          </div>
+            </div>
 
           {/* Answer (revealed) */}
           {showAnswer && (
@@ -262,7 +264,7 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
               <div className="text-sm text-gray-500 mb-2">Answer</div>
               <div
                 className="text-xl prose max-w-none"
-                dangerouslySetInnerHTML={{ __html: currentCard.back }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(currentCard.back) }}
               />
             </div>
           )}

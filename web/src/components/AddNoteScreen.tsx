@@ -3,6 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchNoteTypes, fetchDecks, createNote, checkDuplicate } from '#/lib/api'
 import type { NoteBrief } from '#/lib/api'
 import { FieldEditor } from './FieldEditor'
+import { TemplateEditor } from './TemplateEditor'
+import DOMPurify from 'dompurify';
+
 
 // Helper to find the next cloze number in text
 function getNextClozeNumber(text: string): number {
@@ -55,6 +58,7 @@ export function AddNoteScreen({ deckId, onClose, onSuccess }: AddNoteScreenProps
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(false)
   const [activeField, setActiveField] = useState<string | null>(null)
   const [showFieldEditor, setShowFieldEditor] = useState(false)
+  const [showTemplateEditor, setShowTemplateEditor] = useState(false)
   const textareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({})
 
   // Check if current note type is Cloze
@@ -288,6 +292,17 @@ export function AddNoteScreen({ deckId, onClose, onSuccess }: AddNoteScreenProps
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowTemplateEditor(true)}
+                    className="px-3 py-2 text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200"
+                    title="Edit templates"
+                    data-testid="edit-templates-button"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                    </svg>
+                  </button>
                 </div>
               </div>
               <div>
@@ -469,6 +484,14 @@ export function AddNoteScreen({ deckId, onClose, onSuccess }: AddNoteScreenProps
           />
         )}
 
+        {/* Template Editor Modal */}
+        {showTemplateEditor && currentNoteType && (
+          <TemplateEditor
+            noteType={currentNoteType}
+            onClose={() => setShowTemplateEditor(false)}
+          />
+        )}
+
         {/* Preview section */}
         {currentNoteType && hasRequiredContent() && (
           <div className="mt-6 bg-white rounded-lg shadow p-6">
@@ -502,14 +525,17 @@ export function AddNoteScreen({ deckId, onClose, onSuccess }: AddNoteScreenProps
                             <div className="text-xs text-gray-400 mb-1">Front (hidden)</div>
                             <div
                               className="p-2 bg-gray-50 rounded text-sm whitespace-pre-wrap"
-                              dangerouslySetInnerHTML={{ __html: frontHtml }}
+                              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(frontHtml) }}
                             />
                           </div>
                           <div>
                             <div className="text-xs text-gray-400 mb-1">Back (revealed)</div>
                             <div
                               className="p-2 bg-gray-50 rounded text-sm whitespace-pre-wrap"
-                              dangerouslySetInnerHTML={{ __html: backHtml }}
+                              dangerouslySetInnerHTML={{
+                                __html:
+                                  DOMPurify.sanitize(backHtml)
+                              }}
                             />
                           </div>
                         </div>

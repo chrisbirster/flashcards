@@ -1153,3 +1153,150 @@ func TestUpdateCardSuspended(t *testing.T) {
 		t.Error("Expected suspended card to not appear in due cards")
 	}
 }
+
+// Task 0221: Template Editor Tests
+
+func TestUpdateTemplate(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	col := NewCollection()
+	store.CreateCollection(col)
+
+	// Create a note type with a template
+	nt := &NoteType{
+		Name:   "TemplateTest",
+		Fields: []string{"Front", "Back"},
+		Templates: []CardTemplate{{
+			Name:    "Card 1",
+			QFmt:    "Q: {{Front}}",
+			AFmt:    "A: {{Back}}",
+			Styling: "",
+		}},
+	}
+	store.CreateNoteType("default", nt)
+
+	// Update the template
+	nt.Templates[0].QFmt = "<div class='question'>{{Front}}</div>"
+	nt.Templates[0].AFmt = "<div class='answer'>{{Back}}</div>"
+	nt.Templates[0].Styling = ".card { font-size: 20px; }"
+
+	err := store.UpdateNoteType("default", nt)
+	if err != nil {
+		t.Fatalf("Failed to update note type: %v", err)
+	}
+
+	// Verify the update
+	retrieved, err := store.GetNoteType("default", "TemplateTest")
+	if err != nil {
+		t.Fatalf("Failed to get note type: %v", err)
+	}
+
+	if len(retrieved.Templates) != 1 {
+		t.Fatalf("Expected 1 template, got %d", len(retrieved.Templates))
+	}
+
+	tmpl := retrieved.Templates[0]
+	if tmpl.QFmt != "<div class='question'>{{Front}}</div>" {
+		t.Errorf("Expected updated QFmt, got '%s'", tmpl.QFmt)
+	}
+	if tmpl.AFmt != "<div class='answer'>{{Back}}</div>" {
+		t.Errorf("Expected updated AFmt, got '%s'", tmpl.AFmt)
+	}
+	if tmpl.Styling != ".card { font-size: 20px; }" {
+		t.Errorf("Expected updated Styling, got '%s'", tmpl.Styling)
+	}
+}
+
+func TestTemplateStylingPersistence(t *testing.T) {
+	dbPath := "./test_template_styling.db"
+	defer os.Remove(dbPath)
+
+	// Initialize collection
+	col, store, err := InitDefaultCollection(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to initialize collection: %v", err)
+	}
+
+	// Update Basic note type template with styling
+	basic := col.NoteTypes["Basic"]
+	basic.Templates[0].Styling = ".card { background: #fff; color: #333; font-family: Arial; }"
+	basic.Templates[0].QFmt = "<div class='front'>{{Front}}</div>"
+	basic.Templates[0].AFmt = "<div class='back'>{{Back}}</div>"
+
+	err = store.UpdateNoteType("default", &basic)
+	if err != nil {
+		t.Fatalf("Failed to update note type: %v", err)
+	}
+	store.Close()
+
+	// Reopen and verify styling persisted
+	col2, store2, err := InitDefaultCollection(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to reinitialize collection: %v", err)
+	}
+	defer store2.Close()
+
+	retrieved := col2.NoteTypes["Basic"]
+	if retrieved.Templates[0].Styling != ".card { background: #fff; color: #333; font-family: Arial; }" {
+		t.Errorf("Styling not persisted, got '%s'", retrieved.Templates[0].Styling)
+	}
+	if retrieved.Templates[0].QFmt != "<div class='front'>{{Front}}</div>" {
+		t.Errorf("QFmt not persisted, got '%s'", retrieved.Templates[0].QFmt)
+	}
+	if retrieved.Templates[0].AFmt != "<div class='back'>{{Back}}</div>" {
+		t.Errorf("AFmt not persisted, got '%s'", retrieved.Templates[0].AFmt)
+	}
+}
+
+func TestUpdateMultipleTemplates(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	col := NewCollection()
+	store.CreateCollection(col)
+
+	// Create a note type with multiple templates
+	nt := &NoteType{
+		Name:   "MultiTemplate",
+		Fields: []string{"Front", "Back"},
+		Templates: []CardTemplate{
+			{Name: "Card 1", QFmt: "{{Front}}", AFmt: "{{Back}}", Styling: ""},
+			{Name: "Card 2", QFmt: "{{Back}}", AFmt: "{{Front}}", Styling: ""},
+		},
+	}
+	store.CreateNoteType("default", nt)
+
+	// Update only the second template
+	nt.Templates[1].QFmt = "Reverse: {{Back}}"
+	nt.Templates[1].AFmt = "Answer: {{Front}}"
+	nt.Templates[1].Styling = ".reverse { color: blue; }"
+
+	err := store.UpdateNoteType("default", nt)
+	if err != nil {
+		t.Fatalf("Failed to update note type: %v", err)
+	}
+
+	// Verify both templates
+	retrieved, err := store.GetNoteType("default", "MultiTemplate")
+	if err != nil {
+		t.Fatalf("Failed to get note type: %v", err)
+	}
+
+	if len(retrieved.Templates) != 2 {
+		t.Fatalf("Expected 2 templates, got %d", len(retrieved.Templates))
+	}
+
+	// First template should be unchanged
+	if retrieved.Templates[0].QFmt != "{{Front}}" {
+		t.Errorf("First template QFmt changed unexpectedly: %s", retrieved.Templates[0].QFmt)
+	}
+
+	// Second template should be updated
+	if retrieved.Templates[1].QFmt != "Reverse: {{Back}}" {
+		t.Errorf("Second template QFmt not updated: %s", retrieved.Templates[1].QFmt)
+	}
+	if retrieved.Templates[1].Styling != ".reverse { color: blue; }" {
+		t.Errorf("Second template Styling not updated: %s", retrieved.Templates[1].Styling)
+	}
+}

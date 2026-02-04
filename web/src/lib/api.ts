@@ -45,6 +45,7 @@ export interface CardTemplate {
   name: string
   qFmt: string
   aFmt: string
+  styling: string
   ifFieldNonEmpty?: string
   isCloze: boolean
 }
@@ -156,6 +157,17 @@ export interface FieldsResponse {
   fields: string[]
 }
 
+export interface UpdateTemplateRequest {
+  qFmt?: string
+  aFmt?: string
+  styling?: string
+}
+
+export interface TemplatesResponse {
+  message: string
+  templates: CardTemplate[]
+}
+
 export async function addField(noteTypeName: string, req: AddFieldRequest): Promise<FieldsResponse> {
   const res = await fetch(`${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/fields`, {
     method: 'POST',
@@ -204,6 +216,26 @@ export async function reorderFields(noteTypeName: string, req: ReorderFieldsRequ
   if (!res.ok) {
     const text = await res.text()
     throw new Error(text || 'Failed to reorder fields')
+  }
+  return res.json()
+}
+
+export async function updateTemplate(
+  noteTypeName: string,
+  templateName: string,
+  req: UpdateTemplateRequest
+): Promise<TemplatesResponse> {
+  const res = await fetch(
+    `${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/templates/${encodeURIComponent(templateName)}`,
+    {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(req),
+    }
+  )
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || 'Failed to update template')
   }
   return res.json()
 }

@@ -307,23 +307,32 @@ func (s *SQLiteStore) CreateNoteType(collectionID string, nt *NoteType) error {
 	if err != nil {
 		return err
 	}
+	var fieldOptionsJSON []byte
+	if nt.FieldOptions != nil {
+		fieldOptionsJSON, err = json.Marshal(nt.FieldOptions)
+		if err != nil {
+			return err
+		}
+	}
 
 	query := `
-		INSERT INTO note_types (id, collection_id, name, fields, templates)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO note_types (id, collection_id, name, fields, templates, sort_field_index, field_options)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err = s.db.Exec(query, string(nt.Name), collectionID, string(nt.Name), fieldsJSON, templatesJSON)
+	_, err = s.db.Exec(query, string(nt.Name), collectionID, string(nt.Name), fieldsJSON, templatesJSON, nt.SortFieldIndex, fieldOptionsJSON)
 	return err
 }
 
 func (s *SQLiteStore) GetNoteType(collectionID string, name NoteTypeName) (*NoteType, error) {
-	query := `SELECT name, fields, templates FROM note_types WHERE collection_id = ? AND name = ?`
+	query := `SELECT name, fields, templates, sort_field_index, field_options FROM note_types WHERE collection_id = ? AND name = ?`
 	row := s.db.QueryRow(query, collectionID, string(name))
 
 	var ntName string
 	var fieldsJSON, templatesJSON []byte
+	var sortFieldIndex int
+	var fieldOptionsJSON []byte
 
-	err := row.Scan(&ntName, &fieldsJSON, &templatesJSON)
+	err := row.Scan(&ntName, &fieldsJSON, &templatesJSON, &sortFieldIndex, &fieldOptionsJSON)
 	if err != nil {
 		return nil, err
 	}
@@ -337,10 +346,19 @@ func (s *SQLiteStore) GetNoteType(collectionID string, name NoteTypeName) (*Note
 		return nil, err
 	}
 
+	var fieldOptions map[string]FieldOptions
+	if len(fieldOptionsJSON) > 0 {
+		if err := json.Unmarshal(fieldOptionsJSON, &fieldOptions); err != nil {
+			return nil, err
+		}
+	}
+
 	return &NoteType{
-		Name:      NoteTypeName(ntName),
-		Fields:    fields,
-		Templates: templates,
+		Name:           NoteTypeName(ntName),
+		Fields:         fields,
+		Templates:      templates,
+		SortFieldIndex: sortFieldIndex,
+		FieldOptions:   fieldOptions,
 	}, nil
 }
 
@@ -353,18 +371,25 @@ func (s *SQLiteStore) UpdateNoteType(collectionID string, nt *NoteType) error {
 	if err != nil {
 		return err
 	}
+	var fieldOptionsJSON []byte
+	if nt.FieldOptions != nil {
+		fieldOptionsJSON, err = json.Marshal(nt.FieldOptions)
+		if err != nil {
+			return err
+		}
+	}
 
 	query := `
 		UPDATE note_types
-		SET fields = ?, templates = ?
+		SET fields = ?, templates = ?, sort_field_index = ?, field_options = ?
 		WHERE collection_id = ? AND name = ?
 	`
-	_, err = s.db.Exec(query, fieldsJSON, templatesJSON, collectionID, string(nt.Name))
+	_, err = s.db.Exec(query, fieldsJSON, templatesJSON, nt.SortFieldIndex, fieldOptionsJSON, collectionID, string(nt.Name))
 	return err
 }
 
 func (s *SQLiteStore) ListNoteTypes(collectionID string) (map[NoteTypeName]NoteType, error) {
-	query := `SELECT name, fields, templates FROM note_types WHERE collection_id = ?`
+	query := `SELECT name, fields, templates, sort_field_index, field_options FROM note_types WHERE collection_id = ?`
 	rows, err := s.db.Query(query, collectionID)
 	if err != nil {
 		return nil, err
@@ -375,8 +400,10 @@ func (s *SQLiteStore) ListNoteTypes(collectionID string) (map[NoteTypeName]NoteT
 	for rows.Next() {
 		var name string
 		var fieldsJSON, templatesJSON []byte
+		var sortFieldIndex int
+		var fieldOptionsJSON []byte
 
-		if err := rows.Scan(&name, &fieldsJSON, &templatesJSON); err != nil {
+		if err := rows.Scan(&name, &fieldsJSON, &templatesJSON, &sortFieldIndex, &fieldOptionsJSON); err != nil {
 			return nil, err
 		}
 
@@ -389,10 +416,19 @@ func (s *SQLiteStore) ListNoteTypes(collectionID string) (map[NoteTypeName]NoteT
 			return nil, err
 		}
 
+		var fieldOptions map[string]FieldOptions
+		if len(fieldOptionsJSON) > 0 {
+			if err := json.Unmarshal(fieldOptionsJSON, &fieldOptions); err != nil {
+				return nil, err
+			}
+		}
+
 		noteTypes[NoteTypeName(name)] = NoteType{
-			Name:      NoteTypeName(name),
-			Fields:    fields,
-			Templates: templates,
+			Name:           NoteTypeName(name),
+			Fields:         fields,
+			Templates:      templates,
+			SortFieldIndex: sortFieldIndex,
+			FieldOptions:   fieldOptions,
 		}
 	}
 

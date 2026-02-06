@@ -61,7 +61,7 @@ export function TemplatesPage() {
                   onClick={() => handleEditTemplate(noteType)}
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
                 >
-                  Edit Templates
+                  Edit Template
                 </button>
               </div>
 

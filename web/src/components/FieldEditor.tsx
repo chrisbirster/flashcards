@@ -1,7 +1,17 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { addField, renameField, removeField, reorderFields, setSortField } from '#/lib/api'
-import type { NoteType } from '#/lib/api'
+import { addField, renameField, removeField, reorderFields, setSortField, setFieldOptions } from '#/lib/api'
+import type { NoteType, FieldOptions } from '#/lib/api'
+import { ErrorMessage } from './message'
+import { FieldEditorHeader } from './field-editor-header'
+import { MoveDownIconButton, MoveUpIconButton } from './move-icon-button'
+import { DeleteButton } from './delete-icon-button'
+import { FieldOptionsIconButton } from './field-options-icon-button'
+import { RtlOptionField } from './rtl-option-field'
+import { FontSizeOptionField, FontTypeOptionField } from './font-option-field'
+import { SortFieldInfoChip, RTLFieldInfoChip } from './field-info-chips'
+import { EditFieldPanelHeader } from './edit-field-panel-header'
+import { EditFieldPopup } from './edit-field-popup'
 
 interface FieldEditorProps {
   noteType: NoteType
@@ -12,9 +22,11 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
   const queryClient = useQueryClient()
   const [fields, setFields] = useState<string[]>(noteType.fields)
   const [sortFieldIndex, setSortFieldIndexState] = useState<number>(noteType.sortFieldIndex || 0)
+  const [fieldOptions, setFieldOptionsState] = useState<Record<string, FieldOptions>>(noteType.fieldOptions || {})
   const [newFieldName, setNewFieldName] = useState('')
   const [editingField, setEditingField] = useState<string | null>(null)
   const [editFieldName, setEditFieldName] = useState('')
+  const [editingOptionsField, setEditingOptionsField] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const invalidateNoteTypes = () => {
@@ -111,129 +123,154 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
     onError: (err: Error) => setError(err.message),
   })
 
+  const setFieldOptionsMutation = useMutation({
+    mutationFn: ({ fieldName, options }: { fieldName: string; options: FieldOptions }) =>
+      setFieldOptions(noteType.name, fieldName, options),
+    onSuccess: (data) => {
+      setFieldOptionsState(data.fieldOptions)
+      setError(null)
+      invalidateNoteTypes()
+    },
+    onError: (err: Error) => setError(err.message),
+  })
+
   const handleSetSortField = (index: number) => {
     setSortFieldMutation.mutate(index)
   }
 
+  const handleUpdateFieldOptions = (fieldName: string, options: FieldOptions) => {
+    setFieldOptionsMutation.mutate({ fieldName, options })
+  }
+
   const isPending = addFieldMutation.isPending || renameFieldMutation.isPending ||
-    removeFieldMutation.isPending || reorderFieldsMutation.isPending || setSortFieldMutation.isPending
+    removeFieldMutation.isPending || reorderFieldsMutation.isPending || setSortFieldMutation.isPending ||
+    setFieldOptionsMutation.isPending
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold text-gray-900">
-            Edit Fields: {noteType.name}
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
+        <EditFieldPanelHeader noteTypeName={noteType.name} onClose={onClose} />
         <div className="p-4">
           {/* Error message */}
-          {error && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
-              {error}
-            </div>
-          )}
+          {error && <ErrorMessage message={error} />}
 
           {/* Field list */}
           <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-gray-700">Fields</h3>
-              <div className="text-xs text-gray-500">
-                Sort field: <span className="font-medium text-blue-600">{fields[sortFieldIndex]}</span>
-              </div>
-            </div>
+            <FieldEditorHeader sortField={fields[sortFieldIndex]} />
             <div className="space-y-2">
-            {fields.map((field, index) => (
-              <div
-                key={field}
-                className="flex items-center gap-2 p-2 bg-gray-50 rounded-md"
-              >
-                {editingField === field ? (
-                  <input
-                    type="text"
-                    value={editFieldName}
-                    onChange={(e) => setEditFieldName(e.target.value)}
-                    onBlur={() => handleRenameField(field)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleRenameField(field)
-                      if (e.key === 'Escape') setEditingField(null)
-                    }}
-                    className="flex-1 px-2 py-1 border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    autoFocus
-                  />
-                ) : (
-                  <span
-                    className="flex-1 cursor-pointer hover:text-blue-600"
-                    onClick={() => {
-                      setEditingField(field)
-                      setEditFieldName(field)
-                    }}
-                    title="Click to rename"
-                  >
-                    {field}
-                    {sortFieldIndex === index && (
-                      <span className="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">Sort</span>
+              {fields.map((field, index) => (
+                <div key={field} className="space-y-2">
+                  <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-md">
+                    {editingField === field ? (
+                      <input
+                        type="text"
+                        value={editFieldName}
+                        onChange={(e) => setEditFieldName(e.target.value)}
+                        onBlur={() => handleRenameField(field)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleRenameField(field)
+                          if (e.key === 'Escape') setEditingField(null)
+                        }}
+                        className="flex-1 px-2 py-1 border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        autoFocus
+                      />
+                    ) : (
+                      <span
+                        className="flex-1 cursor-pointer hover:text-blue-600"
+                        onClick={() => {
+                          setEditingField(field)
+                          setEditFieldName(field)
+                        }}
+                        title="Click to rename"
+                      >
+                        {field}
+                        <SortFieldInfoChip
+                          booleanIndicator={sortFieldIndex === index}
+                          datatestid={`sort-chip-${field}`}
+                        />
+                        <RTLFieldInfoChip
+                          booleanIndicator={fieldOptions[field]?.rtl ?? false}
+                          datatestid={`rtl-chip-${field}`}
+                        />
+                      </span>
                     )}
-                  </span>
-                )}
 
-                {/* Set as sort field */}
-                {sortFieldIndex !== index && (
-                  <button
-                    onClick={() => handleSetSortField(index)}
-                    className="text-xs text-gray-500 hover:text-blue-600 px-2 py-1"
-                    title="Set as sort field"
-                    disabled={isPending}
-                  >
-                    Set Sort
-                  </button>
-                )}
+                    {/* Set as sort field */}
+                    {sortFieldIndex !== index && (
+                      <button
+                        onClick={() => handleSetSortField(index)}
+                        className="text-xs text-gray-500 hover:text-blue-600 px-2 py-1"
+                        title="Set as sort field"
+                        disabled={isPending}
+                      >
+                        Set Sort
+                      </button>
+                    )}
 
-                {/* Move up/down buttons */}
-                <button
-                  onClick={() => moveField(index, 'up')}
-                  disabled={index === 0 || isPending}
-                  className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
-                  title="Move up"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => moveField(index, 'down')}
-                  disabled={index === fields.length - 1 || isPending}
-                  className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
-                  title="Move down"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
+                    {/* Field options button */}
 
-                {/* Delete button */}
-                <button
-                  onClick={() => handleRemoveField(field)}
-                  disabled={fields.length <= 1 || isPending}
-                  className="p-1 text-red-400 hover:text-red-600 disabled:opacity-30 disabled:cursor-not-allowed"
-                  title="Remove field"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-          </div>
+                    <FieldOptionsIconButton
+                      handleClick={() => setEditingOptionsField(editingOptionsField === field ? null : field)}
+                      isPending={false}
+                      isEditing={editingOptionsField === field}
+                      data-testid={`field-options-${field}`}
+                    />
+
+                    {/* Move up/down buttons */}
+                    <MoveUpIconButton
+                      handleClick={() => moveField(index, 'up')}
+                      disabled={index === 0 || isPending}
+                    />
+                    <MoveDownIconButton
+                      handleClick={() => moveField(index, 'down')}
+                      disabled={index === fields.length - 1 || isPending}
+                    />
+
+                    {/* Delete button */}
+                    <DeleteButton
+                      onDelete={() => handleRemoveField(field)}
+                      disabled={fields.length <= 1 || isPending}
+                    />
+                  </div>
+
+                  {/* Field options panel */}
+                  {editingOptionsField === field && (
+                    <EditFieldPopup field={field}>
+                      {/* Font */}
+                      <FontTypeOptionField
+                        fieldValue={fieldOptions[field]?.fontSize}
+                        handleChange={(e) => handleUpdateFieldOptions(field, {
+                          ...fieldOptions[field],
+                          fontSize: parseInt(e.target.value) || undefined,
+                        })}
+                        isPending={isPending}
+                        datatestid={`field-type-${field}`}
+                      />
+                      {/* Font Size */}
+                      <FontSizeOptionField
+                        fieldValue={fieldOptions[field]?.fontSize}
+                        handleChange={(e) => handleUpdateFieldOptions(field, {
+                          ...fieldOptions[field],
+                          fontSize: parseInt(e.target.value) || undefined,
+                        })}
+                        isPending={isPending}
+                        datatestid={`field-size-${field}`}
+                      />
+                      {/* RTL */}
+                      <RtlOptionField
+                        isChecked={fieldOptions[field]?.rtl || false}
+                        handleChange={() => handleUpdateFieldOptions(field, {
+                          ...fieldOptions[field],
+                          rtl: !fieldOptions[field]?.rtl,
+                        })}
+                        datatestid={`field-rtl-${field}`}
+                        isPending={isPending}
+                      />
+                    </ EditFieldPopup>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
           {/* Add new field */}

@@ -1300,3 +1300,102 @@ func TestUpdateMultipleTemplates(t *testing.T) {
 		t.Errorf("Second template Styling not updated: %s", retrieved.Templates[1].Styling)
 	}
 }
+
+func TestSetFieldOptions(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	col := NewCollection()
+	store.CreateCollection(col)
+
+	// Create a note type with field options
+	nt := &NoteType{
+		Name:   "FieldOptionsTest",
+		Fields: []string{"Front", "Back"},
+		Templates: []CardTemplate{
+			{Name: "Card 1", QFmt: "{{Front}}", AFmt: "{{Back}}"},
+		},
+	}
+	store.CreateNoteType("default", nt)
+
+	// Set field options for "Front" field
+	nt.FieldOptions = map[string]FieldOptions{
+		"Front": {
+			Font:     "Arial",
+			FontSize: 20,
+			RTL:      false,
+		},
+	}
+
+	err := store.UpdateNoteType("default", nt)
+	if err != nil {
+		t.Fatalf("Failed to update note type with field options: %v", err)
+	}
+
+	// Retrieve and verify
+	retrieved, err := store.GetNoteType("default", "FieldOptionsTest")
+	if err != nil {
+		t.Fatalf("Failed to get note type: %v", err)
+	}
+
+	if retrieved.FieldOptions == nil {
+		t.Fatal("FieldOptions is nil after update")
+	}
+
+	frontOpts, ok := retrieved.FieldOptions["Front"]
+	if !ok {
+		t.Fatal("Front field options not found")
+	}
+
+	if frontOpts.Font != "Arial" {
+		t.Errorf("Expected font 'Arial', got '%s'", frontOpts.Font)
+	}
+	if frontOpts.FontSize != 20 {
+		t.Errorf("Expected fontSize 20, got %d", frontOpts.FontSize)
+	}
+	if frontOpts.RTL != false {
+		t.Errorf("Expected RTL false, got %v", frontOpts.RTL)
+	}
+}
+
+func TestFieldOptionsRTL(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	col := NewCollection()
+	store.CreateCollection(col)
+
+	// Create a note type for RTL testing (e.g., Hebrew/Arabic)
+	nt := &NoteType{
+		Name:   "RTLTest",
+		Fields: []string{"Hebrew", "English"},
+		Templates: []CardTemplate{
+			{Name: "Card 1", QFmt: "{{Hebrew}}", AFmt: "{{English}}"},
+		},
+		FieldOptions: map[string]FieldOptions{
+			"Hebrew": {
+				Font: "David",
+				RTL:  true,
+			},
+		},
+	}
+
+	err := store.CreateNoteType("default", nt)
+	if err != nil {
+		t.Fatalf("Failed to create note type: %v", err)
+	}
+
+	// Retrieve and verify RTL option
+	retrieved, err := store.GetNoteType("default", "RTLTest")
+	if err != nil {
+		t.Fatalf("Failed to get note type: %v", err)
+	}
+
+	hebrewOpts := retrieved.FieldOptions["Hebrew"]
+	if !hebrewOpts.RTL {
+		t.Error("Hebrew field should have RTL=true")
+	}
+	if hebrewOpts.Font != "David" {
+		t.Errorf("Expected font 'David', got '%s'", hebrewOpts.Font)
+	}
+}

@@ -5,7 +5,7 @@ test.describe('Study Screen', () => {
     await page.goto('http://localhost:5173')
 
     // Create a test deck with cards
-    await page.fill('input[placeholder="Enter deck name..."]', 'Study Test Deck')
+    await page.fill('input[placeholder="Deck name"]', 'Study Test Deck')
     await page.click('button:has-text("Create")')
     await page.waitForTimeout(500)
   })
@@ -144,7 +144,7 @@ test.describe('Study Screen - Flags and Marked', () => {
     await page.goto('http://localhost:5173')
 
     // Create a deck and add a card
-    await page.fill('input[placeholder="Enter deck name..."]', `Flags Test ${Date.now()}`)
+    await page.fill('input[placeholder="Deck name"]', `Flags Test ${Date.now()}`)
     await page.click('button:has-text("Create")')
     await page.waitForTimeout(500)
 

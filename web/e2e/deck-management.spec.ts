@@ -22,7 +22,7 @@ test.describe('Deck Management', () => {
     const deckName = `Test Deck ${Date.now()}`;
 
     // Fill in the deck name
-    await page.getByPlaceholder('Enter deck name...').fill(deckName);
+    await page.getByPlaceholder('Deck name').fill(deckName);
 
     // Click create button
     await page.getByRole('button', { name: 'Create' }).click();
@@ -31,13 +31,13 @@ test.describe('Deck Management', () => {
     await expect(page.getByText(deckName)).toBeVisible({ timeout: 5000 });
 
     // Input should be cleared
-    await expect(page.getByPlaceholder('Enter deck name...')).toHaveValue('');
+    await expect(page.getByPlaceholder('Deck name')).toHaveValue('');
   });
 
   test('should display deck with card count', async ({ page }) => {
     // Create a deck first
     const deckName = `Deck with Cards ${Date.now()}`;
-    await page.getByPlaceholder('Enter deck name...').fill(deckName);
+    await page.getByPlaceholder('Deck name').fill(deckName);
     await page.getByRole('button', { name: 'Create' }).click();
 
     // Wait for deck to appear
@@ -55,18 +55,18 @@ test.describe('Deck Management', () => {
     await expect(createButton).toBeDisabled();
 
     // Type something
-    await page.getByPlaceholder('Enter deck name...').fill('Test');
+    await page.getByPlaceholder('Deck name').fill('Test');
     await expect(createButton).toBeEnabled();
 
     // Clear input
-    await page.getByPlaceholder('Enter deck name...').clear();
+    await page.getByPlaceholder('Deck name').clear();
     await expect(createButton).toBeDisabled();
   });
 
   test('should display Study and Add Cards buttons for each deck', async ({ page }) => {
     // Create a deck
     const deckName = `Action Buttons Deck ${Date.now()}`;
-    await page.getByPlaceholder('Enter deck name...').fill(deckName);
+    await page.getByPlaceholder('Deck name').fill(deckName);
     await page.getByRole('button', { name: 'Create' }).click();
     await expect(page.getByText(deckName)).toBeVisible();
 
@@ -85,7 +85,7 @@ test.describe('Deck Management', () => {
     ];
 
     for (const deckName of decks) {
-      await page.getByPlaceholder('Enter deck name...').fill(deckName);
+      await page.getByPlaceholder('Deck name').fill(deckName);
       await page.getByRole('button', { name: 'Create' }).click();
       // Small delay to ensure creation completes
       await page.waitForTimeout(500);
@@ -114,7 +114,7 @@ test.describe('Deck Management', () => {
     const deckName = `Persistent Deck ${Date.now()}`;
 
     // Create a deck
-    await page.getByPlaceholder('Enter deck name...').fill(deckName);
+    await page.getByPlaceholder('Deck name').fill(deckName);
     await page.getByRole('button', { name: 'Create' }).click();
     await expect(page.getByText(deckName)).toBeVisible();
 

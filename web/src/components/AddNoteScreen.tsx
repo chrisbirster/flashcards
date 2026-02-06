@@ -5,6 +5,11 @@ import type { NoteBrief } from '#/lib/api'
 import { FieldEditor } from './FieldEditor'
 import { TemplateEditor } from './TemplateEditor'
 import DOMPurify from 'dompurify';
+import { TemplateFieldPreview } from './template-field-preview'
+import { ErrorMessage, SuccessMessage } from './message'
+import { EditFieldIcon } from './edit-field-icon'
+import { IconButton } from './edit-field-icon-button'
+import { ShowTemplateIcon } from './show-template-icon'
 
 
 // Helper to find the next cloze number in text
@@ -280,29 +285,18 @@ export function AddNoteScreen({ deckId, onClose, onSuccess }: AddNoteScreenProps
                       </option>
                     ))}
                   </select>
-                  <button
-                    type="button"
-                    onClick={() => setShowFieldEditor(true)}
-                    className="px-3 py-2 text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200"
-                    title="Edit fields"
-                    data-testid="edit-fields-button"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowTemplateEditor(true)}
-                    className="px-3 py-2 text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200"
-                    title="Edit templates"
-                    data-testid="edit-templates-button"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
-                    </svg>
-                  </button>
+                  <IconButton
+                    title="Edit Fields"
+                    testId="edit-fields-button"
+                    handleClick={() => setShowFieldEditor(true)}
+                    icon={<EditFieldIcon />}
+                  />
+                  <IconButton
+                    title="Edit Templates"
+                    testId="edit-templates-button"
+                    handleClick={() => setShowTemplateEditor(true)}
+                    icon={<ShowTemplateIcon />}
+                  />
                 </div>
               </div>
               <div>
@@ -458,22 +452,9 @@ export function AddNoteScreen({ deckId, onClose, onSuccess }: AddNoteScreenProps
           </div>
 
           {/* Error message */}
-          {createNoteMutation.isError && (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-red-700">
-                Failed to create note. Please try again.
-              </p>
-            </div>
-          )}
-
+          {createNoteMutation.isError && <ErrorMessage />}
           {/* Success message */}
-          {createNoteMutation.isSuccess && (
-            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-              <p className="text-green-700">
-                Note added successfully! Add another or close.
-              </p>
-            </div>
-          )}
+          {createNoteMutation.isSuccess && <SuccessMessage />}
         </form>
 
         {/* Field Editor Modal */}
@@ -561,18 +542,8 @@ export function AddNoteScreen({ deckId, onClose, onSuccess }: AddNoteScreenProps
                         Card {idx + 1}: {template.name}
                       </div>
                       <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-xs text-gray-400 mb-1">Front</div>
-                          <div className="p-2 bg-gray-50 rounded text-sm whitespace-pre-wrap">
-                            {front}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-400 mb-1">Back</div>
-                          <div className="p-2 bg-gray-50 rounded text-sm whitespace-pre-wrap">
-                            {back}
-                          </div>
-                        </div>
+                        <TemplateFieldPreview previewContent={front} label="Front" />
+                        <TemplateFieldPreview previewContent={back} label="Back" />
                       </div>
                     </div>
                   )

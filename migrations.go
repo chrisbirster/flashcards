@@ -24,8 +24,7 @@ func (s *SQLiteStore) migrate() error {
 		fn      func() error
 	}{
 		{1, "initial_schema", s.runMigration001_InitialSchema},
-		// Future migrations go here
-		// {2, "add_deck_stats", s.runMigration002_AddDeckStats},
+		{2, "add_field_options", s.runMigration002_AddFieldOptions},
 	}
 
 	for _, m := range migrations {
@@ -199,6 +198,21 @@ func (s *SQLiteStore) runMigration001_InitialSchema() error {
 	_, err := s.db.Exec(schema)
 	if err != nil {
 		return fmt.Errorf("failed to create schema: %w", err)
+	}
+
+	return nil
+}
+
+// runMigration002_AddFieldOptions adds sort_field_index and field_options columns to note_types.
+func (s *SQLiteStore) runMigration002_AddFieldOptions() error {
+	schema := `
+	ALTER TABLE note_types ADD COLUMN sort_field_index INTEGER DEFAULT 0;
+	ALTER TABLE note_types ADD COLUMN field_options TEXT;
+	`
+
+	_, err := s.db.Exec(schema)
+	if err != nil {
+		return fmt.Errorf("failed to add field options columns: %w", err)
 	}
 
 	return nil

@@ -5,7 +5,7 @@ test.describe('Template Editor', () => {
     await page.goto('http://localhost:5173')
 
     // Create a test deck
-    await page.fill('input[placeholder="Enter deck name..."]', `Template Editor Test ${Date.now()}`)
+    await page.fill('input[placeholder="Deck name"]', `Template Editor Test ${Date.now()}`)
     await page.click('button:has-text("Create")')
     await page.waitForTimeout(500)
 
@@ -271,7 +271,7 @@ test.describe('Template Editor with Multiple Templates', () => {
     await page.goto('http://localhost:5173')
 
     // Create a test deck
-    await page.fill('input[placeholder="Enter deck name..."]', `Multi Template Test ${Date.now()}`)
+    await page.fill('input[placeholder="Deck name"]', `Multi Template Test ${Date.now()}`)
     await page.click('button:has-text("Create")')
     await page.waitForTimeout(500)
 

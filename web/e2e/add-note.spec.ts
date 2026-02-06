@@ -5,7 +5,7 @@ test.describe('Add Note Screen', () => {
     await page.goto('http://localhost:5173')
 
     // Create a test deck first
-    await page.fill('input[placeholder="Enter deck name..."]', `Add Note Test ${Date.now()}`)
+    await page.fill('input[placeholder="Deck name"]', `Add Note Test ${Date.now()}`)
     await page.click('button:has-text("Create")')
     await page.waitForTimeout(500)
   })
@@ -232,7 +232,7 @@ test.describe('Cloze Note Editor', () => {
     await page.goto('http://localhost:5173')
 
     // Create a test deck first
-    await page.fill('input[placeholder="Enter deck name..."]', `Cloze Test ${Date.now()}`)
+    await page.fill('input[placeholder="Deck name"]', `Cloze Test ${Date.now()}`)
     await page.click('button:has-text("Create")')
     await page.waitForTimeout(500)
 

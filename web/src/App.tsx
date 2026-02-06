@@ -1,5 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { Layout } from '#/components/Layout'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router'
+import { Layout } from '#/layouts/root-layout'
 import { DecksPage } from '#/pages/DecksPage'
 import { StudyPage } from '#/pages/StudyPage'
 import { AddNotePage } from '#/pages/AddNotePage'

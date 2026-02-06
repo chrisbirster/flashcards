@@ -5,7 +5,7 @@ test.describe('Field Editor', () => {
     await page.goto('http://localhost:5173')
 
     // Create a test deck
-    await page.fill('input[placeholder="Enter deck name..."]', `Field Editor Test ${Date.now()}`)
+    await page.fill('input[placeholder="Deck name"]', `Field Editor Test ${Date.now()}`)
     await page.click('button:has-text("Create")')
     await page.waitForTimeout(500)
 
@@ -44,64 +44,155 @@ test.describe('Field Editor', () => {
     // Should show the new field
     await expect(page.locator('text=MyNewField')).toBeVisible({ timeout: 3000 })
   })
+
+  test('shows error for reserved field names', async ({ page }) => {
+    await page.click('[data-testid="edit-fields-button"]')
+
+    // Try to add a reserved field name
+    await page.fill('input[placeholder="New field name..."]', 'Tags')
+    await page.click('button:has-text("Add")')
+
+    // Should show error about reserved name
+    await expect(page.locator('text=reserved field name')).toBeVisible({ timeout: 3000 })
+  })
+
+  test('can close field editor modal', async ({ page }) => {
+    await page.click('[data-testid="edit-fields-button"]')
+    await expect(page.locator('text=Edit Fields:')).toBeVisible()
+
+    // Click close button in the modal footer
+    await page.locator('.bg-gray-50 button:has-text("Close")').click()
+
+    // Modal should be closed
+    await expect(page.locator('text=Edit Fields:')).not.toBeVisible()
+  })
+
+  test('shows move up/down buttons for reordering', async ({ page }) => {
+    await page.click('[data-testid="edit-fields-button"]')
+
+    // Should have move buttons (chevron up/down)
+    const upButtons = page.locator('button[title="Move up"]')
+    const downButtons = page.locator('button[title="Move down"]')
+
+    await expect(upButtons.first()).toBeVisible()
+    await expect(downButtons.first()).toBeVisible()
+  })
+
+  test('first field move up button is disabled', async ({ page }) => {
+    await page.click('[data-testid="edit-fields-button"]')
+
+    // First field's move up button should be disabled
+    const firstUpButton = page.locator('button[title="Move up"]').first()
+    await expect(firstUpButton).toBeDisabled()
+  })
+
+  test('shows delete button for fields', async ({ page }) => {
+    await page.click('[data-testid="edit-fields-button"]')
+
+    // Should have delete buttons
+    const deleteButtons = page.locator('button[title="Remove field"]')
+    await expect(deleteButtons.first()).toBeVisible()
+  })
+
+  test('prevents duplicate field names', async ({ page }) => {
+    await page.click('[data-testid="edit-fields-button"]')
+
+    // Try to add a duplicate field name (Front already exists)
+    await page.fill('input[placeholder="New field name..."]', 'Front')
+    await page.click('button:has-text("Add")')
+
+    // Should show error
+    await expect(page.locator('text=already exists')).toBeVisible({ timeout: 3000 })
+  })
 })
 
-test('shows error for reserved field names', async ({ page }) => {
-  await page.click('[data-testid="edit-fields-button"]')
+test.describe('Field Options', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('http://localhost:5173')
 
-  // Try to add a reserved field name
-  await page.fill('input[placeholder="New field name..."]', 'Tags')
-  await page.click('button:has-text("Add")')
+    // Create a test deck
+    await page.fill('input[placeholder="Deck name"]', `Field Options Test ${Date.now()}`)
+    await page.click('button:has-text("Create")')
+    await page.waitForTimeout(500)
 
-  // Should show error about reserved name
-  await expect(page.locator('text=reserved field name')).toBeVisible({ timeout: 3000 })
-})
+    // Open add note screen
+    await page.click('button:has-text("Add Cards")')
 
-test('can close field editor modal', async ({ page }) => {
-  await page.click('[data-testid="edit-fields-button"]')
-  await expect(page.locator('text=Edit Fields:')).toBeVisible()
+    // Select Basic note type
+    await page.selectOption('select', { label: 'Basic' })
 
-  // Click close button
-  await page.click('button:has-text("Close")')
+    // Open field editor
+    await page.click('[data-testid="edit-fields-button"]')
+  })
 
-  // Modal should be closed
-  await expect(page.locator('text=Edit Fields:')).not.toBeVisible()
-})
+  test('shows field options button for each field', async ({ page }) => {
+    await expect(page.locator('[data-testid="field-options-Front"]')).toBeVisible()
+    await expect(page.locator('[data-testid="field-options-Back"]')).toBeVisible()
+  })
 
-test('shows move up/down buttons for reordering', async ({ page }) => {
-  await page.click('[data-testid="edit-fields-button"]')
+  test('opens field options panel when clicking options button', async ({ page }) => {
+    await page.click('[data-testid="field-options-Front"]')
 
-  // Should have move buttons (chevron up/down)
-  const upButtons = page.locator('button[title="Move up"]')
-  const downButtons = page.locator('button[title="Move down"]')
+    await expect(page.locator('[data-testid="field-options-panel-Front"]')).toBeVisible()
+    await expect(page.locator('text=Field Options: Front')).toBeVisible()
+  })
 
-  await expect(upButtons.first()).toBeVisible()
-  await expect(downButtons.first()).toBeVisible()
-})
+  test('shows font, size, and RTL options in panel', async ({ page }) => {
+    await page.click('[data-testid="field-options-Front"]')
 
-test('first field move up button is disabled', async ({ page }) => {
-  await page.click('[data-testid="edit-fields-button"]')
+    await expect(page.locator('[data-testid="field-font-Front"]')).toBeVisible()
+    await expect(page.locator('[data-testid="field-size-Front"]')).toBeVisible()
+    await expect(page.locator('[data-testid="field-rtl-Front"]')).toBeVisible()
+  })
 
-  // First field's move up button should be disabled
-  const firstUpButton = page.locator('button[title="Move up"]').first()
-  await expect(firstUpButton).toBeDisabled()
-})
+  test('can set font option', async ({ page }) => {
+    await page.click('[data-testid="field-options-Front"]')
 
-test('shows delete button for fields', async ({ page }) => {
-  await page.click('[data-testid="edit-fields-button"]')
+    // Select Arial font
+    await page.selectOption('[data-testid="field-font-Front"]', 'Arial')
 
-  // Should have delete buttons
-  const deleteButtons = page.locator('button[title="Remove field"]')
-  await expect(deleteButtons.first()).toBeVisible()
-})
+    // Wait for the mutation to complete
+    await page.waitForTimeout(1000)
 
-test('prevents duplicate field names', async ({ page }) => {
-  await page.click('[data-testid="edit-fields-button"]')
+    // Verify the font is set
+    await expect(page.locator('[data-testid="field-font-Front"]')).toHaveValue('Arial')
+  })
 
-  // Try to add a duplicate field name (Front already exists)
-  await page.fill('input[placeholder="New field name..."]', 'Front')
-  await page.click('button:has-text("Add")')
+  test('can set font size option', async ({ page }) => {
+    await page.click('[data-testid="field-options-Front"]')
 
-  // Should show error
-  await expect(page.locator('text=already exists')).toBeVisible({ timeout: 3000 })
+    // Select 20px font size
+    await page.selectOption('[data-testid="field-size-Front"]', '20')
+
+    // Wait for mutation
+    await page.waitForTimeout(1000)
+
+    // Verify the font size is set
+    await expect(page.locator('[data-testid="field-size-Front"]')).toHaveValue('20')
+  })
+
+  test('can enable RTL option', async ({ page }) => {
+    await page.click('[data-testid="field-options-Front"]')
+
+    // Enable RTL by clicking the checkbox
+    await page.click('[data-testid="field-rtl-Front"]')
+
+    // Wait for mutation
+    await page.waitForTimeout(1000)
+
+    // Checkbox should be checked
+    await expect(page.locator('[data-testid="field-rtl-Front"]')).toBeChecked()
+
+    // Should show RTL badge on field
+    await expect(page.locator('span:has-text("RTL")')).toBeVisible()
+  })
+
+  test('closes options panel when clicking button again', async ({ page }) => {
+    await page.click('[data-testid="field-options-Front"]')
+    await expect(page.locator('[data-testid="field-options-panel-Front"]')).toBeVisible()
+
+    // Click again to close
+    await page.click('[data-testid="field-options-Front"]')
+    await expect(page.locator('[data-testid="field-options-panel-Front"]')).not.toBeVisible()
+  })
 })

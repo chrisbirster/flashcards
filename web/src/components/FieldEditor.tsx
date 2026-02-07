@@ -238,13 +238,13 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
                     <EditFieldPopup field={field}>
                       {/* Font */}
                       <FontTypeOptionField
-                        fieldValue={fieldOptions[field]?.fontSize}
+                        fieldValue={fieldOptions[field]?.font}
                         handleChange={(e) => handleUpdateFieldOptions(field, {
                           ...fieldOptions[field],
-                          fontSize: parseInt(e.target.value) || undefined,
+                          font: e.target.value || undefined,
                         })}
                         isPending={isPending}
-                        datatestid={`field-type-${field}`}
+                        datatestid={`field-font-${field}`}
                       />
                       {/* Font Size */}
                       <FontSizeOptionField
@@ -266,6 +266,24 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
                         datatestid={`field-rtl-${field}`}
                         isPending={isPending}
                       />
+                      {/* HTML editor default */}
+                      <div>
+                        <label className="block text-xs text-gray-600 mb-1">Editor</label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={fieldOptions[field]?.htmlEditor || false}
+                            onChange={() => handleUpdateFieldOptions(field, {
+                              ...fieldOptions[field],
+                              htmlEditor: !fieldOptions[field]?.htmlEditor,
+                            })}
+                            className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            disabled={isPending}
+                            data-testid={`field-html-${field}`}
+                          />
+                          <span className="text-xs text-gray-700">HTML by default</span>
+                        </label>
+                      </div>
                     </ EditFieldPopup>
                   )}
                 </div>

@@ -22,11 +22,22 @@ const FONT_SIZE_OPTIONS = [
     { value: 32, label: '32px' },
 ]
 
-type FontOptionFieldProps = JSX.IntrinsicElements['select'] & {
-    fieldValue: number | undefined;
+type BaseFontOptionFieldProps = JSX.IntrinsicElements['select'] & {
     handleChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
     isPending: boolean;
     datatestid: string;
+}
+
+type FontTypeOptionFieldProps = BaseFontOptionFieldProps & {
+    fieldValue: string | undefined;
+}
+
+type FontSizeOptionFieldProps = BaseFontOptionFieldProps & {
+    fieldValue: number | undefined;
+}
+
+type FontOptionFieldProps = BaseFontOptionFieldProps & {
+    fieldValue: string | number | undefined;
     options: typeof FONT_SIZE_OPTIONS | typeof FONT_OPTIONS;
 }
 
@@ -61,11 +72,11 @@ function FontTypeOptionField({
     handleChange,
     isPending,
     datatestid,
-}: Omit<FontOptionFieldProps, 'options'>
+}: FontTypeOptionFieldProps
 ) {
     return (
         <div>
-            <label className="block text-xs text-gray-600 mb-1">Size</label>
+            <label className="block text-xs text-gray-600 mb-1">Font</label>
             <FontOptionFieldSelect
                 fieldValue={fieldValue}
                 handleChange={handleChange}
@@ -82,7 +93,7 @@ function FontSizeOptionField({
     handleChange,
     isPending,
     datatestid,
-}: Omit<FontOptionFieldProps, 'options'>
+}: FontSizeOptionFieldProps
 ) {
     return (
         <div>

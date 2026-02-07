@@ -8,8 +8,8 @@ _Based on the Anki Manual (print edition)_
 | Milestone | Status | Tasks Complete | Notes |
 |-----------|--------|----------------|-------|
 | **M0** Product Skeleton | ✅ Complete | 4/4 | SQLite storage, profiles, backups |
-| **M1** Studying MVP | ✅ Complete | 10/11 | FSRS scheduling, study UI, keyboard shortcuts |
-| **M2** Adding/Editing | 🚧 In Progress | 6/14 | Add note UI, note types, duplicate check, tags/flags/marked, cloze editor, field editor |
+| **M1** Studying MVP | ✅ Complete | 11/11 | FSRS scheduling, study UI, keyboard shortcuts, daily limits + backlog ordering |
+| **M2** Adding/Editing | 🚧 In Progress | 11/17 | Add note + duplicate + cloze flows; field/template editors; conditional/deck override generation |
 | **M3** Browser | ⬜ Not Started | 0/11 | — |
 | **M4** Deck Options | ⬜ Not Started | 0/8 | — |
 | **M5** Statistics | ⬜ Not Started | 0/4 | — |
@@ -17,7 +17,32 @@ _Based on the Anki Manual (print edition)_
 | **M7** Import/Export | ⬜ Not Started | 0/8 | — |
 | **M8** Preferences | ⬜ Not Started | 0/19 | — |
 
-**Test Coverage:** 76 tests (22 backend + 54 E2E)
+**Test Coverage (repo scan):** 119 tests defined (29 backend + 90 E2E)
+
+## 🔍 Repo-Validated Snapshot (2026-02-07)
+
+This plan was cross-checked against current code and tests:
+
+- `Task 0113` is implemented end-to-end (UI timer -> API -> `revlog.time_taken_ms`) and is marked complete.
+- `Task 0125` now enforces daily new/review caps with review-backlog priority in due-card selection.
+- M2 status markers are synchronized between milestone and flattened list.
+- `Task 0203` is partial: tags/flags/marked persist, but browser-queryability depends on M3 search/browser work.
+- `Task 0213` and `Task 0224` are partial because browser-mode sorting/rendering is blocked on M3.
+- `Task 0214` now includes per-field font/size/RTL plus HTML-editor-default option wiring in add-note editing.
+- `Task 0233` now includes cloze-template warning plus auto-fix path.
+
+## 🎯 Next Sprint Checklist (Recommended Order)
+
+### Sprint A — Start M3 Foundation (Unblocks Remaining M2 Criteria)
+- [ ] **Task 0301:** Browser shell (sidebar/table/editor skeleton).
+- [ ] **Task 0302:** Cards vs Notes mode.
+- [ ] **Task 0311:** Search parser + execution (minimum viable operators: text/tag/deck/state).
+- [ ] **Task 0321:** Column configuration; include sort-field column path for `Task 0213`.
+
+### Sprint B — M2 Dependency Closures
+- [ ] Complete browser-queryability aspect of `Task 0203` (tags/flags/marked filters).
+- [ ] Complete browser sorting/display acceptance for `Task 0213`.
+- [ ] Complete browser appearance usage path for `Task 0224`.
 
 ---
 
@@ -121,7 +146,7 @@ Goal: A user can study a deck: show question → reveal answer → grade (Again/
   - **Acceptance Criteria:**
     - Buttons: Again/Hard/Good/Easy displayed after reveal.
     - Keyboard: Space/Enter = show answer, then "Good"; 1–4 select buttons.
-- **Task 0113: Time spent tracking** ⏳ (partial - structure exists)
+- **Task 0113: Time spent tracking** ✅
   - **Acceptance Criteria:**
     - Record time from question shown to answer selection (ms resolution).
     - Persist in revlog for stats.
@@ -147,7 +172,7 @@ Goal: A user can study a deck: show question → reveal answer → grade (Again/
   - **Acceptance Criteria:**
     - Track lapses; tag as leech at threshold; optional auto-suspend.
     - Leech warnings at half-threshold increments.
-- **Task 0125: Daily limits + ordering** ⏳ (structure exists, limits not yet enforced)
+- **Task 0125: Daily limits + ordering** ✅
   - **Acceptance Criteria:**
     - New/review daily limits enforced per deck (or preset).
     - If user falls behind, older waiting cards prioritized (backlog behavior).
@@ -170,7 +195,7 @@ Goal: Users can add notes; note types define fields and templates; cards generat
   - **Acceptance Criteria:**
     - Configurable duplicate scope (collection/deck) and which field(s) participate.
     - User sees clear warning and can override if allowed.
-- **Task 0203: Organizing content with tags/flags/marked** ✅
+- **Task 0203: Organizing content with tags/flags/marked** ⏳
   - **Acceptance Criteria:**
     - Add tags on create; toggle "Marked" tag; assign flags.
     - Tags/flags persist and are queryable in browser search.
@@ -188,11 +213,11 @@ Goal: Users can add notes; note types define fields and templates; cards generat
   - **Acceptance Criteria:**
     - Add/rename/remove/reorder fields (drag-drop or reposition).
     - Prevent reserved field names (Tags, Type, Deck, Card, FrontSide).
-- **Task 0213: Sort field**
+- **Task 0213: Sort field** ⏳
   - **Acceptance Criteria:**
     - Exactly one field can be designated sort field.
     - Browser can display and sort by sort field.
-- **Task 0214: Editing options**
+- **Task 0214: Editing options** ✅
   - **Acceptance Criteria:**
     - Per-field font/size, HTML editor default, RTL editing option.
 
@@ -201,18 +226,18 @@ Goal: Users can add notes; note types define fields and templates; cards generat
 **Manual pages:** 72–104 (Card Templates + related troubleshooting), plus 72–73 excerpt.
 
 **Tasks**
-- **Task 0221: Template editor UI**
+- **Task 0221: Template editor UI** ✅
   - **Acceptance Criteria:**
     - Edit Front/Back/Styling with live preview for current note sample.
     - Support multiple card templates per note type.
-- **Task 0222: Conditional generation logic**
+- **Task 0222: Conditional generation logic** ✅
   - **Acceptance Criteria:**
     - Support “only generate card if field has text” behaviors.
     - Changing templates triggers card regeneration logic safely.
-- **Task 0223: Deck override per template**
+- **Task 0223: Deck override per template** ✅
   - **Acceptance Criteria:**
     - If override set, cards of that template go to specified deck regardless of add-window deck.
-- **Task 0224: Browser appearance templates**
+- **Task 0224: Browser appearance templates** ⏳
   - **Acceptance Criteria:**
     - Optional simplified Q/A rendering for browser table columns.
 
@@ -225,11 +250,11 @@ Goal: Users can add notes; note types define fields and templates; cards generat
   - **Acceptance Criteria:**
     - User can create cloze deletions with c1/c2 numbering.
     - Each cloze number creates a separate card.
-- **Task 0232: Empty cloze card detection + cleanup**
+- **Task 0232: Empty cloze card detection + cleanup** ✅
   - **Acceptance Criteria:**
     - If a cloze deletion number removed, resulting blank card is flagged.
     - “Empty Cards” tool deletes blank cards with user confirmation.
-- **Task 0233: Cloze template validation**
+- **Task 0233: Cloze template validation** ✅
   - **Acceptance Criteria:**
     - Warn if cloze filter missing; provide auto-fix path.
 
@@ -639,7 +664,7 @@ Goal: Provide settings, media management, plugin ecosystem, and operational tool
   - **Dependencies:** Task 0002, Task 0221
 - **Task 0112:** Answer buttons + shortcuts ✅
   - **Dependencies:** Task 0111
-- **Task 0113:** Time spent tracking ⏳
+- **Task 0113:** Time spent tracking ✅
   - **Dependencies:** Task 0111
 
 - **Task 0121:** Scheduling state machine ✅
@@ -650,39 +675,39 @@ Goal: Provide settings, media management, plugin ecosystem, and operational tool
   - **Dependencies:** Task 0121
 - **Task 0124:** Lapses + leeches ✅
   - **Dependencies:** Task 0121
-- **Task 0125:** Daily limits + ordering ⏳
+- **Task 0125:** Daily limits + ordering ✅
   - **Dependencies:** Task 0121, Task 0401
 
 - **Task 0201:** Add note UI ✅
   - **Dependencies:** Task 0211, Task 0212
-- **Task 0202:** Duplicate check
+- **Task 0202:** Duplicate check ✅
   - **Dependencies:** Task 0201, Task 0311
 - **Task 0203:** Tags/flags/marked ⏳
   - **Dependencies:** Task 0201, Task 0325
 
 - **Task 0211:** Note type manager ✅
   - **Dependencies:** Task 0001
-- **Task 0212:** Field editor
+- **Task 0212:** Field editor ✅
   - **Dependencies:** Task 0211
-- **Task 0213:** Sort field  
+- **Task 0213:** Sort field ⏳
   - **Dependencies:** Task 0212, Task 0302
-- **Task 0214:** Editing options  
+- **Task 0214:** Editing options ✅
   - **Dependencies:** Task 0212
 
-- **Task 0221:** Template editor UI  
+- **Task 0221:** Template editor UI ✅
   - **Dependencies:** Task 0211, Task 0212
-- **Task 0222:** Conditional generation logic  
+- **Task 0222:** Conditional generation logic ✅
   - **Dependencies:** Task 0221, Task 0001
-- **Task 0223:** Deck override per template  
+- **Task 0223:** Deck override per template ✅
   - **Dependencies:** Task 0221, Task 0101
-- **Task 0224:** Browser appearance templates  
+- **Task 0224:** Browser appearance templates ⏳
   - **Dependencies:** Task 0221, Task 0301
 
-- **Task 0231:** Cloze editor support  
+- **Task 0231:** Cloze editor support ✅
   - **Dependencies:** Task 0221, Task 0201
-- **Task 0232:** Empty cloze detection + cleanup  
+- **Task 0232:** Empty cloze detection + cleanup ✅
   - **Dependencies:** Task 0231
-- **Task 0233:** Cloze template validation  
+- **Task 0233:** Cloze template validation ✅
   - **Dependencies:** Task 0221
 
 - **Task 0241:** IO creation flow  

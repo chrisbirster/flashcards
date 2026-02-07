@@ -57,6 +57,7 @@ export interface FieldOptions {
   font?: string
   fontSize?: number
   rtl?: boolean
+  htmlEditor?: boolean
 }
 
 export interface NoteType {

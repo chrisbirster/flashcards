@@ -143,6 +143,7 @@ test.describe('Field Options', () => {
     await expect(page.locator('[data-testid="field-font-Front"]')).toBeVisible()
     await expect(page.locator('[data-testid="field-size-Front"]')).toBeVisible()
     await expect(page.locator('[data-testid="field-rtl-Front"]')).toBeVisible()
+    await expect(page.locator('[data-testid="field-html-Front"]')).toBeVisible()
   })
 
   test('can set font option', async ({ page }) => {
@@ -185,6 +186,16 @@ test.describe('Field Options', () => {
 
     // Should show RTL badge on field
     await expect(page.locator('span:has-text("RTL")')).toBeVisible()
+  })
+
+  test('can enable HTML editor default option', async ({ page }) => {
+    await page.click('[data-testid="field-options-Front"]')
+
+    // Enable HTML editor mode by default for this field
+    await page.click('[data-testid="field-html-Front"]')
+    await page.waitForTimeout(1000)
+
+    await expect(page.locator('[data-testid="field-html-Front"]')).toBeChecked()
   })
 
   test('closes options panel when clicking button again', async ({ page }) => {

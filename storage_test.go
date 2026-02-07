@@ -230,6 +230,88 @@ func TestGetDueCards(t *testing.T) {
 	}
 }
 
+func TestGetDueCardsDailyLimitsAndBacklogOrder(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	col := NewCollection()
+	if err := store.CreateCollection(col); err != nil {
+		t.Fatalf("Failed to create collection: %v", err)
+	}
+
+	optionsID := int64(1)
+	if _, err := store.db.Exec(
+		`INSERT INTO deck_options (id, name, new_cards_per_day, reviews_per_day) VALUES (?, ?, ?, ?)`,
+		optionsID, "Limited", 2, 2,
+	); err != nil {
+		t.Fatalf("Failed to create deck options: %v", err)
+	}
+
+	if err := store.CreateDeck(&Deck{ID: 1, Name: "Limited Deck", Cards: []int64{}, OptionsID: &optionsID}); err != nil {
+		t.Fatalf("Failed to create deck: %v", err)
+	}
+
+	nt := &NoteType{Name: "Basic", Fields: []string{"Front", "Back"}, Templates: []CardTemplate{{Name: "Card 1", QFmt: "{{Front}}", AFmt: "{{Back}}"}}}
+	if err := store.CreateNoteType("default", nt); err != nil {
+		t.Fatalf("Failed to create note type: %v", err)
+	}
+
+	now := time.Now()
+	for i := 1; i <= 4; i++ {
+		if err := store.CreateNote("default", &Note{
+			ID:         int64(i),
+			Type:       "Basic",
+			FieldMap:   map[string]string{"Front": "Q", "Back": "A"},
+			Tags:       []string{},
+			USN:        1,
+			CreatedAt:  now,
+			ModifiedAt: now,
+		}); err != nil {
+			t.Fatalf("Failed to create note %d: %v", i, err)
+		}
+	}
+
+	reviewOlder := &Card{ID: 1, NoteID: 1, DeckID: 1, TemplateName: "Card 1", Front: "RQ1", Back: "RA1", SRS: newDueNow(now.Add(-72 * time.Hour)), USN: 1}
+	reviewOlder.SRS.State = fsrs.Review
+	reviewNewer := &Card{ID: 2, NoteID: 2, DeckID: 1, TemplateName: "Card 1", Front: "RQ2", Back: "RA2", SRS: newDueNow(now.Add(-48 * time.Hour)), USN: 1}
+	reviewNewer.SRS.State = fsrs.Review
+	newOlder := &Card{ID: 3, NoteID: 3, DeckID: 1, TemplateName: "Card 1", Front: "NQ1", Back: "NA1", SRS: newDueNow(now.Add(-24 * time.Hour)), USN: 1}
+	newOlder.SRS.State = fsrs.New
+	newNewer := &Card{ID: 4, NoteID: 4, DeckID: 1, TemplateName: "Card 1", Front: "NQ2", Back: "NA2", SRS: newDueNow(now.Add(-12 * time.Hour)), USN: 1}
+	newNewer.SRS.State = fsrs.New
+
+	for _, card := range []*Card{reviewOlder, reviewNewer, newOlder, newNewer} {
+		if err := store.CreateCard(card); err != nil {
+			t.Fatalf("Failed to create card %d: %v", card.ID, err)
+		}
+	}
+
+	// Consume one review and one new slot for today.
+	if err := store.AddRevlog(&fsrs.ReviewLog{Rating: fsrs.Good, State: fsrs.Review, Review: now}, reviewNewer.ID, 1000); err != nil {
+		t.Fatalf("Failed to create review revlog entry: %v", err)
+	}
+	if err := store.AddRevlog(&fsrs.ReviewLog{Rating: fsrs.Good, State: fsrs.New, Review: now}, newNewer.ID, 1000); err != nil {
+		t.Fatalf("Failed to create new revlog entry: %v", err)
+	}
+
+	dueCards, err := store.GetDueCards(1, 10)
+	if err != nil {
+		t.Fatalf("Failed to get due cards: %v", err)
+	}
+
+	if len(dueCards) != 2 {
+		t.Fatalf("Expected 2 due cards after daily limit filtering, got %d", len(dueCards))
+	}
+
+	// Review backlog should be prioritized first, then new cards.
+	if dueCards[0].ID != reviewOlder.ID {
+		t.Errorf("Expected first card to be oldest review backlog card (id=%d), got id=%d", reviewOlder.ID, dueCards[0].ID)
+	}
+	if dueCards[1].ID != newOlder.ID {
+		t.Errorf("Expected second card to be oldest new card within remaining limit (id=%d), got id=%d", newOlder.ID, dueCards[1].ID)
+	}
+}
+
 func TestProfileCRUD(t *testing.T) {
 	store, cleanup := setupTestDB(t)
 	defer cleanup()

@@ -79,6 +79,11 @@ type SQLiteStore struct {
 	db *sql.DB
 }
 
+const (
+	defaultNewCardsPerDay = 20
+	defaultReviewsPerDay  = 200
+)
+
 // NewSQLiteStore creates a new SQLite store and runs migrations.
 func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	db, err := sql.Open("sqlite3", dbPath+"?_foreign_keys=on")
@@ -743,26 +748,195 @@ func (s *SQLiteStore) DeleteCard(id int64) error {
 	return err
 }
 
-func (s *SQLiteStore) GetDueCards(deckID int64, limit int) ([]*Card, error) {
-	now := time.Now().Unix()
-	query := `
-		SELECT id FROM cards
-		WHERE deck_id = ? AND due <= ? AND suspended = 0
-		ORDER BY due
+func (s *SQLiteStore) getDeckDailyLimits(deckID int64) (int, int, error) {
+	newLimit := defaultNewCardsPerDay
+	reviewLimit := defaultReviewsPerDay
+
+	var optionsID sql.NullInt64
+	if err := s.db.QueryRow(`SELECT options_id FROM decks WHERE id = ?`, deckID).Scan(&optionsID); err != nil {
+		return newLimit, reviewLimit, err
+	}
+
+	if !optionsID.Valid {
+		return newLimit, reviewLimit, nil
+	}
+
+	var configuredNew, configuredReview int
+	err := s.db.QueryRow(
+		`SELECT new_cards_per_day, reviews_per_day FROM deck_options WHERE id = ?`,
+		optionsID.Int64,
+	).Scan(&configuredNew, &configuredReview)
+	if err == sql.ErrNoRows {
+		return newLimit, reviewLimit, nil
+	}
+	if err != nil {
+		return newLimit, reviewLimit, err
+	}
+
+	if configuredNew >= 0 {
+		newLimit = configuredNew
+	}
+	if configuredReview >= 0 {
+		reviewLimit = configuredReview
+	}
+
+	return newLimit, reviewLimit, nil
+}
+
+func (s *SQLiteStore) countDistinctReviewedCardsByStates(deckID, dayStart, dayEnd int64, states []int) (int, error) {
+	if len(states) == 0 {
+		return 0, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(states)), ",")
+	query := fmt.Sprintf(`
+		SELECT COUNT(DISTINCT r.card_id)
+		FROM revlog r
+		JOIN cards c ON c.id = r.card_id
+		WHERE c.deck_id = ?
+		  AND r.reviewed_at >= ?
+		  AND r.reviewed_at < ?
+		  AND r.state IN (%s)
+	`, placeholders)
+
+	args := make([]interface{}, 0, 3+len(states))
+	args = append(args, deckID, dayStart, dayEnd)
+	for _, state := range states {
+		args = append(args, state)
+	}
+
+	var count int
+	if err := s.db.QueryRow(query, args...).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (s *SQLiteStore) getTodayReviewedCounts(deckID int64, now time.Time) (int, int, error) {
+	dayStartTime := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	dayStart := dayStartTime.Unix()
+	dayEnd := dayStartTime.Add(24 * time.Hour).Unix()
+
+	newReviewed, err := s.countDistinctReviewedCardsByStates(deckID, dayStart, dayEnd, []int{int(fsrs.New)})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	reviewed, err := s.countDistinctReviewedCardsByStates(
+		deckID,
+		dayStart,
+		dayEnd,
+		[]int{int(fsrs.Review), int(fsrs.Relearning)},
+	)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return newReviewed, reviewed, nil
+}
+
+func (s *SQLiteStore) getDueCardIDsByStates(deckID, now int64, states []int, limit int) ([]int64, error) {
+	if len(states) == 0 || limit <= 0 {
+		return []int64{}, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(states)), ",")
+	query := fmt.Sprintf(`
+		SELECT id
+		FROM cards
+		WHERE deck_id = ?
+		  AND due <= ?
+		  AND suspended = 0
+		  AND state IN (%s)
+		ORDER BY due ASC, id ASC
 		LIMIT ?
-	`
-	rows, err := s.db.Query(query, deckID, now, limit)
+	`, placeholders)
+
+	args := make([]interface{}, 0, 3+len(states))
+	args = append(args, deckID, now)
+	for _, state := range states {
+		args = append(args, state)
+	}
+	args = append(args, limit)
+
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var cards []*Card
+	ids := make([]int64, 0, limit)
 	for rows.Next() {
 		var cardID int64
 		if err := rows.Scan(&cardID); err != nil {
 			return nil, err
 		}
+		ids = append(ids, cardID)
+	}
+
+	return ids, rows.Err()
+}
+
+func (s *SQLiteStore) GetDueCards(deckID int64, limit int) ([]*Card, error) {
+	if limit <= 0 {
+		return []*Card{}, nil
+	}
+
+	now := time.Now().Unix()
+	newLimit, reviewLimit, err := s.getDeckDailyLimits(deckID)
+	if err != nil {
+		return nil, err
+	}
+
+	newReviewedToday, reviewedToday, err := s.getTodayReviewedCounts(deckID, time.Now())
+	if err != nil {
+		return nil, err
+	}
+
+	newRemaining := newLimit - newReviewedToday
+	if newRemaining < 0 {
+		newRemaining = 0
+	}
+
+	reviewRemaining := reviewLimit - reviewedToday
+	if reviewRemaining < 0 {
+		reviewRemaining = 0
+	}
+
+	remaining := limit
+	cardIDs := make([]int64, 0, limit)
+	appendCardIDs := func(stateGroup []int, groupLimit int) error {
+		if remaining <= 0 || groupLimit <= 0 {
+			return nil
+		}
+		if groupLimit > remaining {
+			groupLimit = remaining
+		}
+		ids, err := s.getDueCardIDsByStates(deckID, now, stateGroup, groupLimit)
+		if err != nil {
+			return err
+		}
+		cardIDs = append(cardIDs, ids...)
+		remaining -= len(ids)
+		return nil
+	}
+
+	// Prioritize older review backlog before learning/new cards.
+	if err := appendCardIDs([]int{int(fsrs.Review), int(fsrs.Relearning)}, reviewRemaining); err != nil {
+		return nil, err
+	}
+
+	// Learning/relearning cards are time-critical and are not capped by daily new/review limits.
+	if err := appendCardIDs([]int{int(fsrs.Learning)}, remaining); err != nil {
+		return nil, err
+	}
+
+	if err := appendCardIDs([]int{int(fsrs.New)}, newRemaining); err != nil {
+		return nil, err
+	}
+
+	cards := make([]*Card, 0, len(cardIDs))
+	for _, cardID := range cardIDs {
 		card, err := s.GetCard(cardID)
 		if err != nil {
 			return nil, err

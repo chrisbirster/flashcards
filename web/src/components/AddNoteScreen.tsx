@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchNoteTypes, fetchDecks, createNote, checkDuplicate } from '#/lib/api'
-import type { NoteBrief } from '#/lib/api'
+import type { NoteBrief, FieldOptions } from '#/lib/api'
 import { FieldEditor } from './FieldEditor'
 import { TemplateEditor } from './TemplateEditor'
 import DOMPurify from 'dompurify';
@@ -50,6 +50,26 @@ interface AddNoteScreenProps {
   deckId?: number
   onClose: () => void
   onSuccess?: () => void
+}
+
+function buildFieldEditorStyle(options?: FieldOptions): CSSProperties {
+  const style: CSSProperties = {}
+
+  if (!options) {
+    return style
+  }
+
+  if (options.font) {
+    style.fontFamily = options.font
+  }
+  if (options.fontSize) {
+    style.fontSize = options.fontSize
+  }
+  if (options.rtl) {
+    style.direction = 'rtl'
+  }
+
+  return style
 }
 
 export function AddNoteScreen({ deckId, onClose, onSuccess }: AddNoteScreenProps) {
@@ -345,6 +365,13 @@ export function AddNoteScreen({ deckId, onClose, onSuccess }: AddNoteScreenProps
             <div className="space-y-4">
               {currentNoteType?.fields.map((field) => (
                 <div key={field}>
+                  {(() => {
+                    const options = currentNoteType?.fieldOptions?.[field]
+                    const isHtmlEditor = options?.htmlEditor || false
+                    const fieldStyle = buildFieldEditorStyle(options)
+
+                    return (
+                      <>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     {field}
                   </label>
@@ -355,15 +382,27 @@ export function AddNoteScreen({ deckId, onClose, onSuccess }: AddNoteScreenProps
                     onFocus={() => setActiveField(field)}
                     placeholder={isClozeType && field === 'Text'
                       ? 'Enter text with {{c1::cloze}} deletions...'
-                      : `Enter ${field.toLowerCase()}...`}
+                      : isHtmlEditor
+                        ? `Enter ${field.toLowerCase()} (HTML)...`
+                        : `Enter ${field.toLowerCase()}...`}
                     rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y font-mono"
+                    className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y ${
+                      isHtmlEditor ? '' : 'font-mono'
+                    }`}
+                    style={fieldStyle}
+                    dir={options?.rtl ? 'rtl' : 'ltr'}
                   />
+                  {isHtmlEditor && (
+                    <p className="mt-1 text-xs text-gray-500">HTML editor default enabled for this field.</p>
+                  )}
                   {isClozeType && field === 'Text' && (
                     <p className="mt-1 text-xs text-gray-500">
                       Select text and click "[...] Cloze" or press Ctrl+Shift+C to create cloze deletions
                     </p>
                   )}
+                      </>
+                    )
+                  })()}
                 </div>
               ))}
             </div>

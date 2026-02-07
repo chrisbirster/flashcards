@@ -35,9 +35,10 @@ type CardTemplate struct {
 }
 
 type FieldOptions struct {
-	Font     string `json:"font,omitempty"`     // Font family (e.g., "Arial", "Times New Roman")
-	FontSize int    `json:"fontSize,omitempty"` // Font size in pixels
-	RTL      bool   `json:"rtl,omitempty"`      // Right-to-left text direction
+	Font       string `json:"font,omitempty"`       // Font family (e.g., "Arial", "Times New Roman")
+	FontSize   int    `json:"fontSize,omitempty"`   // Font size in pixels
+	RTL        bool   `json:"rtl,omitempty"`        // Right-to-left text direction
+	HTMLEditor bool   `json:"htmlEditor,omitempty"` // Use HTML editor mode by default
 }
 
 type NoteType struct {

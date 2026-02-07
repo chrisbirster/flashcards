@@ -264,6 +264,26 @@ test.describe('Template Editor', () => {
     // Should still have the modified content
     await expect(page.locator('[data-testid="editor-front"]')).toHaveValue(uniqueValue)
   })
+
+  test('can auto-fix invalid cloze template', async ({ page }) => {
+    await page.selectOption('select', { label: 'Cloze' })
+    await page.click('[data-testid="edit-templates-button"]')
+
+    const editor = page.locator('[data-testid="editor-front"]')
+    await expect(editor).toBeVisible()
+
+    // Remove cloze filter to trigger validation warning.
+    await editor.fill('Q: {{Text}}')
+
+    await expect(page.locator('text=Cloze templates must contain at least one {{cloze:FieldName}} tag')).toBeVisible()
+    await expect(page.locator('[data-testid="save-template"]')).toBeDisabled()
+
+    await page.click('[data-testid="auto-fix-cloze-template"]')
+
+    await expect(editor).toHaveValue(/\{\{cloze:Text\}\}/)
+    await expect(page.locator('text=Cloze templates must contain at least one {{cloze:FieldName}} tag')).not.toBeVisible()
+    await expect(page.locator('[data-testid="save-template"]')).toBeEnabled()
+  })
 })
 
 test.describe('Template Editor with Multiple Templates', () => {

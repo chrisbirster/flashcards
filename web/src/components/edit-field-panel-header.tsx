@@ -11,7 +11,7 @@ export function EditFieldPanelHeader({ noteTypeName, onClose }: EditFieldPanelHe
             <h2 className="text-lg font-semibold text-gray-900">
                 Edit Fields: {noteTypeName}
             </h2>
-            <EditFieldPanelCloseButton onClick={onClose} />
+            <EditFieldPanelCloseButton onClick={onClose} data-testid="close-field-editor" />
         </div>
     )
 

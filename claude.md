@@ -324,7 +324,7 @@ GET    /api/backups
 ---
 
 **Verification (M0):**
-- Backend server runs on :8080
+- Backend server runs on :8000
 - Frontend connects via proxy (Vite dev server)
 - Can create decks via API and UI
 - Data persists to SQLite database

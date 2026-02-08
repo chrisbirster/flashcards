@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -516,6 +517,11 @@ func (h *APIHandler) ListNoteTypes(w http.ResponseWriter, r *http.Request) {
 			FieldOptions:   nt.FieldOptions,
 		})
 	}
+
+	sort.Slice(noteTypes, func(i, j int) bool {
+		return noteTypes[i].Name < noteTypes[j].Name
+	})
+
 	respondJSON(w, http.StatusOK, noteTypes)
 }
 
@@ -1354,7 +1360,7 @@ func main() {
 
 	// CORS configuration for frontend
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:3000"},
+		AllowedOrigins:   []string{"http://localhost:3000", "http://127.0.0.1:4317", "http://localhost:4317"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Content-Type", "Authorization"},
 		AllowCredentials: true,
@@ -1406,7 +1412,7 @@ func main() {
 	})
 
 	// Start server
-	port := ":8080"
+	port := ":8000"
 	log.Printf("Server starting on http://localhost%s\n", port)
 	log.Printf("API endpoints available at http://localhost%s/api\n", port)
 	log.Println("Press Ctrl+C to stop")

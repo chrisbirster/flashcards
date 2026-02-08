@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react'
+import { useState, useEffect, useCallback, type CSSProperties } from 'react'
+import { useNavigate } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchNoteTypes, fetchDecks, createNote, checkDuplicate } from '#/lib/api'
 import type { NoteBrief, FieldOptions } from '#/lib/api'
-import { FieldEditor } from './FieldEditor'
-import { TemplateEditor } from './TemplateEditor'
-import DOMPurify from 'dompurify';
+import { AddNoteFormProvider } from './add-note-form-provider'
+import { useAddNoteFormContext } from './add-note-form-context'
+import DOMPurify from 'dompurify'
 import { TemplateFieldPreview } from './template-field-preview'
 import { ErrorMessage, SuccessMessage } from './message'
 import { EditFieldIcon } from './edit-field-icon'
@@ -73,18 +74,32 @@ function buildFieldEditorStyle(options?: FieldOptions): CSSProperties {
 }
 
 export function AddNoteScreen({ deckId, onClose, onSuccess }: AddNoteScreenProps) {
+  return (
+    <AddNoteFormProvider deckId={deckId}>
+      <AddNoteScreenContent onClose={onClose} onSuccess={onSuccess} />
+    </AddNoteFormProvider>
+  )
+}
+
+function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, 'deckId'>) {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [selectedNoteType, setSelectedNoteType] = useState<string>('')
-  const [selectedDeckId, setSelectedDeckId] = useState<number>(deckId || 0)
-  const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
-  const [tags, setTags] = useState<string>('')
+  const {
+    selectedNoteType,
+    setSelectedNoteType,
+    selectedDeckId,
+    setSelectedDeckId,
+    fieldValues,
+    setFieldValues,
+    tags,
+    setTags,
+    activeField,
+    setActiveField,
+    textareaRefs,
+  } = useAddNoteFormContext()
   const [duplicates, setDuplicates] = useState<NoteBrief[]>([])
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false)
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(false)
-  const [activeField, setActiveField] = useState<string | null>(null)
-  const [showFieldEditor, setShowFieldEditor] = useState(false)
-  const [showTemplateEditor, setShowTemplateEditor] = useState(false)
-  const textareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({})
 
   // Check if current note type is Cloze
   const isClozeType = selectedNoteType === 'Cloze'
@@ -256,6 +271,16 @@ export function AddNoteScreen({ deckId, onClose, onSuccess }: AddNoteScreenProps
     setFieldValues(prev => ({ ...prev, [field]: value }))
   }
 
+  const openFieldEditorRoute = () => {
+    if (!selectedNoteType) return
+    navigate(`note-types/${encodeURIComponent(selectedNoteType)}/fields`)
+  }
+
+  const openTemplateEditorRoute = () => {
+    if (!selectedNoteType) return
+    navigate(`note-types/${encodeURIComponent(selectedNoteType)}/templates`)
+  }
+
   // Check if required fields have content
   const hasRequiredContent = () => {
     if (!currentNoteType) return false
@@ -308,13 +333,13 @@ export function AddNoteScreen({ deckId, onClose, onSuccess }: AddNoteScreenProps
                   <IconButton
                     title="Edit Fields"
                     testId="edit-fields-button"
-                    handleClick={() => setShowFieldEditor(true)}
+                    handleClick={openFieldEditorRoute}
                     icon={<EditFieldIcon />}
                   />
                   <IconButton
                     title="Edit Templates"
                     testId="edit-templates-button"
-                    handleClick={() => setShowTemplateEditor(true)}
+                    handleClick={openTemplateEditorRoute}
                     icon={<ShowTemplateIcon />}
                   />
                 </div>
@@ -495,22 +520,6 @@ export function AddNoteScreen({ deckId, onClose, onSuccess }: AddNoteScreenProps
           {/* Success message */}
           {createNoteMutation.isSuccess && <SuccessMessage />}
         </form>
-
-        {/* Field Editor Modal */}
-        {showFieldEditor && currentNoteType && (
-          <FieldEditor
-            noteType={currentNoteType}
-            onClose={() => setShowFieldEditor(false)}
-          />
-        )}
-
-        {/* Template Editor Modal */}
-        {showTemplateEditor && currentNoteType && (
-          <TemplateEditor
-            noteType={currentNoteType}
-            onClose={() => setShowTemplateEditor(false)}
-          />
-        )}
 
         {/* Preview section */}
         {currentNoteType && hasRequiredContent() && (

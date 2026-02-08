@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchDueCards, answerCard, updateCard } from '#/lib/api'
-import DOMPurify from 'dompurify';
+import DOMPurify from 'dompurify'
 
 // Flag colors matching Anki
 const FLAG_COLORS = [
@@ -24,8 +24,8 @@ interface StudyScreenProps {
 export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
   const [currentCardIndex, setCurrentCardIndex] = useState(0)
   const [showAnswer, setShowAnswer] = useState(false)
-  const [questionStartTime, setQuestionStartTime] = useState<number>(Date.now())
   const [showFlagMenu, setShowFlagMenu] = useState(false)
+  const questionStartTimeRef = useRef(0)
   const queryClient = useQueryClient()
 
   const { data: cards, isLoading } = useQuery({
@@ -45,7 +45,7 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
       if (cards && currentCardIndex < cards.length - 1) {
         setCurrentCardIndex(currentCardIndex + 1)
         setShowAnswer(false)
-        setQuestionStartTime(Date.now()) // Reset timer for next card
+        questionStartTimeRef.current = Date.now()
       } else {
         // No more cards, exit study
         onExit()
@@ -64,7 +64,17 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
 
   const currentCard = cards?.[currentCardIndex]
 
-  console.log({ currentCard })
+  const handleAnswer = useCallback((rating: number) => {
+    if (!currentCard) return
+
+    const startedAt = questionStartTimeRef.current || Date.now()
+    const timeTakenMs = Math.max(0, Date.now() - startedAt)
+    answerMutation.mutate({
+      cardId: currentCard.id,
+      rating,
+      timeTakenMs,
+    })
+  }, [answerMutation, currentCard])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -110,25 +120,14 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
 
     window.addEventListener('keydown', handleKeyPress)
     return () => window.removeEventListener('keydown', handleKeyPress)
-  }, [currentCard, showAnswer, showFlagMenu])
-
-  const handleAnswer = (rating: number) => {
-    if (!currentCard) return
-
-    const timeTakenMs = Date.now() - questionStartTime
-    answerMutation.mutate({
-      cardId: currentCard.id,
-      rating,
-      timeTakenMs,
-    })
-  }
+  }, [currentCard, handleAnswer, showAnswer, showFlagMenu, updateCardMutation])
 
   // Reset timer when current card changes
   useEffect(() => {
     if (currentCard) {
-      setQuestionStartTime(Date.now())
+      questionStartTimeRef.current = Date.now()
     }
-  }, [currentCard?.id])
+  }, [currentCard])
 
   if (isLoading) {
     return (

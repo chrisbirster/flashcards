@@ -5,6 +5,11 @@ import { StudyPage } from '#/pages/StudyPage'
 import { AddNotePage } from '#/pages/AddNotePage'
 import { TemplatesPage } from '#/pages/TemplatesPage'
 import { EmptyCardsPage } from '#/pages/EmptyCardsPage'
+import {
+  AddNoteFieldEditorRoutePage,
+  AddNoteTemplateEditorRoutePage,
+  TemplatesTemplateEditorRoutePage,
+} from '#/pages/NoteTypeEditorRoutes'
 
 export default function App() {
   return (
@@ -14,8 +19,13 @@ export default function App() {
           <Route index element={<Navigate to="/decks" replace />} />
           <Route path="decks" element={<DecksPage />} />
           <Route path="study/:deckId" element={<StudyPage />} />
-          <Route path="notes/add" element={<AddNotePage />} />
-          <Route path="templates" element={<TemplatesPage />} />
+          <Route path="notes/add" element={<AddNotePage />}>
+            <Route path="note-types/:noteTypeName/fields" element={<AddNoteFieldEditorRoutePage />} />
+            <Route path="note-types/:noteTypeName/templates" element={<AddNoteTemplateEditorRoutePage />} />
+          </Route>
+          <Route path="templates" element={<TemplatesPage />}>
+            <Route path=":noteTypeName" element={<TemplatesTemplateEditorRoutePage />} />
+          </Route>
           <Route path="tools/empty-cards" element={<EmptyCardsPage />} />
           {/* Future routes */}
           {/* <Route path="browse" element={<BrowsePage />} /> */}

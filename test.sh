@@ -29,10 +29,24 @@ echo ""
 
 # Check if backend server is running
 echo -e "${BLUE}Checking backend server...${NC}"
-if curl -s http://localhost:8080/api/health > /dev/null 2>&1; then
+if curl -s http://localhost:8000/api/health > /dev/null 2>&1; then
     echo -e "${GREEN}✓ Backend server is running${NC}"
 else
-    echo -e "${RED}✗ Backend server not running. Please start it with: go run *.go${NC}"
+    echo -e "${RED}✗ Backend server not running. Please start it with: go run .${NC}"
+    exit 1
+fi
+
+echo ""
+
+# Coverage gate (baseline)
+echo -e "${BLUE}Running Coverage Gate (baseline)...${NC}"
+./scripts/check_coverage.sh baseline
+COVERAGE_EXIT=$?
+
+if [ $COVERAGE_EXIT -eq 0 ]; then
+    echo -e "${GREEN}✓ Coverage baseline passed${NC}"
+else
+    echo -e "${RED}✗ Coverage baseline failed${NC}"
     exit 1
 fi
 
@@ -58,6 +72,6 @@ echo -e "${GREEN}✓ All tests passed!${NC}"
 echo "=================================="
 echo ""
 echo "Test Summary:"
-echo "  - Backend: 15 unit tests (8 M0 + 4 M1 + 3 M2)"
-echo "  - Frontend: 37 E2E tests (10 deck management + 14 study screen + 13 add note)"
-echo "  - Total: 52 tests"
+echo "  - Backend: go test ./... (see output for current test count)"
+echo "  - Coverage: baseline gate via scripts/check_coverage.sh"
+echo "  - Frontend: Playwright E2E suite"

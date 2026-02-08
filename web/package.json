@@ -8,9 +8,12 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui",
-    "test:e2e:debug": "playwright test --debug"
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "node ./scripts/run-playwright.mjs",
+    "test:e2e:ui": "node ./scripts/run-playwright.mjs --ui",
+    "test:e2e:debug": "node ./scripts/run-playwright.mjs --debug"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",

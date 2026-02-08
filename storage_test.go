@@ -1,6 +1,8 @@
 package main
 
 import (
+	"database/sql"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -1479,5 +1481,227 @@ func TestFieldOptionsRTL(t *testing.T) {
 	}
 	if hebrewOpts.Font != "David" {
 		t.Errorf("Expected font 'David', got '%s'", hebrewOpts.Font)
+	}
+}
+
+func TestDeleteCardAndListCardsInDeck(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	col := NewCollection()
+	if err := store.CreateCollection(col); err != nil {
+		t.Fatalf("Failed to create collection: %v", err)
+	}
+
+	if err := store.CreateDeck(&Deck{ID: 1, Name: "DeleteCard Deck", Cards: []int64{}}); err != nil {
+		t.Fatalf("Failed to create deck: %v", err)
+	}
+
+	noteType := &NoteType{
+		Name:   "DeleteCard Basic",
+		Fields: []string{"Front", "Back"},
+		Templates: []CardTemplate{
+			{Name: "Card 1", QFmt: "{{Front}}", AFmt: "{{Back}}"},
+		},
+	}
+	if err := store.CreateNoteType("default", noteType); err != nil {
+		t.Fatalf("Failed to create note type: %v", err)
+	}
+
+	now := time.Now()
+	for i := 1; i <= 2; i++ {
+		if err := store.CreateNote("default", &Note{
+			ID:         int64(i),
+			Type:       noteType.Name,
+			FieldMap:   map[string]string{"Front": "Q", "Back": "A"},
+			Tags:       []string{},
+			USN:        1,
+			CreatedAt:  now,
+			ModifiedAt: now,
+		}); err != nil {
+			t.Fatalf("Failed to create note %d: %v", i, err)
+		}
+	}
+
+	cardOne := &Card{
+		ID:           1,
+		NoteID:       1,
+		DeckID:       1,
+		TemplateName: "Card 1",
+		Ordinal:      0,
+		Front:        "Q1",
+		Back:         "A1",
+		SRS:          newDueNow(now),
+		USN:          1,
+	}
+	cardTwo := &Card{
+		ID:           2,
+		NoteID:       2,
+		DeckID:       1,
+		TemplateName: "Card 1",
+		Ordinal:      0,
+		Front:        "Q2",
+		Back:         "A2",
+		SRS:          newDueNow(now),
+		USN:          1,
+	}
+	for _, card := range []*Card{cardOne, cardTwo} {
+		if err := store.CreateCard(card); err != nil {
+			t.Fatalf("Failed to create card %d: %v", card.ID, err)
+		}
+	}
+
+	initialCards, err := store.ListCardsInDeck(1)
+	if err != nil {
+		t.Fatalf("Failed to list initial cards: %v", err)
+	}
+	if len(initialCards) != 2 {
+		t.Fatalf("Expected 2 cards before deletion, got %d", len(initialCards))
+	}
+
+	if err := store.DeleteCard(cardOne.ID); err != nil {
+		t.Fatalf("Failed to delete card: %v", err)
+	}
+
+	if _, err := store.GetCard(cardOne.ID); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("Expected sql.ErrNoRows for deleted card, got %v", err)
+	}
+
+	remainingCards, err := store.ListCardsInDeck(1)
+	if err != nil {
+		t.Fatalf("Failed to list cards after deletion: %v", err)
+	}
+	if len(remainingCards) != 1 {
+		t.Fatalf("Expected 1 remaining card, got %d", len(remainingCards))
+	}
+	if remainingCards[0].ID != cardTwo.ID {
+		t.Fatalf("Expected remaining card id %d, got %d", cardTwo.ID, remainingCards[0].ID)
+	}
+}
+
+func TestGetRevlogForCard(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	col := NewCollection()
+	if err := store.CreateCollection(col); err != nil {
+		t.Fatalf("Failed to create collection: %v", err)
+	}
+
+	if err := store.CreateDeck(&Deck{ID: 1, Name: "Revlog Deck", Cards: []int64{}}); err != nil {
+		t.Fatalf("Failed to create deck: %v", err)
+	}
+
+	noteType := &NoteType{
+		Name:   "Revlog Basic",
+		Fields: []string{"Front", "Back"},
+		Templates: []CardTemplate{
+			{Name: "Card 1", QFmt: "{{Front}}", AFmt: "{{Back}}"},
+		},
+	}
+	if err := store.CreateNoteType("default", noteType); err != nil {
+		t.Fatalf("Failed to create note type: %v", err)
+	}
+
+	now := time.Now()
+	if err := store.CreateNote("default", &Note{
+		ID:         1,
+		Type:       noteType.Name,
+		FieldMap:   map[string]string{"Front": "Q", "Back": "A"},
+		Tags:       []string{},
+		USN:        1,
+		CreatedAt:  now,
+		ModifiedAt: now,
+	}); err != nil {
+		t.Fatalf("Failed to create note: %v", err)
+	}
+
+	card := &Card{
+		ID:           1,
+		NoteID:       1,
+		DeckID:       1,
+		TemplateName: "Card 1",
+		Ordinal:      0,
+		Front:        "Q",
+		Back:         "A",
+		SRS:          newDueNow(now),
+		USN:          1,
+	}
+	if err := store.CreateCard(card); err != nil {
+		t.Fatalf("Failed to create card: %v", err)
+	}
+
+	firstReview := now.Add(-2 * time.Hour)
+	secondReview := now.Add(-1 * time.Hour)
+	if err := store.AddRevlog(&fsrs.ReviewLog{Rating: fsrs.Again, State: fsrs.Learning, Review: firstReview}, card.ID, 1200); err != nil {
+		t.Fatalf("Failed to add first revlog entry: %v", err)
+	}
+	if err := store.AddRevlog(&fsrs.ReviewLog{Rating: fsrs.Good, State: fsrs.Review, Review: secondReview}, card.ID, 1800); err != nil {
+		t.Fatalf("Failed to add second revlog entry: %v", err)
+	}
+
+	logs, err := store.GetRevlogForCard(card.ID)
+	if err != nil {
+		t.Fatalf("Failed to fetch revlog entries: %v", err)
+	}
+	if len(logs) != 2 {
+		t.Fatalf("Expected 2 revlog entries, got %d", len(logs))
+	}
+
+	if logs[0].Rating != fsrs.Again {
+		t.Fatalf("Expected first rating to be Again, got %v", logs[0].Rating)
+	}
+	if logs[1].Rating != fsrs.Good {
+		t.Fatalf("Expected second rating to be Good, got %v", logs[1].Rating)
+	}
+	if !logs[0].Review.Before(logs[1].Review) {
+		t.Fatalf("Expected logs to be ordered by review time: first=%v second=%v", logs[0].Review, logs[1].Review)
+	}
+}
+
+func TestMediaCRUD(t *testing.T) {
+	store, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	col := NewCollection()
+	if err := store.CreateCollection(col); err != nil {
+		t.Fatalf("Failed to create collection: %v", err)
+	}
+
+	now := time.Now()
+	media := &MediaRef{
+		ID:       1,
+		Filename: "example.png",
+		Data:     []byte{0x1, 0x2, 0x3, 0x4},
+		AddedAt:  now,
+	}
+
+	if err := store.AddMedia("default", media); err != nil {
+		t.Fatalf("Failed to add media: %v", err)
+	}
+
+	retrieved, err := store.GetMedia(media.Filename)
+	if err != nil {
+		t.Fatalf("Failed to get media: %v", err)
+	}
+	if retrieved.Filename != media.Filename {
+		t.Fatalf("Expected filename %q, got %q", media.Filename, retrieved.Filename)
+	}
+	if len(retrieved.Data) != len(media.Data) {
+		t.Fatalf("Expected media data length %d, got %d", len(media.Data), len(retrieved.Data))
+	}
+	for i := range media.Data {
+		if retrieved.Data[i] != media.Data[i] {
+			t.Fatalf("Media byte mismatch at index %d: expected %d got %d", i, media.Data[i], retrieved.Data[i])
+		}
+	}
+
+	if err := store.DeleteMedia(media.Filename); err != nil {
+		t.Fatalf("Failed to delete media: %v", err)
+	}
+
+	_, err = store.GetMedia(media.Filename)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("Expected sql.ErrNoRows after media delete, got %v", err)
 	}
 }

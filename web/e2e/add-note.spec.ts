@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 test.describe('Add Note Screen', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:5173')
+    await page.goto('/')
 
     // Create a test deck first
     await page.fill('input[placeholder="Deck name"]', `Add Note Test ${Date.now()}`)
@@ -41,6 +41,7 @@ test.describe('Add Note Screen', () => {
 
   test('displays field inputs for selected note type', async ({ page }) => {
     await page.click('button:has-text("Add Cards")')
+    await page.selectOption('select', { label: 'Basic' })
 
     // Should show Front and Back fields for Basic note type
     await expect(page.locator('label:has-text("Front")')).toBeVisible()
@@ -171,11 +172,8 @@ test.describe('Add Note Screen', () => {
     // Now try to create another note with the same Front content
     await page.locator('textarea').first().fill(uniqueContent)
 
-    // Wait for duplicate check (debounced 500ms)
-    await page.waitForTimeout(700)
-
-    // Should show duplicate warning
-    await expect(page.locator('[data-testid="duplicate-warning"]')).toBeVisible({ timeout: 3000 })
+    // Should show duplicate warning once debounced check completes
+    await expect(page.locator('[data-testid="duplicate-warning"]')).toBeVisible({ timeout: 10000 })
     await expect(page.locator('text=Possible duplicate found')).toBeVisible()
   })
 
@@ -192,11 +190,8 @@ test.describe('Add Note Screen', () => {
     await page.locator('textarea').first().fill(uniqueContent)
     await page.locator('textarea').nth(1).fill('Answer 2')
 
-    // Wait for duplicate check
-    await page.waitForTimeout(700)
-
     // Should show duplicate warning
-    await expect(page.locator('[data-testid="duplicate-warning"]')).toBeVisible({ timeout: 3000 })
+    await expect(page.locator('[data-testid="duplicate-warning"]')).toBeVisible({ timeout: 10000 })
 
     // Should still be able to add the note
     await page.click('button:has-text("Add Note")')
@@ -214,8 +209,7 @@ test.describe('Add Note Screen', () => {
 
     // Enter the same content again to trigger warning
     await page.locator('textarea').first().fill(uniqueContent)
-    await page.waitForTimeout(700)
-    await expect(page.locator('[data-testid="duplicate-warning"]')).toBeVisible({ timeout: 3000 })
+    await expect(page.locator('[data-testid="duplicate-warning"]')).toBeVisible({ timeout: 10000 })
 
     // Add the note anyway
     await page.locator('textarea').nth(1).fill('Answer 2')
@@ -229,7 +223,7 @@ test.describe('Add Note Screen', () => {
 
 test.describe('Cloze Note Editor', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:5173')
+    await page.goto('/')
 
     // Create a test deck first
     await page.fill('input[placeholder="Deck name"]', `Cloze Test ${Date.now()}`)
@@ -249,7 +243,8 @@ test.describe('Cloze Note Editor', () => {
   })
 
   test('does not show cloze button for Basic note type', async ({ page }) => {
-    // Select Basic note type (should be default)
+    // Select Basic note type explicitly so test does not depend on option ordering
+    await page.selectOption('select', { label: 'Basic' })
     const noteTypeSelect = page.locator('select').first()
     const value = await noteTypeSelect.inputValue()
     expect(value).toContain('Basic')

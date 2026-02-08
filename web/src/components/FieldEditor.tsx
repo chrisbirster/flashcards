@@ -306,6 +306,7 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
               type="submit"
               disabled={!newFieldName.trim() || isPending}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              data-testid="field-editor-add-button"
             >
               Add
             </button>
@@ -320,6 +321,7 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
           <button
             onClick={onClose}
             className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            data-testid="close-field-editor-footer"
           >
             Close
           </button>

@@ -1,13 +1,25 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from '@playwright/test'
+
+async function createDeckFromHome(page: Page, namePrefix: string) {
+  await page.goto('/')
+
+  const deckInput = page.locator('input[placeholder="Deck name"]')
+  await expect(deckInput).toBeVisible()
+  await expect(deckInput).toBeEditable()
+
+  const deckName = `${namePrefix} ${Date.now()}`
+  await deckInput.fill(deckName)
+
+  const createButton = page.locator('button:has-text("Create")')
+  await expect(createButton).toBeEnabled()
+  await createButton.click()
+  await page.waitForTimeout(500)
+}
 
 test.describe('Template Editor', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:5173')
-
     // Create a test deck
-    await page.fill('input[placeholder="Deck name"]', `Template Editor Test ${Date.now()}`)
-    await page.click('button:has-text("Create")')
-    await page.waitForTimeout(500)
+    await createDeckFromHome(page, 'Template Editor Test')
 
     // Open add note screen
     await page.click('button:has-text("Add Cards")')
@@ -17,10 +29,11 @@ test.describe('Template Editor', () => {
     await expect(page.locator('[data-testid="edit-templates-button"]')).toBeVisible()
   })
 
-  test('opens template editor modal when clicking edit templates button', async ({ page }) => {
+  test('opens template editor route when clicking edit templates button', async ({ page }) => {
     await page.click('[data-testid="edit-templates-button"]')
 
-    // Template editor modal should be visible
+    // Template editor route + UI should be visible
+    await expect(page).toHaveURL(/\/notes\/add\/note-types\/[^/]+\/templates(?:\?.*)?$/)
     await expect(page.locator('text=Edit Templates:')).toBeVisible()
   })
 
@@ -179,16 +192,18 @@ test.describe('Template Editor', () => {
     await expect(page.locator('[data-testid="save-template"]')).toBeDisabled()
   })
 
-  test('can close template editor modal', async ({ page }) => {
+  test('can close template editor and return to add note route', async ({ page }) => {
     // Select Basic note type
     await page.selectOption('select', { label: 'Basic' })
     await page.click('[data-testid="edit-templates-button"]')
+    await expect(page).toHaveURL(/\/notes\/add\/note-types\/[^/]+\/templates(?:\?.*)?$/)
     await expect(page.locator('text=Edit Templates:')).toBeVisible()
 
     // Click close button in the modal footer (the one next to Save Changes)
     await page.locator('[data-testid="save-template"]').locator('..').locator('button:has-text("Close")').click()
 
     // Modal should be closed
+    await expect(page).toHaveURL(/\/notes\/add(?:\?.*)?$/)
     await expect(page.locator('text=Edit Templates:')).not.toBeVisible()
   })
 
@@ -196,12 +211,14 @@ test.describe('Template Editor', () => {
     // Select Basic note type
     await page.selectOption('select', { label: 'Basic' })
     await page.click('[data-testid="edit-templates-button"]')
+    await expect(page).toHaveURL(/\/notes\/add\/note-types\/[^/]+\/templates(?:\?.*)?$/)
     await expect(page.locator('text=Edit Templates:')).toBeVisible()
 
     // Click X button
     await page.click('[data-testid="close-template-editor"]')
 
     // Modal should be closed
+    await expect(page).toHaveURL(/\/notes\/add(?:\?.*)?$/)
     await expect(page.locator('text=Edit Templates:')).not.toBeVisible()
   })
 
@@ -288,12 +305,8 @@ test.describe('Template Editor', () => {
 
 test.describe('Template Editor with Multiple Templates', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:5173')
-
     // Create a test deck
-    await page.fill('input[placeholder="Deck name"]', `Multi Template Test ${Date.now()}`)
-    await page.click('button:has-text("Create")')
-    await page.waitForTimeout(500)
+    await createDeckFromHome(page, 'Multi Template Test')
 
     // Open add note screen
     await page.click('button:has-text("Add Cards")')

@@ -2,10 +2,12 @@ import { test, expect } from '@playwright/test'
 
 test.describe('Study Screen', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:5173')
+    await page.goto('/')
 
     // Create a test deck with cards
-    await page.fill('input[placeholder="Deck name"]', 'Study Test Deck')
+    const deckName = `Study Test Deck ${Date.now()}`
+    await page.fill('input[placeholder="Deck name"]', deckName)
+    await expect(page.locator('button:has-text("Create")')).toBeEnabled()
     await page.click('button:has-text("Create")')
     await page.waitForTimeout(500)
   })
@@ -86,11 +88,6 @@ test.describe('Study Screen', () => {
   })
 
   test('updates deck stats after answering cards', async ({ page }) => {
-    // Verify stats are fetched and displayed
-    const newCardsCount = page.locator('span.text-blue-600').first()
-    const learningCount = page.locator('span.text-orange-600').first()
-    const reviewCount = page.locator('span.text-green-600').first()
-
     // These elements should exist in the deck item
     const deckItem = page.locator('li').first()
     const hasNewLabel = await deckItem.locator('text=new').count()
@@ -115,7 +112,7 @@ test.describe('Study Screen with Cards', () => {
   test.beforeEach(async ({ page }) => {
     // These tests would need actual backend data
     // For now, we verify the UI structure is ready
-    await page.goto('http://localhost:5173')
+    await page.goto('/')
   })
 
   test('renders card front content correctly', async ({ page }) => {
@@ -141,7 +138,7 @@ test.describe('Study Screen with Cards', () => {
 
 test.describe('Study Screen - Flags and Marked', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('http://localhost:5173')
+    await page.goto('/')
 
     // Create a deck and add a card
     await page.fill('input[placeholder="Deck name"]', `Flags Test ${Date.now()}`)

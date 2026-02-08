@@ -1,12 +1,10 @@
-import { useState } from 'react'
+import { Outlet, useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { fetchNoteTypes } from '#/lib/api'
-import { TemplateEditor } from '#/components/TemplateEditor'
 import type { NoteType } from '#/lib/api'
 
 export function TemplatesPage() {
-  const [selectedNoteType, setSelectedNoteType] = useState<NoteType | null>(null)
-  const [showEditor, setShowEditor] = useState(false)
+  const navigate = useNavigate()
 
   const { data: noteTypes, isLoading, error } = useQuery({
     queryKey: ['note-types'],
@@ -14,8 +12,7 @@ export function TemplatesPage() {
   })
 
   const handleEditTemplate = (noteType: NoteType) => {
-    setSelectedNoteType(noteType)
-    setShowEditor(true)
+    navigate(encodeURIComponent(noteType.name))
   }
 
   if (isLoading) {
@@ -117,16 +114,7 @@ export function TemplatesPage() {
         </div>
       )}
 
-      {/* Template Editor Modal */}
-      {showEditor && selectedNoteType && (
-        <TemplateEditor
-          noteType={selectedNoteType}
-          onClose={() => {
-            setShowEditor(false)
-            setSelectedNoteType(null)
-          }}
-        />
-      )}
+      <Outlet />
     </div>
   )
 }

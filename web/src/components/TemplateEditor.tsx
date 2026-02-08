@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
 import { updateTemplate, fetchDecks } from '#/lib/api'
 import type { NoteType, CardTemplate } from '#/lib/api'
@@ -11,6 +11,14 @@ interface TemplateEditorProps {
 
 type TabType = 'front' | 'back' | 'styling'
 
+function buildInitialSampleFieldVals(fields: string[]): Record<string, string> {
+  const initialVals: Record<string, string> = {}
+  fields.forEach((field, i) => {
+    initialVals[field] = `[${field} sample ${i + 1}]`
+  })
+  return initialVals
+}
+
 export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
   const queryClient = useQueryClient()
   const [selectedTemplate, setSelectedTemplate] = useState<CardTemplate>(noteType.templates[0])
@@ -20,7 +28,9 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
   const [styling, setStyling] = useState(selectedTemplate?.styling || '')
   const [ifFieldNonEmpty, setIfFieldNonEmpty] = useState(selectedTemplate?.ifFieldNonEmpty || '')
   const [deckOverride, setDeckOverride] = useState(selectedTemplate?.deckOverride || '')
-  const [sampleFieldVals, setSampleFieldVals] = useState<Record<string, string>>({})
+  const [sampleFieldVals, setSampleFieldVals] = useState<Record<string, string>>(() =>
+    buildInitialSampleFieldVals(noteType.fields),
+  )
   const [error, setError] = useState<string | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
 
@@ -30,26 +40,16 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
     queryFn: fetchDecks,
   })
 
-  // Initialize sample field values
-  useEffect(() => {
-    const initialVals: Record<string, string> = {}
-    noteType.fields.forEach((field, i) => {
-      initialVals[field] = `[${field} sample ${i + 1}]`
-    })
-    setSampleFieldVals(initialVals)
-  }, [noteType.fields])
-
-  // Update local state when template changes
-  useEffect(() => {
-    if (selectedTemplate) {
-      setQFmt(selectedTemplate.qFmt)
-      setAFmt(selectedTemplate.aFmt)
-      setStyling(selectedTemplate.styling || '')
-      setIfFieldNonEmpty(selectedTemplate.ifFieldNonEmpty || '')
-      setDeckOverride(selectedTemplate.deckOverride || '')
-      setHasChanges(false)
-    }
-  }, [selectedTemplate])
+  const applyTemplate = (template: CardTemplate) => {
+    setSelectedTemplate(template)
+    setQFmt(template.qFmt)
+    setAFmt(template.aFmt)
+    setStyling(template.styling || '')
+    setIfFieldNonEmpty(template.ifFieldNonEmpty || '')
+    setDeckOverride(template.deckOverride || '')
+    setHasChanges(false)
+    setError(null)
+  }
 
   // Validate cloze templates contain {{cloze:Field}} pattern
   const validateClozeTemplate = (frontTemplate: string): string | null => {
@@ -97,10 +97,11 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
       // Update selected template with new data
       const updated = data.templates.find(t => t.name === selectedTemplate.name)
       if (updated) {
-        setSelectedTemplate(updated)
+        applyTemplate(updated)
+      } else {
+        setHasChanges(false)
+        setError(null)
       }
-      setHasChanges(false)
-      setError(null)
       invalidateNoteTypes()
     },
     onError: (err: Error) => setError(err.message),
@@ -117,7 +118,7 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
   const handleTemplateChange = (templateName: string) => {
     const template = noteType.templates.find(t => t.name === templateName)
     if (template) {
-      setSelectedTemplate(template)
+      applyTemplate(template)
     }
   }
 

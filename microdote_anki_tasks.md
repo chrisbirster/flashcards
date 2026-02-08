@@ -17,7 +17,7 @@ _Based on the Anki Manual (print edition)_
 | **M7** Import/Export | ⬜ Not Started | 0/8 | — |
 | **M8** Preferences | ⬜ Not Started | 0/19 | — |
 
-**Test Coverage (repo scan):** 119 tests defined (29 backend + 90 E2E)
+**Test Coverage (repo scan):** 125 tests defined (33 backend + 92 E2E)
 
 ## 🔍 Repo-Validated Snapshot (2026-02-07)
 

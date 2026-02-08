@@ -59,7 +59,7 @@ export function DecksPage() {
           />
           <button
             type="submit"
-            disabled={createDeckMutation.isPending}
+            disabled={createDeckMutation.isPending || !newDeckName.trim()}
             className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300"
           >
             {createDeckMutation.isPending ? 'Creating...' : 'Create'}

@@ -12,7 +12,9 @@ export default defineConfig({
   reporter: 'html',
   use: {
     baseURL,
-    trace: 'on-first-retry',
+    trace: 'on',
+    screenshot: 'on',
+    video: 'on',
   },
 
   projects: [

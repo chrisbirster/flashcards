@@ -60,4 +60,15 @@ describe('AddNoteFormProvider', () => {
     expect(screen.getByTestId('field-front')).toHaveTextContent('Question')
     expect(screen.getByTestId('tags')).toHaveTextContent('tag-a tag-b')
   })
+
+  it('throws when hook is used outside provider', () => {
+    function OutsideProviderProbe() {
+      useAddNoteFormContext()
+      return null
+    }
+
+    expect(() => render(<OutsideProviderProbe />)).toThrow(
+      'useAddNoteFormContext must be used within AddNoteFormProvider',
+    )
+  })
 })

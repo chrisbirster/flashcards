@@ -50,6 +50,13 @@ process.env.PLAYWRIGHT_PORT = String(port);
 console.log(`[playwright] using frontend port ${port}`);
 
 const extraArgs = process.argv.slice(2);
+const isUIMode = extraArgs.includes('--ui');
+const isHeadedExplicitlySet = extraArgs.includes('--headed') || extraArgs.includes('--headless');
+
+// UI mode is meant to be observed interactively; force headed unless caller explicitly overrides.
+if (isUIMode && !isHeadedExplicitlySet) {
+  extraArgs.push('--headed');
+}
 const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const child = spawn(command, ['playwright', 'test', ...extraArgs], {
   stdio: 'inherit',

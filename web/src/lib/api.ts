@@ -72,6 +72,25 @@ export interface CreateDeckRequest {
   name: string
 }
 
+export type ImportSource = 'auto' | 'native' | 'anki' | 'quizlet'
+
+export interface ImportFileRequest {
+  file: File
+  source?: ImportSource
+  deckName?: string
+  noteType?: string
+  format?: string
+}
+
+export interface ImportNotesResponse {
+  imported: number
+  skipped: number
+  source: string
+  format: string
+  decksCreated?: string[]
+  errors?: string[]
+}
+
 export interface CreateNoteRequest {
   typeId: string
   deckId: number
@@ -129,6 +148,26 @@ export async function fetchDeck(id: number): Promise<{deck: Deck; stats: DeckSta
 export async function fetchDeckStats(id: number): Promise<DeckStats> {
   const res = await fetch(`${API_BASE}/decks/${id}/stats`)
   if (!res.ok) throw new Error('Failed to fetch deck stats')
+  return res.json()
+}
+
+export async function importNotesFile(req: ImportFileRequest): Promise<ImportNotesResponse> {
+  const formData = new FormData()
+  formData.append('file', req.file)
+  if (req.source) formData.append('source', req.source)
+  if (req.deckName) formData.append('deckName', req.deckName)
+  if (req.noteType) formData.append('noteType', req.noteType)
+  if (req.format) formData.append('format', req.format)
+
+  const res = await fetch(`${API_BASE}/import`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(text || 'Failed to import file')
+  }
   return res.json()
 }
 

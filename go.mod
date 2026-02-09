@@ -11,4 +11,5 @@ require (
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
 	github.com/open-spaced-repetition/go-fsrs/v3 v3.3.1 // indirect
 	golang.org/x/net v0.26.0 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

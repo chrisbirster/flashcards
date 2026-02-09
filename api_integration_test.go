@@ -17,12 +17,12 @@ import (
 )
 
 type apiTestEnv struct {
-	store     *SQLiteStore
+	store      *SQLiteStore
 	collection *Collection
-	handler   *APIHandler
-	router    http.Handler
-	dbPath    string
-	backupDir string
+	handler    *APIHandler
+	router     http.Handler
+	dbPath     string
+	backupDir  string
 }
 
 func setupAPITestEnv(t *testing.T) *apiTestEnv {
@@ -77,6 +77,7 @@ func newTestAPIRouter(handler *APIHandler) http.Handler {
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", handler.HealthCheck)
 		r.Get("/collection", handler.GetCollection)
+		r.Post("/import", handler.ImportNotes)
 
 		r.Get("/decks", handler.ListDecks)
 		r.Post("/decks", handler.CreateDeck)

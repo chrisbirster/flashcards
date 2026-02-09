@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -90,6 +91,24 @@ type UpdateCardRequest struct {
 	Flag      *int  `json:"flag,omitempty"`      // 0-7 color flags
 	Marked    *bool `json:"marked,omitempty"`    // toggle marked status
 	Suspended *bool `json:"suspended,omitempty"` // toggle suspended status
+}
+
+type ImportNotesJSONRequest struct {
+	Content  string `json:"content"`
+	Filename string `json:"filename"`
+	Source   string `json:"source,omitempty"`
+	Format   string `json:"format,omitempty"`
+	DeckName string `json:"deckName,omitempty"`
+	NoteType string `json:"noteType,omitempty"`
+}
+
+type ImportNotesResponse struct {
+	Imported     int      `json:"imported"`
+	Skipped      int      `json:"skipped"`
+	Source       string   `json:"source"`
+	Format       string   `json:"format"`
+	DecksCreated []string `json:"decksCreated,omitempty"`
+	Errors       []string `json:"errors,omitempty"`
 }
 
 // Handler methods
@@ -259,6 +278,34 @@ func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 		"note":  note,
 		"cards": cards,
 	})
+}
+
+func (h *APIHandler) ImportNotes(w http.ResponseWriter, r *http.Request) {
+	fileData, opts, err := parseImportRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	opts.DefaultDeckName = firstNonEmpty(opts.DefaultDeckName, "Default")
+	opts.DefaultNoteType = firstNonEmpty(opts.DefaultNoteType, "Basic")
+
+	parsed, err := parseImportData(fileData, opts)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	importResult := h.applyImportedNotes(parsed.Notes, opts.DefaultDeckName)
+	importResult.Source = parsed.Source
+	importResult.Format = parsed.Format
+
+	if importResult.Imported == 0 {
+		respondJSON(w, http.StatusBadRequest, importResult)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, importResult)
 }
 
 func (h *APIHandler) GetNote(w http.ResponseWriter, r *http.Request) {
@@ -1240,6 +1287,188 @@ func (h *APIHandler) DeleteEmptyCards(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func parseImportRequest(r *http.Request) ([]byte, importParseOptions, error) {
+	contentType := strings.ToLower(r.Header.Get("Content-Type"))
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			return nil, importParseOptions{}, fmt.Errorf("invalid multipart form: %w", err)
+		}
+
+		file, header, err := r.FormFile("file")
+		if err != nil {
+			return nil, importParseOptions{}, fmt.Errorf("file is required: %w", err)
+		}
+		defer file.Close()
+
+		fileData, err := io.ReadAll(file)
+		if err != nil {
+			return nil, importParseOptions{}, fmt.Errorf("failed to read file: %w", err)
+		}
+		if len(strings.TrimSpace(string(fileData))) == 0 {
+			return nil, importParseOptions{}, fmt.Errorf("import file is empty")
+		}
+
+		return fileData, importParseOptions{
+			Source:          r.FormValue("source"),
+			FormatHint:      r.FormValue("format"),
+			Filename:        header.Filename,
+			DefaultDeckName: r.FormValue("deckName"),
+			DefaultNoteType: r.FormValue("noteType"),
+		}, nil
+	}
+
+	var req ImportNotesJSONRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, importParseOptions{}, fmt.Errorf("invalid request body")
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		return nil, importParseOptions{}, fmt.Errorf("content is required when file upload is not used")
+	}
+
+	return []byte(req.Content), importParseOptions{
+		Source:          req.Source,
+		FormatHint:      req.Format,
+		Filename:        req.Filename,
+		DefaultDeckName: req.DeckName,
+		DefaultNoteType: req.NoteType,
+	}, nil
+}
+
+func (h *APIHandler) applyImportedNotes(notes []importNormalizedNote, defaultDeckName string) ImportNotesResponse {
+	result := ImportNotesResponse{}
+	deckCache := make(map[string]int64)
+	createdDecks := make(map[string]struct{})
+
+	for id, deck := range h.collection.Decks {
+		deckCache[strings.ToLower(deck.Name)] = id
+	}
+
+	for i, importedNote := range notes {
+		noteTypeName := importedNote.NoteType
+		if noteTypeName == "" {
+			noteTypeName = "Basic"
+		}
+
+		noteType, ok := h.collection.NoteTypes[noteTypeName]
+		if !ok {
+			result.Skipped++
+			result.Errors = append(result.Errors, fmt.Sprintf("row %d: unknown note type %q", i+1, noteTypeName))
+			continue
+		}
+
+		deckName := firstNonEmpty(importedNote.DeckName, defaultDeckName, "Default")
+		deckID, err := h.ensureDeckByName(deckName, deckCache, createdDecks)
+		if err != nil {
+			result.Skipped++
+			result.Errors = append(result.Errors, fmt.Sprintf("row %d: failed to resolve deck %q: %v", i+1, deckName, err))
+			continue
+		}
+
+		fieldVals := make(map[string]string, len(noteType.Fields))
+		allEmpty := true
+		for _, fieldName := range noteType.Fields {
+			value, _ := getFieldValueCaseInsensitive(importedNote.Fields, fieldName)
+			sanitizedValue := sanitizeHTML(value)
+			fieldVals[fieldName] = sanitizedValue
+			if strings.TrimSpace(sanitizedValue) != "" {
+				allEmpty = false
+			}
+		}
+
+		if allEmpty {
+			result.Skipped++
+			result.Errors = append(result.Errors, fmt.Sprintf("row %d: note has no content after field mapping", i+1))
+			continue
+		}
+
+		note, cards, err := h.collection.AddNote(deckID, noteTypeName, fieldVals, time.Now())
+		if err != nil {
+			result.Skipped++
+			result.Errors = append(result.Errors, fmt.Sprintf("row %d: failed to create note: %v", i+1, err))
+			continue
+		}
+
+		note.Tags = sanitizeImportTags(importedNote.Tags)
+		if note.Tags == nil {
+			note.Tags = []string{}
+		}
+
+		if err := h.store.CreateNote(h.collectionID, &note); err != nil {
+			result.Skipped++
+			result.Errors = append(result.Errors, fmt.Sprintf("row %d: failed to persist note: %v", i+1, err))
+			continue
+		}
+
+		cardErr := false
+		for _, card := range cards {
+			if err := h.store.CreateCard(card); err != nil {
+				cardErr = true
+				result.Errors = append(result.Errors, fmt.Sprintf("row %d: failed to persist card: %v", i+1, err))
+				break
+			}
+		}
+		if cardErr {
+			result.Skipped++
+			continue
+		}
+
+		result.Imported++
+	}
+
+	result.DecksCreated = sortedKeys(createdDecks)
+	return result
+}
+
+func (h *APIHandler) ensureDeckByName(deckName string, deckCache map[string]int64, createdDecks map[string]struct{}) (int64, error) {
+	name := firstNonEmpty(deckName, "Default")
+	key := strings.ToLower(name)
+	if id, ok := deckCache[key]; ok {
+		return id, nil
+	}
+
+	for id, deck := range h.collection.Decks {
+		if strings.EqualFold(deck.Name, name) {
+			deckCache[key] = id
+			return id, nil
+		}
+	}
+
+	sanitized := sanitizeHTML(name)
+	if strings.TrimSpace(sanitized) == "" {
+		sanitized = "Imported"
+	}
+
+	newDeck := h.collection.NewDeck(sanitized)
+	if err := h.store.CreateDeck(newDeck); err != nil {
+		return 0, err
+	}
+
+	deckCache[key] = newDeck.ID
+	createdDecks[newDeck.Name] = struct{}{}
+	return newDeck.ID, nil
+}
+
+func sanitizeImportTags(tags []string) []string {
+	if len(tags) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(tags))
+	out := make([]string, 0, len(tags))
+	for _, raw := range tags {
+		sanitized := strings.TrimSpace(sanitizeHTML(raw))
+		if sanitized == "" {
+			continue
+		}
+		if _, exists := seen[sanitized]; exists {
+			continue
+		}
+		seen[sanitized] = struct{}{}
+		out = append(out, sanitized)
+	}
+	return out
+}
+
 // stripHTML removes HTML tags and returns plain text
 func stripHTML(html string) string {
 	return htmlPolicy.Sanitize(html)
@@ -1374,6 +1603,7 @@ func main() {
 
 		// Collection
 		r.Get("/collection", handler.GetCollection)
+		r.Post("/import", handler.ImportNotes)
 
 		// Decks
 		r.Get("/decks", handler.ListDecks)

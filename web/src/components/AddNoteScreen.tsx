@@ -297,14 +297,14 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
+    <div className="min-h-screen bg-gray-50 py-4 sm:py-8 px-3 sm:px-4">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Add Note</h1>
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md"
+            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md w-full sm:w-auto"
           >
             Close
           </button>
@@ -312,13 +312,13 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Note Type and Deck Selectors */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Note Type
                 </label>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <select
                     value={selectedNoteType}
                     onChange={(e) => setSelectedNoteType(e.target.value)}
@@ -364,12 +364,12 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
           </div>
 
           {/* Field Inputs */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between mb-4">
+          <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
               <h2 className="text-lg font-semibold text-gray-900">Fields</h2>
               {/* Cloze toolbar - only shown for Cloze note type */}
               {isClozeType && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     type="button"
                     onClick={insertCloze}
@@ -481,7 +481,7 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
           )}
 
           {/* Tags */}
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-white rounded-lg shadow p-4 sm:p-6">
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Tags
             </label>
@@ -498,18 +498,18 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
           </div>
 
           {/* Actions */}
-          <div className="flex gap-4">
+          <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-4">
             <button
               type="submit"
               disabled={createNoteMutation.isPending || !hasRequiredContent()}
-              className="flex-1 px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              className="flex-1 px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed w-full"
             >
               {createNoteMutation.isPending ? 'Adding...' : 'Add Note'}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-3 text-gray-700 bg-gray-100 font-medium rounded-lg hover:bg-gray-200"
+              className="px-6 py-3 text-gray-700 bg-gray-100 font-medium rounded-lg hover:bg-gray-200 w-full sm:w-auto"
             >
               Cancel
             </button>
@@ -523,7 +523,7 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
 
         {/* Preview section */}
         {currentNoteType && hasRequiredContent() && (
-          <div className="mt-6 bg-white rounded-lg shadow p-6">
+          <div className="mt-6 bg-white rounded-lg shadow p-4 sm:p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Preview</h2>
             <div className="space-y-4">
               {isClozeType ? (
@@ -549,7 +549,7 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
                         <div className="text-sm text-gray-500 mb-2">
                           Card {ordinal}: Cloze {ordinal}
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <div>
                             <div className="text-xs text-gray-400 mb-1">Front (hidden)</div>
                             <div
@@ -589,7 +589,7 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
                       <div className="text-sm text-gray-500 mb-2">
                         Card {idx + 1}: {template.name}
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <TemplateFieldPreview previewContent={front} label="Front" />
                         <TemplateFieldPreview previewContent={back} label="Back" />
                       </div>

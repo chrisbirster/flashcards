@@ -14,11 +14,11 @@ const navItems = [
 
 export function HeaderMenuLinks() {
     return (
-        <div className="flex items-center gap-8">
-            <Link to="/decks" className="flex items-center">
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <Link to="/decks" className="flex items-center shrink-0">
                 <h1 className="text-2xl font-bold text-gray-900">Microdote</h1>
             </Link>
-            <div className="flex gap-1">
+            <div className="flex gap-1 overflow-x-auto pb-1 sm:overflow-visible sm:pb-0">
                 {navItems.map((item) => (
                     <HeaderMenuItem key={item.path} item={item} />
                 ))}

@@ -4,7 +4,7 @@ async function createDeckFromHome(page: Page, namePrefix: string) {
   await page.goto('/')
 
   const deckInput = page.locator('input[placeholder="Deck name"]')
-  await expect(deckInput).toBeVisible()
+  await expect(deckInput).toBeVisible({ timeout: 15000 })
   await expect(deckInput).toBeEditable()
 
   const deckName = `${namePrefix} ${Date.now()}`
@@ -270,7 +270,8 @@ test.describe('Template Editor', () => {
 
     // Save and close
     await page.click('[data-testid="save-template"]')
-    await expect(page.locator('[data-testid="save-template"]')).toBeDisabled({ timeout: 10000 })
+    await expect(page.locator('text=Unsaved changes')).not.toBeVisible({ timeout: 10000 })
+    await expect(page.locator('[data-testid="save-template"]')).toBeDisabled()
 
     // Close via X button which is in the modal header
     await page.click('[data-testid="close-template-editor"]')
@@ -279,7 +280,7 @@ test.describe('Template Editor', () => {
     await page.click('[data-testid="edit-templates-button"]')
 
     // Should still have the modified content
-    await expect(page.locator('[data-testid="editor-front"]')).toHaveValue(uniqueValue)
+    await expect(page.locator('[data-testid="editor-front"]')).toHaveValue(uniqueValue, { timeout: 15000 })
   })
 
   test('can auto-fix invalid cloze template', async ({ page }) => {

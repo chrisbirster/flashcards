@@ -50,7 +50,7 @@ test.describe('Deck Management', () => {
 
   test('should disable create button when input is empty', async ({ page }) => {
     await expect(page.getByRole('heading', { name: 'Create New Deck' })).toBeVisible();
-    const createButton = page.locator('form button[type="submit"]');
+    const createButton = page.getByRole('button', { name: 'Create' });
 
     // Button should be disabled with empty input
     await expect(createButton).toBeDisabled();

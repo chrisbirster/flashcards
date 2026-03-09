@@ -84,6 +84,22 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
     queryClient.invalidateQueries({ queryKey: ['note-type', noteType.name] })
   }
 
+  const syncNoteTypeCache = (updatedTemplates: CardTemplate[]) => {
+    queryClient.setQueryData<NoteType[]>(['note-types'], (existing) => {
+      if (!existing) return existing
+      return existing.map((candidate) =>
+        candidate.name === noteType.name
+          ? { ...candidate, templates: updatedTemplates }
+          : candidate,
+      )
+    })
+
+    queryClient.setQueryData<NoteType>(['note-type', noteType.name], (existing) => {
+      if (!existing) return existing
+      return { ...existing, templates: updatedTemplates }
+    })
+  }
+
   const updateTemplateMutation = useMutation({
     mutationFn: () =>
       updateTemplate(noteType.name, selectedTemplate.name, {
@@ -95,6 +111,7 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
       }),
     onSuccess: (data) => {
       // Update selected template with new data
+      syncNoteTypeCache(data.templates)
       const updated = data.templates.find(t => t.name === selectedTemplate.name)
       if (updated) {
         applyTemplate(updated)
@@ -165,16 +182,16 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 p-2 sm:p-0">
+      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-0 sm:mx-4 h-[95vh] sm:h-auto max-h-[95vh] sm:max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold text-gray-900">
+        <div className="flex items-start sm:items-center justify-between gap-3 p-3 sm:p-4 border-b">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900">
             Edit Templates: {noteType.name}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-gray-400 hover:text-gray-600 shrink-0"
             data-testid="close-template-editor"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -183,7 +200,7 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
           </button>
         </div>
 
-        <div className="flex-1 overflow-auto p-4">
+        <div className="flex-1 overflow-auto p-3 sm:p-4">
           {/* Error message */}
           {error && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-700 text-sm">
@@ -240,8 +257,8 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Conditional Generation
               </label>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600 whitespace-nowrap">Only generate card if</span>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <span className="text-sm text-gray-600">Only generate card if</span>
                 <select
                   value={ifFieldNonEmpty}
                   onChange={(e) => {
@@ -258,7 +275,7 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
                     </option>
                   ))}
                 </select>
-                <span className="text-sm text-gray-600 whitespace-nowrap">is not empty</span>
+                <span className="text-sm text-gray-600">is not empty</span>
               </div>
               <p className="mt-2 text-xs text-gray-500">
                 If set, this template will only create a card when the selected field has content.
@@ -292,16 +309,16 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Left side: Editor */}
             <div>
               {/* Tabs */}
-              <div className="flex border-b mb-4">
+              <div className="flex border-b mb-4 overflow-x-auto">
                 {(['front', 'back', 'styling'] as TabType[]).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+                    className={`px-3 sm:px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${
                       activeTab === tab
                         ? 'border-blue-500 text-blue-600'
                         : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -353,7 +370,7 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
                 <div className="space-y-2">
                   {noteType.fields.map((field) => (
                     <div key={field} className="flex items-center gap-2">
-                      <label className="text-xs text-gray-500 w-20 truncate" title={field}>
+                      <label className="text-xs text-gray-500 w-16 sm:w-20 truncate" title={field}>
                         {field}:
                       </label>
                       <input
@@ -401,21 +418,21 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
         </div>
 
         {/* Footer */}
-        <div className="flex justify-between items-center gap-2 p-4 border-t bg-gray-50">
-          <div className="text-sm text-gray-500">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-3 sm:p-4 border-t bg-gray-50">
+          <div className="text-sm text-gray-500 min-h-5">
             {hasChanges && <span className="text-amber-600">Unsaved changes</span>}
           </div>
-          <div className="flex gap-2">
+          <div className="flex w-full sm:w-auto flex-col-reverse sm:flex-row gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 w-full sm:w-auto"
             >
               Close
             </button>
             <button
               onClick={handleSave}
               disabled={!hasChanges || updateTemplateMutation.isPending || !!clozeValidationError}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed w-full sm:w-auto"
               data-testid="save-template"
             >
               {updateTemplateMutation.isPending ? 'Saving...' : 'Save Changes'}

@@ -78,9 +78,9 @@ export function DecksPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <h2 className="text-xl font-semibold mb-4">Create New Deck</h2>
-        <form onSubmit={handleCreateDeck} className="flex gap-2">
+      <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6">
+        <h2 className="text-lg sm:text-xl font-semibold mb-4">Create New Deck</h2>
+        <form onSubmit={handleCreateDeck} className="flex flex-col sm:flex-row gap-2">
           <input
             type="text"
             value={newDeckName}
@@ -91,7 +91,7 @@ export function DecksPage() {
           <button
             type="submit"
             disabled={createDeckMutation.isPending || !newDeckName.trim()}
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300"
+            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 w-full sm:w-auto"
           >
             {createDeckMutation.isPending ? 'Creating...' : 'Create'}
           </button>
@@ -103,8 +103,8 @@ export function DecksPage() {
         )}
       </div>
 
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <h2 className="text-xl font-semibold mb-2">Import Notes</h2>
+      <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6">
+        <h2 className="text-lg sm:text-xl font-semibold mb-2">Import Notes</h2>
         <p className="text-sm text-gray-600 mb-4">
           Recommended format is JSON/YAML (safe for tabs/newlines). Also supports Anki text/APKG and Quizlet exports.
         </p>
@@ -144,7 +144,7 @@ export function DecksPage() {
           <button
             type="submit"
             disabled={importMutation.isPending || !importFile}
-            className="md:col-span-2 px-6 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:bg-gray-300"
+            className="md:col-span-2 px-6 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:bg-gray-300 w-full"
           >
             {importMutation.isPending ? 'Importing...' : 'Import File'}
           </button>
@@ -172,7 +172,7 @@ export function DecksPage() {
       </div>
 
       <div className="bg-white rounded-lg shadow">
-        <h2 className="text-xl font-semibold p-6 pb-4">Your Decks</h2>
+        <h2 className="text-lg sm:text-xl font-semibold p-4 sm:p-6 pb-3 sm:pb-4">Your Decks</h2>
         {decks && decks.length > 0 ? (
           <ul className="divide-y divide-gray-200">
             {decks.map((deck) => (

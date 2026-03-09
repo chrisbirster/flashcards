@@ -147,10 +147,10 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
     setFieldOptionsMutation.isPending
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 p-2 sm:p-0">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-0 sm:mx-4 h-[95vh] sm:h-auto max-h-[95vh] sm:max-h-[90vh] flex flex-col">
         <EditFieldPanelHeader noteTypeName={noteType.name} onClose={onClose} />
-        <div className="p-4">
+        <div className="p-3 sm:p-4 overflow-auto">
           {/* Error message */}
           {error && <ErrorMessage message={error} />}
 
@@ -160,7 +160,7 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
             <div className="space-y-2">
               {fields.map((field, index) => (
                 <div key={field} className="space-y-2">
-                  <div className="flex items-center gap-2 p-2 bg-gray-50 rounded-md">
+                  <div className="flex flex-wrap items-center gap-2 p-2 bg-gray-50 rounded-md">
                     {editingField === field ? (
                       <input
                         type="text"
@@ -176,7 +176,7 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
                       />
                     ) : (
                       <span
-                        className="flex-1 cursor-pointer hover:text-blue-600"
+                        className="flex-1 min-w-[10rem] cursor-pointer hover:text-blue-600"
                         onClick={() => {
                           setEditingField(field)
                           setEditFieldName(field)
@@ -292,7 +292,7 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
           </div>
 
           {/* Add new field */}
-          <form onSubmit={handleAddField} className="flex gap-2">
+          <form onSubmit={handleAddField} className="flex flex-col sm:flex-row gap-2">
             <input
               id="new-field-name"
               type="text"
@@ -305,7 +305,7 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
             <button
               type="submit"
               disabled={!newFieldName.trim() || isPending}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed w-full sm:w-auto"
               data-testid="field-editor-add-button"
             >
               Add
@@ -317,10 +317,10 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
           </p>
         </div>
 
-        <div className="flex justify-end gap-2 p-4 border-t bg-gray-50">
+        <div className="flex justify-end gap-2 p-3 sm:p-4 border-t bg-gray-50">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 w-full sm:w-auto"
             data-testid="close-field-editor-footer"
           >
             Close

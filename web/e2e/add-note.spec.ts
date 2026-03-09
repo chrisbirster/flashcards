@@ -20,22 +20,24 @@ test.describe('Add Note Screen', () => {
 
   test('displays note type selector', async ({ page }) => {
     await page.click('button:has-text("Add Cards")')
+    await expect(page.locator('h1:has-text("Add Note")')).toBeVisible()
 
-    // Should have note type dropdown
-    const noteTypeSelect = page.locator('select').first()
+    // Should have note type dropdown in the Add Note form
+    const noteTypeSelect = page.locator('label:has-text("Note Type")').locator('..').locator('select')
     await expect(noteTypeSelect).toBeVisible()
 
     // Should have a note type selected (any built-in type is valid)
     const value = await noteTypeSelect.inputValue()
     expect(value.length).toBeGreaterThan(0)
-    expect(value).toContain('Basic') // All built-in types contain "Basic" or "Cloze"
+    expect(value).toMatch(/Basic|Cloze/)
   })
 
   test('displays deck selector', async ({ page }) => {
     await page.click('button:has-text("Add Cards")')
+    await expect(page.locator('h1:has-text("Add Note")')).toBeVisible()
 
-    // Should have deck dropdown
-    const deckSelect = page.locator('select').nth(1)
+    // Should have deck dropdown in the Add Note form
+    const deckSelect = page.locator('label:has-text("Deck")').locator('..').locator('select')
     await expect(deckSelect).toBeVisible()
   })
 

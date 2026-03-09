@@ -76,7 +76,7 @@ export function EmptyCardsPage() {
   return (
     <div className="max-w-5xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Empty Cards</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Empty Cards</h1>
         <p className="text-gray-600">
           Cards with no content or missing cloze deletions. These can be safely deleted.
         </p>
@@ -85,8 +85,8 @@ export function EmptyCardsPage() {
       {data && data.count > 0 ? (
         <>
           <div className="bg-white rounded-lg shadow border border-gray-200">
-            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-              <div className="flex items-center gap-4">
+            <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3 sm:gap-4">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -107,7 +107,7 @@ export function EmptyCardsPage() {
               <button
                 onClick={handleDelete}
                 disabled={selectedCards.size === 0 || deleteCardsMutation.isPending}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium"
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-sm font-medium w-full sm:w-auto"
               >
                 {deleteCardsMutation.isPending ? 'Deleting...' : `Delete Selected (${selectedCards.size})`}
               </button>
@@ -143,24 +143,24 @@ export function EmptyCardsPage() {
 
       {/* Confirmation Dialog */}
       {showConfirmDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 p-2 sm:p-0">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-0 sm:mx-4 p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Confirm Deletion</h3>
             <p className="text-gray-600 mb-6">
               Are you sure you want to delete {selectedCards.size} empty card{selectedCards.size !== 1 ? 's' : ''}? 
               This action cannot be undone.
             </p>
-            <div className="flex gap-3 justify-end">
+            <div className="flex flex-col-reverse sm:flex-row gap-3 sm:justify-end">
               <button
                 onClick={() => setShowConfirmDialog(false)}
-                className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 w-full sm:w-auto"
                 disabled={deleteCardsMutation.isPending}
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 w-full sm:w-auto"
                 disabled={deleteCardsMutation.isPending}
               >
                 {deleteCardsMutation.isPending ? 'Deleting...' : 'Delete'}
@@ -192,7 +192,7 @@ function EmptyCardItem({ card, selected, onSelect }: EmptyCardItemProps) {
           className="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
         />
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-2">
             <div>
               <span className="text-sm font-medium text-gray-900">
                 Card #{card.cardId}
@@ -208,7 +208,7 @@ function EmptyCardItem({ card, selected, onSelect }: EmptyCardItemProps) {
             </div>
             <button
               onClick={() => setExpanded(!expanded)}
-              className="text-sm text-blue-600 hover:text-blue-700"
+              className="text-sm text-blue-600 hover:text-blue-700 self-start"
             >
               {expanded ? 'Hide' : 'Show'} Preview
             </button>

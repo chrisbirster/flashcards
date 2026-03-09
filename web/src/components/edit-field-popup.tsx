@@ -10,12 +10,12 @@ export const EditFieldPopup = forwardRef<HTMLDivElement, EditFieldPopupProps>(fu
     ...props
 }, ref) {
     return (
-        <div className="ml-4 p-3 bg-blue-50 border border-blue-200 rounded-md" data-testid={`field-options-panel-${field}`}
+        <div className="ml-0 sm:ml-4 p-3 bg-blue-50 border border-blue-200 rounded-md" data-testid={`field-options-panel-${field}`}
             {...props}
             ref={ref}
         >
             <div className="text-xs font-medium text-gray-700 mb-2">Field Options: {field}</div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {children}
             </div>
         </div>

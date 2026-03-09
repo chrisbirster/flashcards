@@ -13,7 +13,7 @@ export function HeaderMenuItem({
         <NavLink
             key={item.path}
             to={item.path}
-            className={({ isActive }) => `px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            className={({ isActive }) => `px-3 sm:px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                 isActive ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
             }`}
         >

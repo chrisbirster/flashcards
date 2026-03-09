@@ -12,8 +12,8 @@ interface EditorRouteStateProps {
 
 function EditorRouteState({ message, onClose }: EditorRouteStateProps) {
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 p-2 sm:p-0">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-0 sm:mx-4 p-4 sm:p-6">
         <p className="text-gray-700">{message}</p>
         <div className="mt-4 flex justify-end">
           <button

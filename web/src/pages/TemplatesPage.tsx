@@ -36,7 +36,7 @@ export function TemplatesPage() {
   return (
     <div className="max-w-5xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Card Templates</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Card Templates</h1>
         <p className="text-gray-600">
           Manage templates for your note types. Templates control how cards are generated and displayed.
         </p>
@@ -45,8 +45,8 @@ export function TemplatesPage() {
       <div className="grid gap-6">
         {noteTypes && noteTypes.map((noteType) => (
           <div key={noteType.name} className="bg-white rounded-lg shadow border border-gray-200">
-            <div className="p-6">
-              <div className="flex items-start justify-between mb-4">
+            <div className="p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">{noteType.name}</h3>
                   <p className="text-sm text-gray-600 mt-1">
@@ -56,7 +56,7 @@ export function TemplatesPage() {
                 </div>
                 <button
                   onClick={() => handleEditTemplate(noteType)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium w-full sm:w-auto"
                 >
                   Edit Template
                 </button>
@@ -109,7 +109,7 @@ export function TemplatesPage() {
       </div>
 
       {!noteTypes || noteTypes.length === 0 && (
-        <div className="bg-white rounded-lg shadow p-8 text-center">
+        <div className="bg-white rounded-lg shadow p-6 sm:p-8 text-center">
           <p className="text-gray-500">No note types found.</p>
         </div>
       )}

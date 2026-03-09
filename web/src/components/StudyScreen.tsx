@@ -165,24 +165,24 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
   const progress = `${currentCardIndex + 1} / ${cards.length}`
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
+    <div className="min-h-screen bg-gray-50 py-4 sm:py-8 px-3 sm:px-4">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
           <div>
             <h1 className="text-xl font-semibold text-gray-900">{deckName}</h1>
             <p className="text-sm text-gray-600">Card {progress}</p>
           </div>
           <button
             onClick={onExit}
-            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md"
+            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md w-full sm:w-auto"
           >
             Exit
           </button>
         </div>
 
         {/* Card Tools */}
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-2 mb-4">
           {/* Flag button with dropdown */}
           <div className="relative">
             <button
@@ -199,7 +199,7 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
               Flag
             </button>
             {showFlagMenu && (
-              <div className="absolute left-0 top-full mt-1 bg-white rounded-lg shadow-lg border z-10 py-1 min-w-[120px]">
+              <div className="absolute left-0 top-full mt-1 bg-white rounded-lg shadow-lg border z-10 py-1 min-w-[140px] max-w-[calc(100vw-2rem)]">
                 {FLAG_COLORS.map((flag) => (
                   <button
                     key={flag.id}
@@ -247,22 +247,22 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
         </div>
 
         {/* Card */}
-        <div className="bg-white rounded-lg shadow-lg p-8 mb-6">
+        <div className="bg-white rounded-lg shadow-lg p-4 sm:p-8 mb-6">
           {/* Question */}
-          <div className="mb-8">
+          <div className="mb-6 sm:mb-8">
             <div className="text-sm text-gray-500 mb-2">Question</div>
             <div
-              className="text-xl prose max-w-none"
+              className="text-base sm:text-xl prose max-w-none"
               dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(currentCard.front) }}
             />
             </div>
 
           {/* Answer (revealed) */}
           {showAnswer && (
-            <div className="border-t pt-8">
+            <div className="border-t pt-6 sm:pt-8">
               <div className="text-sm text-gray-500 mb-2">Answer</div>
               <div
-                className="text-xl prose max-w-none"
+                className="text-base sm:text-xl prose max-w-none"
                 dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(currentCard.back) }}
               />
             </div>
@@ -274,7 +274,7 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
           <div className="text-center">
             <button
               onClick={() => setShowAnswer(true)}
-              className="px-8 py-4 bg-blue-600 text-white text-lg rounded-lg hover:bg-blue-700 font-medium"
+              className="px-8 py-4 bg-blue-600 text-white text-base sm:text-lg rounded-lg hover:bg-blue-700 font-medium w-full sm:w-auto"
             >
               Show Answer
             </button>
@@ -285,11 +285,11 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
           </div>
         ) : (
           <div>
-            <div className="flex gap-4 justify-center">
+            <div className="grid grid-cols-2 sm:flex gap-3 sm:gap-4 justify-center">
               <button
                 onClick={() => handleAnswer(1)}
                 disabled={answerMutation.isPending}
-                className="flex-1 max-w-xs px-6 py-4 bg-red-100 text-red-800 rounded-lg hover:bg-red-200 disabled:opacity-50 font-medium"
+                className="w-full sm:flex-1 sm:max-w-xs px-4 sm:px-6 py-3 sm:py-4 bg-red-100 text-red-800 rounded-lg hover:bg-red-200 disabled:opacity-50 font-medium"
               >
                 <div className="text-lg">Again</div>
                 <div className="text-xs mt-1">1</div>
@@ -297,7 +297,7 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
               <button
                 onClick={() => handleAnswer(2)}
                 disabled={answerMutation.isPending}
-                className="flex-1 max-w-xs px-6 py-4 bg-orange-100 text-orange-800 rounded-lg hover:bg-orange-200 disabled:opacity-50 font-medium"
+                className="w-full sm:flex-1 sm:max-w-xs px-4 sm:px-6 py-3 sm:py-4 bg-orange-100 text-orange-800 rounded-lg hover:bg-orange-200 disabled:opacity-50 font-medium"
               >
                 <div className="text-lg">Hard</div>
                 <div className="text-xs mt-1">2</div>
@@ -305,7 +305,7 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
               <button
                 onClick={() => handleAnswer(3)}
                 disabled={answerMutation.isPending}
-                className="flex-1 max-w-xs px-6 py-4 bg-green-100 text-green-800 rounded-lg hover:bg-green-200 disabled:opacity-50 font-medium"
+                className="w-full sm:flex-1 sm:max-w-xs px-4 sm:px-6 py-3 sm:py-4 bg-green-100 text-green-800 rounded-lg hover:bg-green-200 disabled:opacity-50 font-medium"
               >
                 <div className="text-lg">Good</div>
                 <div className="text-xs mt-1">3</div>
@@ -313,7 +313,7 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
               <button
                 onClick={() => handleAnswer(4)}
                 disabled={answerMutation.isPending}
-                className="flex-1 max-w-xs px-6 py-4 bg-blue-100 text-blue-800 rounded-lg hover:bg-blue-200 disabled:opacity-50 font-medium"
+                className="w-full sm:flex-1 sm:max-w-xs px-4 sm:px-6 py-3 sm:py-4 bg-blue-100 text-blue-800 rounded-lg hover:bg-blue-200 disabled:opacity-50 font-medium"
               >
                 <div className="text-lg">Easy</div>
                 <div className="text-xs mt-1">4</div>

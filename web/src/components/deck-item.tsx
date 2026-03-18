@@ -1,13 +1,15 @@
 import { useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { fetchDeckStats, type Deck } from '#/lib/api'
+import type { Deck } from '#/lib/api'
 import { DeckStatItem } from './deck-stat-item'
+import { useAppRepository } from '#/lib/app-repository'
 
 export function DeckItem({ deck }: { deck: Deck }) {
   const navigate = useNavigate()
+  const repository = useAppRepository()
   const { data: stats } = useQuery({
     queryKey: ['deck-stats', deck.id],
-    queryFn: () => fetchDeckStats(deck.id),
+    queryFn: () => repository.fetchDeckStats(deck.id),
   })
 
   return (

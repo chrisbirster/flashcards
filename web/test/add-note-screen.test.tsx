@@ -1,0 +1,90 @@
+import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router'
+import { AddNoteScreen } from '#/components/AddNoteScreen'
+import { AppRepositoryProvider, type AppRepository } from '#/lib/app-repository'
+
+function renderAddNoteScreen(repository: AppRepository) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  })
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <AppRepositoryProvider repository={repository}>
+        <MemoryRouter>
+          <AddNoteScreen deckId={1} onClose={() => {}} />
+        </MemoryRouter>
+      </AppRepositoryProvider>
+    </QueryClientProvider>,
+  )
+}
+
+describe('AddNoteScreen recent notes', () => {
+  it('prepends the newly created note to the recent deck notes panel', async () => {
+    const repository = {
+      fetchNoteTypes: vi.fn().mockResolvedValue([
+        {
+          name: 'Basic',
+          fields: ['Front', 'Back'],
+          templates: [{ name: 'Card 1', qFmt: '{{Front}}', aFmt: '{{Back}}', styling: '', isCloze: false }],
+          sortFieldIndex: 0,
+          fieldOptions: {},
+        },
+      ]),
+      fetchDecks: vi.fn().mockResolvedValue([{ id: 1, name: 'Deck 1', parentId: null, cardIds: [] }]),
+      fetchDeckNotes: vi.fn().mockResolvedValue({
+        notes: [
+          {
+            noteId: 1,
+            noteType: 'Basic',
+            createdAt: '2026-03-15T11:00:00Z',
+            modifiedAt: '2026-03-15T11:00:00Z',
+            tags: ['existing'],
+            fieldPreview: 'Existing recent note',
+            cardCountInDeck: 1,
+          },
+        ],
+      }),
+      checkDuplicate: vi.fn().mockResolvedValue({ isDuplicate: false, duplicates: [] }),
+      createNote: vi.fn().mockResolvedValue({
+        note: {
+          id: 2,
+          typeId: 'Basic',
+          fieldVals: {
+            Front: 'Newest front',
+            Back: 'Newest back',
+          },
+          tags: ['new'],
+          createdAt: '2026-03-15T12:00:00Z',
+          modifiedAt: '2026-03-15T12:00:00Z',
+        },
+        cards: [
+          {
+            id: 20,
+            deckId: 1,
+          },
+        ],
+      }),
+    } as unknown as AppRepository
+
+    renderAddNoteScreen(repository)
+
+    expect(await screen.findByText('Existing recent note')).toBeInTheDocument()
+
+    fireEvent.change(await screen.findByPlaceholderText('Enter front...'), { target: { value: 'Newest front' } })
+    fireEvent.change(screen.getByPlaceholderText('Enter back...'), { target: { value: 'Newest back' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add Note' }))
+
+    await waitFor(() => expect(repository.createNote).toHaveBeenCalled())
+
+    const items = within(screen.getByTestId('recent-deck-notes')).getAllByRole('listitem')
+    expect(items[0]).toHaveTextContent('Newest front')
+    expect(items[1]).toHaveTextContent('Existing recent note')
+  })
+})

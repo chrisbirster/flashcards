@@ -11,9 +11,13 @@ import {
 
 const fetchNoteTypesMock = vi.fn()
 
-vi.mock('#/lib/api', () => ({
-  fetchNoteTypes: () => fetchNoteTypesMock(),
-}))
+vi.mock('#/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('#/lib/api')>()
+  return {
+    ...actual,
+    fetchNoteTypes: () => fetchNoteTypesMock(),
+  }
+})
 
 vi.mock('#/components/FieldEditor', () => ({
   FieldEditor: ({ noteType }: { noteType: { name: string } }) => (

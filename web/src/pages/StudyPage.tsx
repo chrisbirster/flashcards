@@ -1,15 +1,16 @@
 import { useParams, useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { fetchDecks } from '#/lib/api'
 import { StudyScreen } from '#/components/StudyScreen'
+import { useAppRepository } from '#/lib/app-repository'
 
 export function StudyPage() {
   const { deckId } = useParams<{ deckId: string }>()
   const navigate = useNavigate()
+  const repository = useAppRepository()
 
   const { data: decks, isLoading } = useQuery({
     queryKey: ['decks'],
-    queryFn: fetchDecks,
+    queryFn: () => repository.fetchDecks(),
   })
 
   if (isLoading) {

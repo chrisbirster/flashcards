@@ -34,7 +34,7 @@ test.describe('Study Screen', () => {
   test('shows "All done!" message when no cards are due', async ({ page }) => {
     // This tests the empty state or study completion
     // Check that we have the deck list visible
-    await expect(page.locator('h1:has-text("Microdote")')).toBeVisible()
+    await expect(page.locator('h1:has-text("Vutadex")')).toBeVisible()
 
     // Verify study button exists
     const studyButton = page.locator('button:has-text("Study Now")').first()
@@ -97,7 +97,7 @@ test.describe('Study Screen', () => {
 
   test('Exit button returns to deck list', async ({ page }) => {
     // Verify navigation structure
-    const header = page.locator('h1:has-text("Microdote")')
+    const header = page.locator('h1:has-text("Vutadex")')
     await expect(header).toBeVisible()
   })
 

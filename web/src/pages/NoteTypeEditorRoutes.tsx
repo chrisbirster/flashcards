@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router'
 import { FieldEditor } from '#/components/FieldEditor'
 import { TemplateEditor } from '#/components/TemplateEditor'
-import { fetchNoteTypes } from '#/lib/api'
+import { useAppRepository } from '#/lib/app-repository'
 
 interface EditorRouteStateProps {
   message: string
@@ -55,10 +55,11 @@ function useCloseWithFallback(fallbackPath: string) {
 function useNoteTypeFromRoute() {
   const { noteTypeName } = useParams<{ noteTypeName: string }>()
   const decodedNoteTypeName = useMemo(() => decodeNoteTypeName(noteTypeName), [noteTypeName])
+  const repository = useAppRepository()
 
   const { data: noteTypes, isLoading, error } = useQuery({
     queryKey: ['note-types'],
-    queryFn: fetchNoteTypes,
+    queryFn: () => repository.fetchNoteTypes(),
   })
 
   const noteType = noteTypes?.find((candidate) => candidate.name === decodedNoteTypeName)

@@ -23,6 +23,20 @@ type apiTestEnv struct {
 	router     http.Handler
 	dbPath     string
 	backupDir  string
+	authCookie string
+}
+
+type otpEmailStub struct {
+	lastTo      string
+	lastCode    string
+	lastExpires time.Time
+}
+
+func (s *otpEmailStub) SendOTP(_ context.Context, to, code string, expiresAt time.Time) error {
+	s.lastTo = to
+	s.lastCode = code
+	s.lastExpires = expiresAt
+	return nil
 }
 
 func setupAPITestEnv(t *testing.T) *apiTestEnv {
@@ -59,8 +73,48 @@ func setupAPITestEnv(t *testing.T) *apiTestEnv {
 		t.Fatalf("failed to create default deck: %v", err)
 	}
 
+	now := time.Now()
+	user := &User{
+		ID:          newID("usr"),
+		Email:       "test@example.com",
+		DisplayName: "Test User",
+		LastLoginAt: now,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := store.CreateUser(user); err != nil {
+		t.Fatalf("failed to create test user: %v", err)
+	}
+
+	workspace := &Workspace{
+		ID:           newID("ws"),
+		Name:         "Test Workspace",
+		Slug:         "test-workspace",
+		CollectionID: "default",
+		OwnerUserID:  user.ID,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := store.CreateWorkspaceRecord(workspace); err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+
+	session := &SessionRecord{
+		ID:          newID("sess"),
+		UserID:      user.ID,
+		WorkspaceID: workspace.ID,
+		Plan:        PlanFree,
+		ExpiresAt:   now.Add(24 * time.Hour),
+		LastSeenAt:  now,
+		CreatedAt:   now,
+	}
+	if err := store.CreateSessionRecord(session); err != nil {
+		t.Fatalf("failed to create test session: %v", err)
+	}
+
 	handler := NewAPIHandler(store, col, NewBackupManager(dbPath, backupDir, store))
-	router := newTestAPIRouter(handler)
+	authCookie := fmt.Sprintf("%s=%s", sessionCookieName, session.ID)
+	router := newTestAPIRouter(handler, authCookie)
 
 	return &apiTestEnv{
 		store:      store,
@@ -69,50 +123,38 @@ func setupAPITestEnv(t *testing.T) *apiTestEnv {
 		router:     router,
 		dbPath:     dbPath,
 		backupDir:  backupDir,
+		authCookie: authCookie,
 	}
 }
 
-func newTestAPIRouter(handler *APIHandler) http.Handler {
+func newTestAPIRouter(handler *APIHandler, authCookie string) http.Handler {
 	r := chi.NewRouter()
+	if authCookie != "" {
+		r.Use(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if req.Header.Get("X-Test-No-Auth") == "1" {
+					next.ServeHTTP(w, req)
+					return
+				}
+				if req.Header.Get("Cookie") == "" {
+					req.Header.Set("Cookie", authCookie)
+				}
+				next.ServeHTTP(w, req)
+			})
+		})
+	}
 	r.Route("/api", func(r chi.Router) {
-		r.Get("/health", handler.HealthCheck)
-		r.Get("/collection", handler.GetCollection)
-		r.Post("/import", handler.ImportNotes)
-
-		r.Get("/decks", handler.ListDecks)
-		r.Post("/decks", handler.CreateDeck)
-		r.Get("/decks/{id}", handler.GetDeck)
-		r.Get("/decks/{id}/stats", handler.GetDeckStats)
-		r.Get("/decks/{deckId}/due", handler.GetDueCards)
-
-		r.Get("/note-types", handler.ListNoteTypes)
-		r.Get("/note-types/{name}", handler.GetNoteType)
-		r.Post("/note-types/{name}/fields", handler.AddField)
-		r.Patch("/note-types/{name}/fields/rename", handler.RenameField)
-		r.Delete("/note-types/{name}/fields", handler.RemoveField)
-		r.Put("/note-types/{name}/fields/reorder", handler.ReorderFields)
-		r.Put("/note-types/{name}/sort-field", handler.SetSortField)
-		r.Put("/note-types/{name}/fields/options", handler.SetFieldOptions)
-		r.Patch("/note-types/{name}/templates/{templateName}", handler.UpdateTemplate)
-
-		r.Post("/notes", handler.CreateNote)
-		r.Get("/notes/{id}", handler.GetNote)
-		r.Post("/notes/check-duplicate", handler.CheckDuplicate)
-
-		r.Get("/cards/{id}", handler.GetCard)
-		r.Post("/cards/{id}/answer", handler.AnswerCard)
-		r.Patch("/cards/{id}", handler.UpdateCard)
-		r.Get("/cards/empty", handler.FindEmptyCards)
-		r.Post("/cards/empty/delete", handler.DeleteEmptyCards)
-
-		r.Post("/backups", handler.CreateBackup)
-		r.Get("/backups", handler.ListBackups)
-		r.Post("/backups/restore", handler.RestoreBackup)
+		registerAPIRoutes(r, handler)
 	})
 	return r
 }
 
 func doJSONRequest(t *testing.T, router http.Handler, method, path string, payload interface{}) *httptest.ResponseRecorder {
+	t.Helper()
+	return doJSONRequestWithHeaders(t, router, method, path, payload, nil)
+}
+
+func doJSONRequestWithHeaders(t *testing.T, router http.Handler, method, path string, payload interface{}, headers map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -120,6 +162,9 @@ func doJSONRequest(t *testing.T, router http.Handler, method, path string, paylo
 	}
 	req := httptest.NewRequest(method, path, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 	return rr
@@ -140,6 +185,86 @@ func decodeJSON[T any](t *testing.T, rr *httptest.ResponseRecorder) T {
 		t.Fatalf("failed to decode response JSON (%d): %v\nbody=%s", rr.Code, err, rr.Body.String())
 	}
 	return out
+}
+
+func TestAPI_ProtectedEndpointsRequireAuth(t *testing.T) {
+	env := setupAPITestEnv(t)
+
+	rr := doJSONRequestWithHeaders(t, env.router, http.MethodGet, "/api/decks", map[string]string{}, map[string]string{
+		"X-Test-No-Auth": "1",
+	})
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for unauthenticated decks request, got %d (%s)", rr.Code, rr.Body.String())
+	}
+
+	var apiErr APIErrorResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &apiErr); err != nil {
+		t.Fatalf("failed to decode API error: %v", err)
+	}
+	if apiErr.Code != "auth_required" {
+		t.Fatalf("expected auth_required code, got %+v", apiErr)
+	}
+}
+
+func TestAPI_OTPRequestAndVerifyCreatesSession(t *testing.T) {
+	env := setupAPITestEnv(t)
+	emailStub := &otpEmailStub{}
+	env.handler.emailSender = emailStub
+
+	requestRR := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/auth/otp/request", map[string]string{
+		"email": "otp@example.com",
+	}, map[string]string{
+		"X-Test-No-Auth": "1",
+	})
+	if requestRR.Code != http.StatusOK {
+		t.Fatalf("expected OTP request 200, got %d (%s)", requestRR.Code, requestRR.Body.String())
+	}
+	if emailStub.lastCode == "" {
+		t.Fatalf("expected OTP code to be captured by stub")
+	}
+
+	verifyRR := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/auth/otp/verify", map[string]string{
+		"email": "otp@example.com",
+		"code":  emailStub.lastCode,
+	}, map[string]string{
+		"X-Test-No-Auth": "1",
+	})
+	if verifyRR.Code != http.StatusOK {
+		t.Fatalf("expected OTP verify 200, got %d (%s)", verifyRR.Code, verifyRR.Body.String())
+	}
+
+	session := decodeJSON[AuthSessionResponse](t, verifyRR)
+	if !session.Authenticated {
+		t.Fatalf("expected authenticated session response, got %+v", session)
+	}
+	if session.User == nil || session.User.Email != "otp@example.com" {
+		t.Fatalf("expected created user in session response, got %+v", session.User)
+	}
+	if session.Workspace == nil {
+		t.Fatalf("expected workspace in session response")
+	}
+
+	cookies := verifyRR.Result().Cookies()
+	if len(cookies) == 0 || cookies[0].Name != sessionCookieName {
+		t.Fatalf("expected session cookie to be set, got %+v", cookies)
+	}
+}
+
+type createNoteAPIResponse struct {
+	Note  Note   `json:"note"`
+	Cards []Card `json:"cards"`
+}
+
+func createNoteForTest(t *testing.T, env *apiTestEnv, req CreateNoteRequest, headers map[string]string) createNoteAPIResponse {
+	t.Helper()
+
+	rr := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/notes", req, headers)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected create note 201, got %d (%s)", rr.Code, rr.Body.String())
+	}
+
+	return decodeJSON[createNoteAPIResponse](t, rr)
 }
 
 func TestAPI_DeckAndCollectionEndpoints(t *testing.T) {
@@ -378,6 +503,133 @@ func TestAPI_NoteAndCardEndpoints(t *testing.T) {
 	})
 	if updateCard.Code != http.StatusOK {
 		t.Fatalf("expected update card 200, got %d (%s)", updateCard.Code, updateCard.Body.String())
+	}
+}
+
+func TestAPI_GetDeckNotesReturnsRecentDistinctNotesForDeck(t *testing.T) {
+	env := setupAPITestEnv(t)
+
+	otherDeck := env.collection.NewDeck("Other Deck")
+	if err := env.store.CreateDeck(otherDeck); err != nil {
+		t.Fatalf("failed to create other deck: %v", err)
+	}
+
+	first := createNoteForTest(t, env, CreateNoteRequest{
+		TypeID: "Basic",
+		DeckID: 1,
+		FieldVals: map[string]string{
+			"Front": "Older front",
+			"Back":  "Older back",
+		},
+		Tags: []string{"older"},
+	}, nil)
+
+	cloze := createNoteForTest(t, env, CreateNoteRequest{
+		TypeID: "Cloze",
+		DeckID: 1,
+		FieldVals: map[string]string{
+			"Text":  "{{c1::Newest}} and {{c2::Second}}",
+			"Extra": "extra context",
+		},
+		Tags: []string{"latest", "cloze"},
+	}, nil)
+
+	createNoteForTest(t, env, CreateNoteRequest{
+		TypeID: "Basic",
+		DeckID: otherDeck.ID,
+		FieldVals: map[string]string{
+			"Front": "Other deck front",
+			"Back":  "Other deck back",
+		},
+	}, nil)
+
+	now := time.Now()
+	olderUnix := now.Add(-2 * time.Hour).Unix()
+	newerUnix := now.Add(-1 * time.Hour).Unix()
+	if _, err := env.store.db.Exec(`UPDATE notes SET created_at = ?, modified_at = ? WHERE id = ?`, olderUnix, olderUnix, first.Note.ID); err != nil {
+		t.Fatalf("failed to update first note timestamps: %v", err)
+	}
+	if _, err := env.store.db.Exec(`UPDATE notes SET created_at = ?, modified_at = ? WHERE id = ?`, newerUnix, newerUnix, cloze.Note.ID); err != nil {
+		t.Fatalf("failed to update cloze note timestamps: %v", err)
+	}
+
+	rr := doRawRequest(env.router, http.MethodGet, "/api/decks/1/notes?limit=10", "")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected deck notes 200, got %d (%s)", rr.Code, rr.Body.String())
+	}
+
+	var response struct {
+		Notes []RecentDeckNoteSummary `json:"notes"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to decode deck notes response: %v", err)
+	}
+
+	if len(response.Notes) != 2 {
+		t.Fatalf("expected 2 recent notes for deck 1, got %d", len(response.Notes))
+	}
+	if response.Notes[0].NoteID != cloze.Note.ID {
+		t.Fatalf("expected newest note %d first, got %d", cloze.Note.ID, response.Notes[0].NoteID)
+	}
+	if response.Notes[0].CardCountInDeck != 2 {
+		t.Fatalf("expected cloze note to count as 2 cards, got %d", response.Notes[0].CardCountInDeck)
+	}
+	if response.Notes[1].NoteID != first.Note.ID {
+		t.Fatalf("expected older note %d second, got %d", first.Note.ID, response.Notes[1].NoteID)
+	}
+	for _, note := range response.Notes {
+		if note.FieldPreview == "Other deck front" {
+			t.Fatalf("expected notes from other decks to be excluded, got %+v", response.Notes)
+		}
+	}
+}
+
+func TestAPI_GuestPlanLimitsDecksAndNotes(t *testing.T) {
+	env := setupAPITestEnv(t)
+	guestHeaders := map[string]string{"X-Vutadex-Plan": "guest"}
+
+	createSecondDeck := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/decks", CreateDeckRequest{Name: "Second Deck"}, guestHeaders)
+	if createSecondDeck.Code != http.StatusCreated {
+		t.Fatalf("expected second deck create to succeed, got %d (%s)", createSecondDeck.Code, createSecondDeck.Body.String())
+	}
+
+	thirdDeck := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/decks", CreateDeckRequest{Name: "Third Deck"}, guestHeaders)
+	if thirdDeck.Code != http.StatusForbidden {
+		t.Fatalf("expected third deck create to fail with 403, got %d (%s)", thirdDeck.Code, thirdDeck.Body.String())
+	}
+	deckErr := decodeJSON[APIErrorResponse](t, thirdDeck)
+	if deckErr.Code != "plan_limit_exceeded" {
+		t.Fatalf("expected plan_limit_exceeded for deck limit, got %+v", deckErr)
+	}
+
+	for i := 0; i < 10; i++ {
+		createNote := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/notes", CreateNoteRequest{
+			TypeID: "Basic",
+			DeckID: 1,
+			FieldVals: map[string]string{
+				"Front": fmt.Sprintf("Front %d", i),
+				"Back":  fmt.Sprintf("Back %d", i),
+			},
+		}, guestHeaders)
+		if createNote.Code != http.StatusCreated {
+			t.Fatalf("expected note %d create to succeed, got %d (%s)", i+1, createNote.Code, createNote.Body.String())
+		}
+	}
+
+	eleventhNote := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/notes", CreateNoteRequest{
+		TypeID: "Basic",
+		DeckID: 1,
+		FieldVals: map[string]string{
+			"Front": "Limit front",
+			"Back":  "Limit back",
+		},
+	}, guestHeaders)
+	if eleventhNote.Code != http.StatusForbidden {
+		t.Fatalf("expected eleventh note to fail with 403, got %d (%s)", eleventhNote.Code, eleventhNote.Body.String())
+	}
+	noteErr := decodeJSON[APIErrorResponse](t, eleventhNote)
+	if noteErr.Code != "plan_limit_exceeded" {
+		t.Fatalf("expected plan_limit_exceeded for note limit, got %+v", noteErr)
 	}
 }
 

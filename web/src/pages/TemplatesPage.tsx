@@ -1,14 +1,15 @@
 import { Outlet, useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { fetchNoteTypes } from '#/lib/api'
 import type { NoteType } from '#/lib/api'
+import { useAppRepository } from '#/lib/app-repository'
 
 export function TemplatesPage() {
   const navigate = useNavigate()
+  const repository = useAppRepository()
 
   const { data: noteTypes, isLoading, error } = useQuery({
     queryKey: ['note-types'],
-    queryFn: fetchNoteTypes,
+    queryFn: () => repository.fetchNoteTypes(),
   })
 
   const handleEditTemplate = (noteType: NoteType) => {

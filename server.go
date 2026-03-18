@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
 	"github.com/microcosm-cc/bluemonday"
 	fsrs "github.com/open-spaced-repetition/go-fsrs/v3"
 )
@@ -32,14 +30,26 @@ type APIHandler struct {
 	collectionID  string
 	collection    *Collection
 	backupManager *BackupManager
+	config        AppConfig
+	emailSender   EmailSender
 }
 
 func NewAPIHandler(store *SQLiteStore, collection *Collection, backupMgr *BackupManager) *APIHandler {
+	cfg, err := LoadAppConfig()
+	if err != nil {
+		cfg = mustLocalAppConfig()
+	}
+	return NewAPIHandlerWithConfig(store, collection, backupMgr, cfg, NewEmailSender(cfg))
+}
+
+func NewAPIHandlerWithConfig(store *SQLiteStore, collection *Collection, backupMgr *BackupManager, cfg AppConfig, emailSender EmailSender) *APIHandler {
 	return &APIHandler{
 		store:         store,
 		collectionID:  "default",
 		collection:    collection,
 		backupManager: backupMgr,
+		config:        cfg,
+		emailSender:   emailSender,
 	}
 }
 
@@ -147,12 +157,20 @@ func (h *APIHandler) ListDecks(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) CreateDeck(w http.ResponseWriter, r *http.Request) {
 	var req CreateDeckRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		respondAPIError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
 		return
 	}
 
 	if req.Name == "" {
-		http.Error(w, "Deck name is required", http.StatusBadRequest)
+		respondAPIError(w, http.StatusBadRequest, "invalid_name", "Deck name is required")
+		return
+	}
+
+	session := h.sessionFromRequest(r)
+	plan := h.planForRequest(r, session)
+	usage := h.usageForSession(session)
+	if err := validateDeckLimit(plan, usage); err != nil {
+		respondAPIError(w, http.StatusForbidden, "plan_limit_exceeded", err.Error())
 		return
 	}
 
@@ -164,7 +182,7 @@ func (h *APIHandler) CreateDeck(w http.ResponseWriter, r *http.Request) {
 
 	// Persist to database
 	if err := h.store.CreateDeck(deck); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		respondAPIError(w, http.StatusInternalServerError, "deck_create_failed", err.Error())
 		return
 	}
 
@@ -226,12 +244,20 @@ func (h *APIHandler) GetDeckStats(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 	var req CreateNoteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		respondAPIError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
 		return
 	}
 
 	if req.TypeID == "" || req.DeckID == 0 {
-		http.Error(w, "TypeID and DeckID are required", http.StatusBadRequest)
+		respondAPIError(w, http.StatusBadRequest, "invalid_note_request", "TypeID and DeckID are required")
+		return
+	}
+
+	session := h.sessionFromRequest(r)
+	plan := h.planForRequest(r, session)
+	usage := h.usageForSession(session)
+	if err := validateNoteLimit(plan, usage); err != nil {
+		respondAPIError(w, http.StatusForbidden, "plan_limit_exceeded", err.Error())
 		return
 	}
 
@@ -250,7 +276,7 @@ func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 	// Use Collection.AddNote to create note and generate cards
 	note, cards, err := h.collection.AddNote(req.DeckID, NoteTypeName(req.TypeID), sanitizedFieldVals, time.Now())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		respondAPIError(w, http.StatusBadRequest, "note_create_failed", err.Error())
 		return
 	}
 
@@ -262,14 +288,14 @@ func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 
 	// Persist note to database
 	if err := h.store.CreateNote(h.collectionID, &note); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		respondAPIError(w, http.StatusInternalServerError, "note_persist_failed", err.Error())
 		return
 	}
 
 	// Persist generated cards to database
 	for _, card := range cards {
 		if err := h.store.CreateCard(card); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to save card: %v", err), http.StatusInternalServerError)
+			respondAPIError(w, http.StatusInternalServerError, "card_persist_failed", fmt.Sprintf("Failed to save card: %v", err))
 			return
 		}
 	}
@@ -489,7 +515,7 @@ func (h *APIHandler) UpdateCard(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{
 		"status":  "ok",
-		"service": "microdote-api",
+		"service": "vutadex-api",
 		"version": "M2",
 	})
 }
@@ -1558,96 +1584,4 @@ func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 func parseIDParam(r *http.Request, paramName string) (int64, error) {
 	idStr := chi.URLParam(r, paramName)
 	return strconv.ParseInt(idStr, 10, 64)
-}
-
-// Main function to start the server
-func main() {
-	// Initialize database and collection
-	log.Println("Initializing Microdote server...")
-	col, store, err := InitDefaultCollection("./data/microdote.db")
-	if err != nil {
-		log.Fatalf("Failed to initialize collection: %v", err)
-	}
-	defer store.Close()
-
-	log.Printf("Collection loaded with %d decks, %d notes, %d cards\n",
-		len(col.Decks), len(col.Notes), len(col.Cards))
-
-	// Create backup manager
-	backupMgr := NewBackupManager("./data/microdote.db", "./backups", store)
-
-	// Create API handler
-	handler := NewAPIHandler(store, col, backupMgr)
-
-	// Set up router
-	r := chi.NewRouter()
-
-	// Middleware
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.RealIP)
-
-	// CORS configuration for frontend
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3000", "http://127.0.0.1:4317", "http://localhost:4317"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Content-Type", "Authorization"},
-		AllowCredentials: true,
-		MaxAge:           300,
-	}))
-
-	// API routes
-	r.Route("/api", func(r chi.Router) {
-		// Health check
-		r.Get("/health", handler.HealthCheck)
-
-		// Collection
-		r.Get("/collection", handler.GetCollection)
-		r.Post("/import", handler.ImportNotes)
-
-		// Decks
-		r.Get("/decks", handler.ListDecks)
-		r.Post("/decks", handler.CreateDeck)
-		r.Get("/decks/{id}", handler.GetDeck)
-		r.Get("/decks/{id}/stats", handler.GetDeckStats)
-		r.Get("/decks/{deckId}/due", handler.GetDueCards)
-
-		// Note Types
-		r.Get("/note-types", handler.ListNoteTypes)
-		r.Get("/note-types/{name}", handler.GetNoteType)
-		r.Post("/note-types/{name}/fields", handler.AddField)
-		r.Patch("/note-types/{name}/fields/rename", handler.RenameField)
-		r.Delete("/note-types/{name}/fields", handler.RemoveField)
-		r.Put("/note-types/{name}/fields/reorder", handler.ReorderFields)
-		r.Put("/note-types/{name}/sort-field", handler.SetSortField)
-		r.Put("/note-types/{name}/fields/options", handler.SetFieldOptions)
-		r.Patch("/note-types/{name}/templates/{templateName}", handler.UpdateTemplate)
-
-		// Notes
-		r.Post("/notes", handler.CreateNote)
-		r.Get("/notes/{id}", handler.GetNote)
-		r.Post("/notes/check-duplicate", handler.CheckDuplicate)
-
-		// Cards
-		r.Get("/cards/{id}", handler.GetCard)
-		r.Post("/cards/{id}/answer", handler.AnswerCard)
-		r.Patch("/cards/{id}", handler.UpdateCard)
-		r.Get("/cards/empty", handler.FindEmptyCards)
-		r.Post("/cards/empty/delete", handler.DeleteEmptyCards)
-
-		// Backups
-		r.Post("/backups", handler.CreateBackup)
-		r.Get("/backups", handler.ListBackups)
-		r.Post("/backups/restore", handler.RestoreBackup)
-	})
-
-	// Start server
-	port := ":8000"
-	log.Printf("Server starting on http://localhost%s\n", port)
-	log.Printf("API endpoints available at http://localhost%s/api\n", port)
-	log.Println("Press Ctrl+C to stop")
-
-	if err := http.ListenAndServe(port, r); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
-	}
 }

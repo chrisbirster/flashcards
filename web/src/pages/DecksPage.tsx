@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchDecks, createDeck, importNotesFile, type ImportNotesResponse, type ImportSource } from '#/lib/api'
+import { APIError, type ImportNotesResponse, type ImportSource } from '#/lib/api'
 import { DeckItem } from '#/components/deck-item'
+import { useAppRepository } from '#/lib/app-repository'
 
 export function DecksPage() {
+  const repository = useAppRepository()
   const [newDeckName, setNewDeckName] = useState('')
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importSource, setImportSource] = useState<ImportSource>('auto')
@@ -15,19 +17,20 @@ export function DecksPage() {
 
   const { data: decks, isLoading, error } = useQuery({
     queryKey: ['decks'],
-    queryFn: fetchDecks,
+    queryFn: () => repository.fetchDecks(),
   })
 
   const createDeckMutation = useMutation({
-    mutationFn: createDeck,
+    mutationFn: (req: {name: string}) => repository.createDeck(req),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['decks'] })
+      queryClient.invalidateQueries({ queryKey: ['entitlements'] })
       setNewDeckName('')
     },
   })
 
   const importMutation = useMutation({
-    mutationFn: importNotesFile,
+    mutationFn: (req: Parameters<typeof repository.importNotesFile>[0]) => repository.importNotesFile(req),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['decks'] })
       setImportResult(result)
@@ -102,6 +105,15 @@ export function DecksPage() {
           </p>
         )}
       </div>
+
+      {createDeckMutation.isError && createDeckMutation.error instanceof APIError && createDeckMutation.error.code === 'plan_limit_exceeded' && (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-medium">Deck limit reached.</p>
+          <p className="mt-1">
+            {createDeckMutation.error.message} Sign in or upgrade when billing is configured to unlock more decks.
+          </p>
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6">
         <h2 className="text-lg sm:text-xl font-semibold mb-2">Import Notes</h2>

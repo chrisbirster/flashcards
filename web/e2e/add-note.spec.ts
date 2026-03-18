@@ -118,7 +118,7 @@ test.describe('Add Note Screen', () => {
     await page.click('button:has-text("Close")')
 
     // Should return to deck list
-    await expect(page.locator('h1:has-text("Microdote")')).toBeVisible()
+    await expect(page.locator('h1:has-text("Vutadex")')).toBeVisible()
   })
 
   test('Cancel button returns to deck list', async ({ page }) => {
@@ -128,7 +128,7 @@ test.describe('Add Note Screen', () => {
     await page.click('button:has-text("Cancel")')
 
     // Should return to deck list
-    await expect(page.locator('h1:has-text("Microdote")')).toBeVisible()
+    await expect(page.locator('h1:has-text("Vutadex")')).toBeVisible()
   })
 
   test('shows preview when content is entered', async ({ page }) => {

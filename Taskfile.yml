@@ -1,0 +1,101 @@
+version: '3'
+
+tasks:
+  bootstrap:
+    desc: Install Bun dependencies for web, marketing, and infra
+    cmds:
+      - cd web && bun install
+      - cd marketing && bun install
+      - cd infra && bun install
+      - cd infra && bunx sst install
+
+  app:dev:
+    desc: Run the Go app locally against ./data/microdote.db
+    cmds:
+      - go run .
+
+  web:dev:
+    desc: Run the Vite app shell at http://localhost:3000
+    cmds:
+      - cd web && bun run dev
+
+  marketing:dev:
+    desc: Run the marketing site at http://localhost:4173
+    cmds:
+      - cd marketing && bun run dev
+
+  dev:
+    desc: Run backend plus app frontend
+    cmds:
+      - |
+        trap 'kill 0' EXIT
+        go run . &
+        (cd web && bun run dev) &
+        wait
+
+  dev:full:
+    desc: Run backend, app frontend, and marketing frontend
+    cmds:
+      - |
+        trap 'kill 0' EXIT
+        go run . &
+        (cd web && bun run dev) &
+        (cd marketing && bun run dev) &
+        wait
+
+  build:app-web:
+    desc: Build the embedded web app into web/dist
+    cmds:
+      - cd web && bun run build
+
+  build:marketing:
+    desc: Build the marketing site into marketing/dist
+    cmds:
+      - cd marketing && bun run build
+
+  build:server:
+    desc: Build the Go server binary with embedded web assets
+    deps: [build:app-web]
+    cmds:
+      - go build -o bin/vutadex .
+
+  build:
+    desc: Build marketing, embedded app web assets, and server
+    deps: [build:marketing, build:server]
+
+  test:go:
+    desc: Run Go tests
+    cmds:
+      - go test ./...
+
+  test:web:
+    desc: Run web unit tests
+    cmds:
+      - cd web && bun run test:unit
+
+  test:
+    desc: Run Go and web tests
+    deps: [test:go, test:web]
+
+  debug:session:
+    desc: Call the session endpoint with a cookie jar for local debugging
+    cmds:
+      - mkdir -p .tasktmp
+      - curl -i --cookie-jar .tasktmp/session.cookies http://localhost:8000/api/auth/session
+
+  deploy:fly:
+    desc: Deploy the app server to Fly.io
+    cmds:
+      - fly deploy --remote-only --app ${FLY_APP:-vutadex-app}
+
+  deploy:marketing:
+    desc: Build and push the marketing site to Cloudflare Pages via Wrangler
+    cmds:
+      - cd marketing && bun run build
+      - cd marketing && bunx wrangler pages deploy dist --project-name ${VUTADEX_MARKETING_PAGES_PROJECT}
+
+  deploy:
+    desc: Deploy Fly app and marketing site
+    cmds:
+      - task: deploy:fly
+      - task: deploy:marketing

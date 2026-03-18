@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { addField, renameField, removeField, reorderFields, setSortField, setFieldOptions } from '#/lib/api'
 import type { NoteType, FieldOptions } from '#/lib/api'
 import { ErrorMessage } from './message'
 import { FieldEditorHeader } from './field-editor-header'
@@ -12,6 +11,7 @@ import { FontSizeOptionField, FontTypeOptionField } from './font-option-field'
 import { SortFieldInfoChip, RTLFieldInfoChip } from './field-info-chips'
 import { EditFieldPanelHeader } from './edit-field-panel-header'
 import { EditFieldPopup } from './edit-field-popup'
+import { useAppRepository } from '#/lib/app-repository'
 
 interface FieldEditorProps {
   noteType: NoteType
@@ -20,6 +20,7 @@ interface FieldEditorProps {
 
 export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
   const queryClient = useQueryClient()
+  const repository = useAppRepository()
   const [fields, setFields] = useState<string[]>(noteType.fields)
   const [sortFieldIndex, setSortFieldIndexState] = useState<number>(noteType.sortFieldIndex || 0)
   const [fieldOptions, setFieldOptionsState] = useState<Record<string, FieldOptions>>(noteType.fieldOptions || {})
@@ -35,7 +36,7 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
   }
 
   const addFieldMutation = useMutation({
-    mutationFn: (fieldName: string) => addField(noteType.name, { fieldName }),
+    mutationFn: (fieldName: string) => repository.addField(noteType.name, { fieldName }),
     onSuccess: (data) => {
       setFields(data.fields)
       setNewFieldName('')
@@ -47,7 +48,7 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
 
   const renameFieldMutation = useMutation({
     mutationFn: ({ oldName, newName }: { oldName: string; newName: string }) =>
-      renameField(noteType.name, { oldName, newName }),
+      repository.renameField(noteType.name, { oldName, newName }),
     onSuccess: (data) => {
       setFields(data.fields)
       setEditingField(null)
@@ -59,7 +60,7 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
   })
 
   const removeFieldMutation = useMutation({
-    mutationFn: (fieldName: string) => removeField(noteType.name, { fieldName }),
+    mutationFn: (fieldName: string) => repository.removeField(noteType.name, { fieldName }),
     onSuccess: (data) => {
       setFields(data.fields)
       setError(null)
@@ -69,7 +70,7 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
   })
 
   const reorderFieldsMutation = useMutation({
-    mutationFn: (newFields: string[]) => reorderFields(noteType.name, { fields: newFields }),
+    mutationFn: (newFields: string[]) => repository.reorderFields(noteType.name, { fields: newFields }),
     onSuccess: (data) => {
       setFields(data.fields)
       setError(null)
@@ -114,7 +115,7 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
   }
 
   const setSortFieldMutation = useMutation({
-    mutationFn: (fieldIndex: number) => setSortField(noteType.name, { fieldIndex }),
+    mutationFn: (fieldIndex: number) => repository.setSortField(noteType.name, { fieldIndex }),
     onSuccess: (data) => {
       setSortFieldIndexState(data.sortFieldIndex)
       setError(null)
@@ -125,7 +126,7 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
 
   const setFieldOptionsMutation = useMutation({
     mutationFn: ({ fieldName, options }: { fieldName: string; options: FieldOptions }) =>
-      setFieldOptions(noteType.name, fieldName, options),
+      repository.setFieldOptions(noteType.name, fieldName, options),
     onSuccess: (data) => {
       setFieldOptionsState(data.fieldOptions)
       setError(null)

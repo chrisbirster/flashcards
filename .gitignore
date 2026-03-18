@@ -1,3 +1,11 @@
 test-results
 data
 backups
+bin
+infra/.sst
+infra/node_modules
+infra/.wrangler
+infra/.env
+infra/.env.*
+marketing/node_modules
+marketing/dist

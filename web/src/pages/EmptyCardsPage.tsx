@@ -1,21 +1,22 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { findEmptyCards, deleteEmptyCards } from '#/lib/api'
 import type { EmptyCardInfo } from '#/lib/api'
 import DOMPurify from 'dompurify'
+import { useAppRepository } from '#/lib/app-repository'
 
 export function EmptyCardsPage() {
   const queryClient = useQueryClient()
+  const repository = useAppRepository()
   const [selectedCards, setSelectedCards] = useState<Set<number>>(new Set())
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['empty-cards'],
-    queryFn: findEmptyCards,
+    queryFn: () => repository.findEmptyCards(),
   })
 
   const deleteCardsMutation = useMutation({
-    mutationFn: (cardIds: number[]) => deleteEmptyCards({ cardIds }),
+    mutationFn: (cardIds: number[]) => repository.deleteEmptyCards({ cardIds }),
     onSuccess: () => {
       setSelectedCards(new Set())
       setShowConfirmDialog(false)

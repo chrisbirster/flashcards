@@ -6,7 +6,7 @@ test.describe('Deck Management', () => {
   });
 
   test('should display the application title', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: 'Microdote' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Vutadex' })).toBeVisible();
   });
 
   test('should display empty state when no decks exist', async ({ page }) => {
@@ -99,7 +99,7 @@ test.describe('Deck Management', () => {
 
     // Either we see loading or we directly see content
     // This is a weak test but ensures the page doesn't crash
-    await expect(page.getByRole('heading', { name: 'Microdote' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: 'Vutadex' })).toBeVisible({ timeout: 5000 });
   });
 
   test('should persist decks across page reloads', async ({ page }) => {

@@ -485,7 +485,14 @@ func renderCloze(text string, targetOrdinal int, reveal bool) string {
 // If the collection doesn't exist, it creates one with built-in note types.
 // Also ensures a default profile exists.
 func InitDefaultCollection(dbPath string) (*Collection, *SQLiteStore, error) {
-	store, err := NewSQLiteStore(dbPath)
+	return InitDefaultCollectionWithConfig(DatabaseConfig{
+		Mode: DatabaseModeSQLite,
+		Path: dbPath,
+	})
+}
+
+func InitDefaultCollectionWithConfig(cfg DatabaseConfig) (*Collection, *SQLiteStore, error) {
+	store, err := OpenStore(cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create store: %w", err)
 	}

@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/tursodatabase/libsql-client-go/libsql"
 	fsrs "github.com/open-spaced-repetition/go-fsrs/v3"
 )
 
@@ -86,7 +88,19 @@ const (
 
 // NewSQLiteStore creates a new SQLite store and runs migrations.
 func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
-	db, err := sql.Open("sqlite3", dbPath+"?_foreign_keys=on")
+	return OpenStore(DatabaseConfig{
+		Mode: DatabaseModeSQLite,
+		Path: dbPath,
+	})
+}
+
+func OpenStore(cfg DatabaseConfig) (*SQLiteStore, error) {
+	driverName, dsn, err := databaseDSN(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	db, err := sql.Open(driverName, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -104,6 +118,32 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	}
 
 	return store, nil
+}
+
+func databaseDSN(cfg DatabaseConfig) (string, string, error) {
+	switch cfg.Mode {
+	case DatabaseModeTurso:
+		if strings.TrimSpace(cfg.URL) == "" {
+			return "", "", fmt.Errorf("database URL is required for Turso mode")
+		}
+		dsn := strings.TrimSpace(cfg.URL)
+		if cfg.AuthToken != "" {
+			separator := "?"
+			if strings.Contains(dsn, "?") {
+				separator = "&"
+			}
+			dsn = dsn + separator + "authToken=" + url.QueryEscape(cfg.AuthToken)
+		}
+		return "libsql", dsn, nil
+	case DatabaseModeSQLite, "":
+		dbPath := strings.TrimSpace(cfg.Path)
+		if dbPath == "" {
+			dbPath = "./data/microdote.db"
+		}
+		return "sqlite3", dbPath + "?_foreign_keys=on", nil
+	default:
+		return "", "", fmt.Errorf("unsupported database mode: %s", cfg.Mode)
+	}
 }
 
 func (s *SQLiteStore) Close() error {

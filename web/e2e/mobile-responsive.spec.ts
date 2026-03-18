@@ -19,7 +19,7 @@ test.describe('Mobile Responsive Layouts', () => {
     await page.click('button:has-text("Create")')
     await page.waitForTimeout(500)
 
-    await expect(page.locator('h1:has-text("Microdote")')).toBeVisible()
+    await expect(page.locator('h1:has-text("Vutadex")')).toBeVisible()
     await expectNoHorizontalOverflow(page)
 
     await page.click('button:has-text("Add Cards")')

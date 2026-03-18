@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchNoteTypes, fetchDecks, createNote, checkDuplicate } from '#/lib/api'
-import type { NoteBrief, FieldOptions } from '#/lib/api'
+import type { DeckNotesResponse, NoteBrief, FieldOptions, RecentDeckNoteSummary } from '#/lib/api'
 import { AddNoteFormProvider } from './add-note-form-provider'
 import { useAddNoteFormContext } from './add-note-form-context'
 import DOMPurify from 'dompurify'
@@ -11,6 +10,8 @@ import { ErrorMessage, SuccessMessage } from './message'
 import { EditFieldIcon } from './edit-field-icon'
 import { IconButton } from './edit-field-icon-button'
 import { ShowTemplateIcon } from './show-template-icon'
+import { RecentDeckNotesPanel } from './recent-deck-notes-panel'
+import { useAppRepository } from '#/lib/app-repository'
 
 
 // Helper to find the next cloze number in text
@@ -84,6 +85,7 @@ export function AddNoteScreen({ deckId, onClose, onSuccess }: AddNoteScreenProps
 function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, 'deckId'>) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const repository = useAppRepository()
   const {
     selectedNoteType,
     setSelectedNoteType,
@@ -133,16 +135,16 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
         textarea.focus()
       }
     }, 0)
-  }, [activeField, fieldValues])
+  }, [activeField, fieldValues, setFieldValues, textareaRefs])
 
   const { data: noteTypes, isLoading: loadingNoteTypes } = useQuery({
     queryKey: ['note-types'],
-    queryFn: fetchNoteTypes,
+    queryFn: () => repository.fetchNoteTypes(),
   })
 
   const { data: decks, isLoading: loadingDecks } = useQuery({
     queryKey: ['decks'],
-    queryFn: fetchDecks,
+    queryFn: () => repository.fetchDecks(),
   })
 
   // Set default note type when loaded
@@ -150,14 +152,14 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
     if (noteTypes && noteTypes.length > 0 && !selectedNoteType) {
       setSelectedNoteType(noteTypes[0].name)
     }
-  }, [noteTypes, selectedNoteType])
+  }, [noteTypes, selectedNoteType, setSelectedNoteType])
 
   // Set default deck when loaded
   useEffect(() => {
     if (decks && decks.length > 0 && !selectedDeckId) {
       setSelectedDeckId(decks[0].id)
     }
-  }, [decks, selectedDeckId])
+  }, [decks, selectedDeckId, setSelectedDeckId])
 
   // Get current note type
   const currentNoteType = noteTypes?.find(nt => nt.name === selectedNoteType)
@@ -165,13 +167,22 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
   // Reset field values when note type changes
   useEffect(() => {
     if (currentNoteType) {
-      const newFieldValues: Record<string, string> = {}
-      currentNoteType.fields.forEach(field => {
-        newFieldValues[field] = fieldValues[field] || ''
+      setFieldValues((prev) => {
+        const nextFieldValues: Record<string, string> = {}
+        currentNoteType.fields.forEach((field) => {
+          nextFieldValues[field] = prev[field] || ''
+        })
+
+        const hasSameShape = Object.keys(prev).length === currentNoteType.fields.length
+        const hasSameValues = currentNoteType.fields.every((field) => prev[field] === nextFieldValues[field])
+        if (hasSameShape && hasSameValues) {
+          return prev
+        }
+
+        return nextFieldValues
       })
-      setFieldValues(newFieldValues)
     }
-  }, [currentNoteType?.name])
+  }, [currentNoteType, setFieldValues])
 
   // Debounced duplicate check for the first field
   const checkForDuplicates = useCallback(async (fieldName: string, value: string) => {
@@ -183,7 +194,7 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
 
     setIsCheckingDuplicate(true)
     try {
-      const result = await checkDuplicate({
+      const result = await repository.checkDuplicate({
         typeId: selectedNoteType,
         fieldName,
         value,
@@ -198,7 +209,7 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
     } finally {
       setIsCheckingDuplicate(false)
     }
-  }, [selectedNoteType, selectedDeckId])
+  }, [repository, selectedNoteType, selectedDeckId])
 
   // Debounce duplicate check when first field changes
   useEffect(() => {
@@ -230,10 +241,27 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
   }, [isClozeType, activeField, insertCloze])
 
   const createNoteMutation = useMutation({
-    mutationFn: createNote,
-    onSuccess: () => {
+    mutationFn: (req: Parameters<typeof repository.createNote>[0]) => repository.createNote(req),
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['decks'] })
       queryClient.invalidateQueries({ queryKey: ['deck-stats', selectedDeckId] })
+      queryClient.invalidateQueries({ queryKey: ['entitlements'] })
+      const primaryFieldName = currentNoteType?.fields[0]
+      const fieldPreview = (primaryFieldName && data.note.fieldVals[primaryFieldName]) ||
+        Object.values(data.note.fieldVals).find((value) => value.trim()) ||
+        ''
+      const recentNote: RecentDeckNoteSummary = {
+        noteId: data.note.id,
+        noteType: data.note.typeId,
+        createdAt: data.note.createdAt,
+        modifiedAt: data.note.modifiedAt,
+        tags: data.note.tags,
+        fieldPreview,
+        cardCountInDeck: data.cards.filter((card) => card.deckId === selectedDeckId).length || data.cards.length,
+      }
+      queryClient.setQueryData<DeckNotesResponse>(['deck-notes', selectedDeckId], (existing) => ({
+        notes: [recentNote, ...(existing?.notes || []).filter((note) => note.noteId !== recentNote.noteId)].slice(0, 20),
+      }))
       // Clear fields for next note
       if (currentNoteType) {
         const newFieldValues: Record<string, string> = {}
@@ -516,7 +544,9 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
           </div>
 
           {/* Error message */}
-          {createNoteMutation.isError && <ErrorMessage />}
+          {createNoteMutation.isError && (
+            <ErrorMessage message={createNoteMutation.error instanceof Error ? createNoteMutation.error.message : undefined} />
+          )}
           {/* Success message */}
           {createNoteMutation.isSuccess && <SuccessMessage />}
         </form>
@@ -600,6 +630,10 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
             </div>
           </div>
         )}
+
+        <div className="mt-6">
+          <RecentDeckNotesPanel deckId={selectedDeckId} />
+        </div>
       </div>
     </div>
   )

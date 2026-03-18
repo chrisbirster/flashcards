@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchDueCards, answerCard, updateCard } from '#/lib/api'
 import DOMPurify from 'dompurify'
+import { useAppRepository } from '#/lib/app-repository'
 
 // Flag colors matching Anki
 const FLAG_COLORS = [
@@ -27,16 +27,17 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
   const [showFlagMenu, setShowFlagMenu] = useState(false)
   const questionStartTimeRef = useRef(0)
   const queryClient = useQueryClient()
+  const repository = useAppRepository()
 
   const { data: cards, isLoading } = useQuery({
     queryKey: ['due-cards', deckId],
-    queryFn: () => fetchDueCards(deckId, 50),
+    queryFn: () => repository.fetchDueCards(deckId, 50),
   })
 
 
   const answerMutation = useMutation({
     mutationFn: ({ cardId, rating, timeTakenMs }: { cardId: number; rating: number; timeTakenMs: number }) =>
-      answerCard(cardId, { rating, timeTakenMs }),
+      repository.answerCard(cardId, { rating, timeTakenMs }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['due-cards', deckId] })
       queryClient.invalidateQueries({ queryKey: ['deck-stats', deckId] })
@@ -55,7 +56,7 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
 
   const updateCardMutation = useMutation({
     mutationFn: ({ cardId, flag, marked, suspended }: { cardId: number; flag?: number; marked?: boolean; suspended?: boolean }) =>
-      updateCard(cardId, { flag, marked, suspended }),
+      repository.updateCard(cardId, { flag, marked, suspended }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['due-cards', deckId] })
       setShowFlagMenu(false)

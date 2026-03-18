@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query'
-import { updateTemplate, fetchDecks } from '#/lib/api'
 import type { NoteType, CardTemplate } from '#/lib/api'
 import DOMPurify from 'dompurify'
+import { useAppRepository } from '#/lib/app-repository'
 
 interface TemplateEditorProps {
   noteType: NoteType
@@ -21,6 +21,7 @@ function buildInitialSampleFieldVals(fields: string[]): Record<string, string> {
 
 export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
   const queryClient = useQueryClient()
+  const repository = useAppRepository()
   const [selectedTemplate, setSelectedTemplate] = useState<CardTemplate>(noteType.templates[0])
   const [activeTab, setActiveTab] = useState<TabType>('front')
   const [qFmt, setQFmt] = useState(selectedTemplate?.qFmt || '')
@@ -37,7 +38,7 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
   // Fetch decks for deck override dropdown
   const { data: decks = [] } = useQuery({
     queryKey: ['decks'],
-    queryFn: fetchDecks,
+    queryFn: () => repository.fetchDecks(),
   })
 
   const applyTemplate = (template: CardTemplate) => {
@@ -102,7 +103,7 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
 
   const updateTemplateMutation = useMutation({
     mutationFn: () =>
-      updateTemplate(noteType.name, selectedTemplate.name, {
+      repository.updateTemplate(noteType.name, selectedTemplate.name, {
         qFmt,
         aFmt,
         styling,

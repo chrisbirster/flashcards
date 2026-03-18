@@ -1,5 +1,43 @@
 const API_BASE = (import.meta.env.VITE_API_BASE ?? '/api').replace(/\/$/, '')
 
+export class APIError extends Error {
+  status: number
+  code?: string
+
+  constructor(message: string, status: number, code?: string) {
+    super(message)
+    this.name = 'APIError'
+    this.status = status
+    this.code = code
+  }
+}
+
+async function requestJSON<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    credentials: 'include',
+    ...init,
+  })
+
+  if (!res.ok) {
+    if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+      window.location.assign('/login')
+    }
+    const contentType = res.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      const payload = await res.json().catch(() => null) as {message?: string; code?: string} | null
+      throw new APIError(payload?.message || 'Request failed', res.status, payload?.code)
+    }
+    const text = await res.text()
+    throw new APIError(text || 'Request failed', res.status)
+  }
+
+  if (res.status === 204) {
+    return undefined as T
+  }
+
+  return res.json()
+}
+
 export interface Deck {
   id: number
   name: string
@@ -122,33 +160,105 @@ export interface DuplicateResult {
   duplicates?: NoteBrief[]
 }
 
+export interface RecentDeckNoteSummary {
+  noteId: number
+  noteType: string
+  createdAt: string
+  modifiedAt: string
+  tags: string[]
+  fieldPreview: string
+  cardCountInDeck: number
+}
+
+export interface DeckNotesResponse {
+  notes: RecentDeckNoteSummary[]
+}
+
+export interface PlanLimits {
+  maxDecks: number
+  maxNotes: number
+  maxSharedDecks: number
+  maxSyncDevices: number
+  maxWorkspaces: number
+}
+
+export interface EntitlementUsage {
+  decks: number
+  notes: number
+  sharedDecks: number
+  syncDevices: number
+  workspaces: number
+}
+
+export interface EntitlementFeatures {
+  googleLogin: boolean
+  accountBacked: boolean
+  sync: boolean
+  shareDecks: boolean
+  organizations: boolean
+}
+
+export interface Entitlements {
+  plan: 'guest' | 'free' | 'pro' | 'team'
+  limits: PlanLimits
+  usage: EntitlementUsage
+  features: EntitlementFeatures
+}
+
+export interface AccountUser {
+  id: string
+  email: string
+  displayName: string
+  avatarUrl?: string
+}
+
+export interface WorkspaceSession {
+  id: string
+  name: string
+  slug: string
+  collectionId: string
+}
+
+export interface AuthSessionResponse {
+  authenticated: boolean
+  googleAuthConfigured: boolean
+  otpAuthEnabled: boolean
+  user?: AccountUser
+  workspace?: WorkspaceSession
+  entitlements: Entitlements
+}
+
+export interface OTPRequestResponse {
+  ok: boolean
+  expiresAt: string
+  retryAfterSeconds: number
+}
+
 // Deck endpoints
 export async function fetchDecks(): Promise<Deck[]> {
-  const res = await fetch(`${API_BASE}/decks`)
-  if (!res.ok) throw new Error('Failed to fetch decks')
-  return res.json()
+  return requestJSON(`${API_BASE}/decks`)
 }
 
 export async function createDeck(req: CreateDeckRequest): Promise<Deck> {
-  const res = await fetch(`${API_BASE}/decks`, {
+  return requestJSON(`${API_BASE}/decks`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(req),
   })
-  if (!res.ok) throw new Error('Failed to create deck')
-  return res.json()
 }
 
 export async function fetchDeck(id: number): Promise<{deck: Deck; stats: DeckStats}> {
-  const res = await fetch(`${API_BASE}/decks/${id}`)
-  if (!res.ok) throw new Error('Failed to fetch deck')
-  return res.json()
+  return requestJSON(`${API_BASE}/decks/${id}`)
 }
 
 export async function fetchDeckStats(id: number): Promise<DeckStats> {
-  const res = await fetch(`${API_BASE}/decks/${id}/stats`)
-  if (!res.ok) throw new Error('Failed to fetch deck stats')
-  return res.json()
+  return requestJSON(`${API_BASE}/decks/${id}/stats`)
+}
+
+export async function fetchDeckNotes(deckId: number, limit: number = 20, cursor?: string): Promise<DeckNotesResponse> {
+  const params = new URLSearchParams({limit: String(limit)})
+  if (cursor) params.set('cursor', cursor)
+  return requestJSON(`${API_BASE}/decks/${deckId}/notes?${params.toString()}`)
 }
 
 export async function importNotesFile(req: ImportFileRequest): Promise<ImportNotesResponse> {
@@ -161,6 +271,7 @@ export async function importNotesFile(req: ImportFileRequest): Promise<ImportNot
 
   const res = await fetch(`${API_BASE}/import`, {
     method: 'POST',
+    credentials: 'include',
     body: formData,
   })
 
@@ -173,15 +284,11 @@ export async function importNotesFile(req: ImportFileRequest): Promise<ImportNot
 
 // Note Type endpoints
 export async function fetchNoteTypes(): Promise<NoteType[]> {
-  const res = await fetch(`${API_BASE}/note-types`)
-  if (!res.ok) throw new Error('Failed to fetch note types')
-  return res.json()
+  return requestJSON(`${API_BASE}/note-types`)
 }
 
 export async function fetchNoteType(name: string): Promise<NoteType> {
-  const res = await fetch(`${API_BASE}/note-types/${encodeURIComponent(name)}`)
-  if (!res.ok) throw new Error('Failed to fetch note type')
-  return res.json()
+  return requestJSON(`${API_BASE}/note-types/${encodeURIComponent(name)}`)
 }
 
 // Field management
@@ -224,55 +331,35 @@ export interface TemplatesResponse {
 }
 
 export async function addField(noteTypeName: string, req: AddFieldRequest): Promise<FieldsResponse> {
-  const res = await fetch(`${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/fields`, {
+  return requestJSON(`${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/fields`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(req),
   })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || 'Failed to add field')
-  }
-  return res.json()
 }
 
 export async function renameField(noteTypeName: string, req: RenameFieldRequest): Promise<FieldsResponse> {
-  const res = await fetch(`${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/fields/rename`, {
+  return requestJSON(`${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/fields/rename`, {
     method: 'PATCH',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(req),
   })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || 'Failed to rename field')
-  }
-  return res.json()
 }
 
 export async function removeField(noteTypeName: string, req: RemoveFieldRequest): Promise<FieldsResponse> {
-  const res = await fetch(`${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/fields`, {
+  return requestJSON(`${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/fields`, {
     method: 'DELETE',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(req),
   })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || 'Failed to remove field')
-  }
-  return res.json()
 }
 
 export async function reorderFields(noteTypeName: string, req: ReorderFieldsRequest): Promise<FieldsResponse> {
-  const res = await fetch(`${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/fields/reorder`, {
+  return requestJSON(`${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/fields/reorder`, {
     method: 'PUT',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(req),
   })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || 'Failed to reorder fields')
-  }
-  return res.json()
 }
 
 export interface SetSortFieldRequest {
@@ -280,16 +367,11 @@ export interface SetSortFieldRequest {
 }
 
 export async function setSortField(noteTypeName: string, req: SetSortFieldRequest): Promise<{message: string; sortFieldIndex: number; sortFieldName: string}> {
-  const res = await fetch(`${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/sort-field`, {
+  return requestJSON(`${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/sort-field`, {
     method: 'PUT',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(req),
   })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || 'Failed to set sort field')
-  }
-  return res.json()
 }
 
 export async function setFieldOptions(
@@ -297,16 +379,11 @@ export async function setFieldOptions(
   fieldName: string,
   options: FieldOptions
 ): Promise<{message: string; fieldOptions: Record<string, FieldOptions>}> {
-  const res = await fetch(`${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/fields/options`, {
+  return requestJSON(`${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/fields/options`, {
     method: 'PUT',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({fieldName, options}),
   })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || 'Failed to set field options')
-  }
-  return res.json()
 }
 
 export async function updateTemplate(
@@ -314,7 +391,7 @@ export async function updateTemplate(
   templateName: string,
   req: UpdateTemplateRequest
 ): Promise<TemplatesResponse> {
-  const res = await fetch(
+  return requestJSON(
     `${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/templates/${encodeURIComponent(templateName)}`,
     {
       method: 'PATCH',
@@ -322,61 +399,44 @@ export async function updateTemplate(
       body: JSON.stringify(req),
     }
   )
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || 'Failed to update template')
-  }
-  return res.json()
 }
 
 // Note endpoints
 export async function createNote(req: CreateNoteRequest): Promise<{note: Note; cards: Card[]}> {
-  const res = await fetch(`${API_BASE}/notes`, {
+  return requestJSON(`${API_BASE}/notes`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(req),
   })
-  if (!res.ok) throw new Error('Failed to create note')
-  return res.json()
 }
 
 export async function fetchNote(id: number): Promise<Note> {
-  const res = await fetch(`${API_BASE}/notes/${id}`)
-  if (!res.ok) throw new Error('Failed to fetch note')
-  return res.json()
+  return requestJSON(`${API_BASE}/notes/${id}`)
 }
 
 export async function checkDuplicate(req: CheckDuplicateRequest): Promise<DuplicateResult> {
-  const res = await fetch(`${API_BASE}/notes/check-duplicate`, {
+  return requestJSON(`${API_BASE}/notes/check-duplicate`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(req),
   })
-  if (!res.ok) throw new Error('Failed to check duplicate')
-  return res.json()
 }
 
 // Card endpoints
 export async function fetchDueCards(deckId: number, limit: number = 10): Promise<Card[]> {
-  const res = await fetch(`${API_BASE}/decks/${deckId}/due?limit=${limit}`)
-  if (!res.ok) throw new Error('Failed to fetch due cards')
-  return res.json()
+  return requestJSON(`${API_BASE}/decks/${deckId}/due?limit=${limit}`)
 }
 
 export async function fetchCard(id: number): Promise<Card> {
-  const res = await fetch(`${API_BASE}/cards/${id}`)
-  if (!res.ok) throw new Error('Failed to fetch card')
-  return res.json()
+  return requestJSON(`${API_BASE}/cards/${id}`)
 }
 
 export async function answerCard(id: number, req: AnswerCardRequest): Promise<Card> {
-  const res = await fetch(`${API_BASE}/cards/${id}/answer`, {
+  return requestJSON(`${API_BASE}/cards/${id}/answer`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(req),
   })
-  if (!res.ok) throw new Error('Failed to answer card')
-  return res.json()
 }
 
 export interface UpdateCardRequest {
@@ -386,13 +446,11 @@ export interface UpdateCardRequest {
 }
 
 export async function updateCard(id: number, req: UpdateCardRequest): Promise<Card> {
-  const res = await fetch(`${API_BASE}/cards/${id}`, {
+  return requestJSON(`${API_BASE}/cards/${id}`, {
     method: 'PATCH',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(req),
   })
-  if (!res.ok) throw new Error('Failed to update card')
-  return res.json()
 }
 
 // Empty cards endpoints
@@ -422,39 +480,59 @@ export interface DeleteEmptyCardsResponse {
 }
 
 export async function findEmptyCards(): Promise<EmptyCardsResponse> {
-  const res = await fetch(`${API_BASE}/cards/empty`)
-  if (!res.ok) throw new Error('Failed to find empty cards')
-  return res.json()
+  return requestJSON(`${API_BASE}/cards/empty`)
 }
 
 export async function deleteEmptyCards(req: DeleteEmptyCardsRequest): Promise<DeleteEmptyCardsResponse> {
-  const res = await fetch(`${API_BASE}/cards/empty/delete`, {
+  return requestJSON(`${API_BASE}/cards/empty/delete`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(req),
   })
-  if (!res.ok) throw new Error('Failed to delete empty cards')
-  return res.json()
 }
 
 // Backup endpoints
 export async function createBackup(): Promise<{message: string; backupPath: string}> {
-  const res = await fetch(`${API_BASE}/backups`, {
+  return requestJSON(`${API_BASE}/backups`, {
     method: 'POST',
   })
-  if (!res.ok) throw new Error('Failed to create backup')
-  return res.json()
 }
 
 export async function listBackups(): Promise<Array<{path: string; filename: string; size: number; modified: string}>> {
-  const res = await fetch(`${API_BASE}/backups`)
-  if (!res.ok) throw new Error('Failed to list backups')
-  return res.json()
+  return requestJSON(`${API_BASE}/backups`)
 }
 
 // Health check
 export async function healthCheck(): Promise<{status: string; service: string; version: string}> {
-  const res = await fetch(`${API_BASE}/health`)
-  if (!res.ok) throw new Error('Health check failed')
-  return res.json()
+  return requestJSON(`${API_BASE}/health`)
+}
+
+export async function fetchSession(): Promise<AuthSessionResponse> {
+  return requestJSON(`${API_BASE}/auth/session`)
+}
+
+export async function requestOTP(email: string): Promise<OTPRequestResponse> {
+  return requestJSON(`${API_BASE}/auth/otp/request`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({email}),
+  })
+}
+
+export async function verifyOTP(email: string, code: string): Promise<AuthSessionResponse> {
+  return requestJSON(`${API_BASE}/auth/otp/verify`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({email, code}),
+  })
+}
+
+export async function fetchEntitlements(): Promise<Entitlements> {
+  return requestJSON(`${API_BASE}/entitlements`)
+}
+
+export async function logout(): Promise<{ok: boolean}> {
+  return requestJSON(`${API_BASE}/auth/logout`, {
+    method: 'POST',
+  })
 }

@@ -1,32 +1,42 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: light;
-  --canvas: #f4f1ea;
-  --canvas-soft: #fbfaf7;
-  --mist: #dce6de;
-  --clay-wash: #ead7cd;
-  --surface: rgba(255, 252, 247, 0.88);
-  --surface-strong: #f8f4ee;
-  --surface-muted: #edf2ec;
-  --surface-deep: #234338;
-  --surface-deeper: #1b342b;
-  --ink: #18231d;
-  --muted: #5f6d64;
-  --forest: #234338;
-  --forest-strong: #193229;
-  --accent: #b65f3f;
-  --accent-soft: #f0e0d6;
-  --line: rgba(35, 67, 56, 0.14);
-  --line-strong: rgba(35, 67, 56, 0.24);
+  color-scheme: dark;
+  --bg: #060806;
+  --panel: #090d09;
+  --card: #0d120d;
+  --card-strong: #101610;
+  --text: #f3f5f2;
+  --text-soft: #d7ddd2;
+  --muted: #93a092;
+  --accent: #70d66c;
+  --accent-strong: #83e97f;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-strong: rgba(255, 255, 255, 0.14);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  font-family: "Instrument Sans", "Avenir Next", "Segoe UI", sans-serif;
-  background: var(--canvas);
-  color: var(--ink);
+  background:
+    radial-gradient(circle at top, rgba(112, 214, 108, 0.08), transparent 18%),
+    linear-gradient(180deg, #070907 0%, #050605 100%);
+  color: var(--text);
+  font-family: "Inter Tight", "SF Pro Display", "Avenir Next", "Segoe UI", sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+body::selection {
+  background: rgba(112, 214, 108, 0.28);
+  color: #ffffff;
 }
 
 #root {
@@ -36,4 +46,11 @@ body {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
 }

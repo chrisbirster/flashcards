@@ -26,6 +26,14 @@ type apiTestEnv struct {
 	authCookie string
 }
 
+type authenticatedTestClient struct {
+	router     http.Handler
+	authCookie string
+	user       *User
+	workspace  *Workspace
+	session    *SessionRecord
+}
+
 type otpEmailStub struct {
 	lastTo      string
 	lastCode    string
@@ -147,6 +155,58 @@ func newTestAPIRouter(handler *APIHandler, authCookie string) http.Handler {
 		registerAPIRoutes(r, handler)
 	})
 	return r
+}
+
+func createAuthenticatedTestClient(t *testing.T, env *apiTestEnv, email, displayName string) authenticatedTestClient {
+	t.Helper()
+
+	now := time.Now()
+	user := &User{
+		ID:          newID("usr"),
+		Email:       email,
+		DisplayName: displayName,
+		LastLoginAt: now,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := env.store.CreateUser(user); err != nil {
+		t.Fatalf("failed to create test user %s: %v", email, err)
+	}
+
+	workspace := &Workspace{
+		ID:           newID("ws"),
+		Name:         displayName + " Workspace",
+		Slug:         strings.ToLower(strings.ReplaceAll(displayName, " ", "-")),
+		CollectionID: "default",
+		OwnerUserID:  user.ID,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := env.store.CreateWorkspaceRecord(workspace); err != nil {
+		t.Fatalf("failed to create test workspace for %s: %v", email, err)
+	}
+
+	session := &SessionRecord{
+		ID:          newID("sess"),
+		UserID:      user.ID,
+		WorkspaceID: workspace.ID,
+		Plan:        PlanFree,
+		ExpiresAt:   now.Add(24 * time.Hour),
+		LastSeenAt:  now,
+		CreatedAt:   now,
+	}
+	if err := env.store.CreateSessionRecord(session); err != nil {
+		t.Fatalf("failed to create test session for %s: %v", email, err)
+	}
+
+	authCookie := fmt.Sprintf("%s=%s", sessionCookieName, session.ID)
+	return authenticatedTestClient{
+		router:     newTestAPIRouter(env.handler, authCookie),
+		authCookie: authCookie,
+		user:       user,
+		workspace:  workspace,
+		session:    session,
+	}
 }
 
 func doJSONRequest(t *testing.T, router http.Handler, method, path string, payload interface{}) *httptest.ResponseRecorder {
@@ -581,6 +641,105 @@ func TestAPI_GetDeckNotesReturnsRecentDistinctNotesForDeck(t *testing.T) {
 		if note.FieldPreview == "Other deck front" {
 			t.Fatalf("expected notes from other decks to be excluded, got %+v", response.Notes)
 		}
+	}
+}
+
+func TestAPI_SharedCardsKeepPerUserDueQueuesSeparate(t *testing.T) {
+	env := setupAPITestEnv(t)
+	secondClient := createAuthenticatedTestClient(t, env, "second@example.com", "Second User")
+
+	created := createNoteForTest(t, env, CreateNoteRequest{
+		TypeID: "Basic",
+		DeckID: 1,
+		FieldVals: map[string]string{
+			"Front": "Per-user review state question",
+			"Back":  "Per-user review state answer",
+		},
+	}, nil)
+
+	cardID := created.Cards[0].ID
+
+	firstDue := doRawRequest(env.router, http.MethodGet, "/api/decks/1/due?limit=10", "")
+	if firstDue.Code != http.StatusOK {
+		t.Fatalf("expected first user due cards 200, got %d (%s)", firstDue.Code, firstDue.Body.String())
+	}
+	firstDueCards := decodeJSON[[]Card](t, firstDue)
+	if len(firstDueCards) != 1 {
+		t.Fatalf("expected first user to have 1 due card, got %d", len(firstDueCards))
+	}
+
+	secondDue := doRawRequest(secondClient.router, http.MethodGet, "/api/decks/1/due?limit=10", "")
+	if secondDue.Code != http.StatusOK {
+		t.Fatalf("expected second user due cards 200, got %d (%s)", secondDue.Code, secondDue.Body.String())
+	}
+	secondDueCards := decodeJSON[[]Card](t, secondDue)
+	if len(secondDueCards) != 1 {
+		t.Fatalf("expected second user to have 1 due card, got %d", len(secondDueCards))
+	}
+
+	answer := doJSONRequest(t, env.router, http.MethodPost, fmt.Sprintf("/api/cards/%d/answer", cardID), AnswerCardRequest{
+		Rating:      3,
+		TimeTakenMs: 900,
+	})
+	if answer.Code != http.StatusOK {
+		t.Fatalf("expected first user answer 200, got %d (%s)", answer.Code, answer.Body.String())
+	}
+
+	firstDueAfter := doRawRequest(env.router, http.MethodGet, "/api/decks/1/due?limit=10", "")
+	if firstDueAfter.Code != http.StatusOK {
+		t.Fatalf("expected first user due cards after answer 200, got %d (%s)", firstDueAfter.Code, firstDueAfter.Body.String())
+	}
+	firstDueCardsAfter := decodeJSON[[]Card](t, firstDueAfter)
+	if len(firstDueCardsAfter) != 0 {
+		t.Fatalf("expected first user to have 0 due cards after answering, got %d", len(firstDueCardsAfter))
+	}
+
+	secondDueAfter := doRawRequest(secondClient.router, http.MethodGet, "/api/decks/1/due?limit=10", "")
+	if secondDueAfter.Code != http.StatusOK {
+		t.Fatalf("expected second user due cards after first answer 200, got %d (%s)", secondDueAfter.Code, secondDueAfter.Body.String())
+	}
+	secondDueCardsAfter := decodeJSON[[]Card](t, secondDueAfter)
+	if len(secondDueCardsAfter) != 1 {
+		t.Fatalf("expected second user due queue to remain unchanged, got %d", len(secondDueCardsAfter))
+	}
+
+	firstStats := doRawRequest(env.router, http.MethodGet, "/api/decks/1/stats", "")
+	if firstStats.Code != http.StatusOK {
+		t.Fatalf("expected first user stats 200, got %d (%s)", firstStats.Code, firstStats.Body.String())
+	}
+	firstDeckStats := decodeJSON[DeckStats](t, firstStats)
+	if firstDeckStats.DueToday != 0 {
+		t.Fatalf("expected first user dueToday=0 after answer, got %d", firstDeckStats.DueToday)
+	}
+
+	secondStats := doRawRequest(secondClient.router, http.MethodGet, "/api/decks/1/stats", "")
+	if secondStats.Code != http.StatusOK {
+		t.Fatalf("expected second user stats 200, got %d (%s)", secondStats.Code, secondStats.Body.String())
+	}
+	secondDeckStats := decodeJSON[DeckStats](t, secondStats)
+	if secondDeckStats.DueToday != 1 {
+		t.Fatalf("expected second user dueToday=1 to remain pending, got %d", secondDeckStats.DueToday)
+	}
+
+	var revlogUserID string
+	if err := env.store.db.QueryRow(`SELECT user_id FROM revlog WHERE card_id = ? ORDER BY reviewed_at DESC LIMIT 1`, cardID).Scan(&revlogUserID); err != nil {
+		t.Fatalf("failed to query revlog user_id: %v", err)
+	}
+	sessionID := strings.TrimPrefix(env.authCookie, sessionCookieName+"=")
+	sessionRecord, err := env.store.GetSessionRecord(sessionID)
+	if err != nil {
+		t.Fatalf("failed to load primary test session: %v", err)
+	}
+	if revlogUserID != sessionRecord.UserID {
+		t.Fatalf("expected revlog user_id=%q, got %q", sessionRecord.UserID, revlogUserID)
+	}
+
+	var reviewStateCount int
+	if err := env.store.db.QueryRow(`SELECT COUNT(*) FROM card_review_states WHERE card_id = ?`, cardID).Scan(&reviewStateCount); err != nil {
+		t.Fatalf("failed to count card review states: %v", err)
+	}
+	if reviewStateCount < 2 {
+		t.Fatalf("expected per-user review states for both users, got %d", reviewStateCount)
 	}
 }
 

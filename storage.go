@@ -9,8 +9,8 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
-	_ "github.com/tursodatabase/libsql-client-go/libsql"
 	fsrs "github.com/open-spaced-repetition/go-fsrs/v3"
+	_ "github.com/tursodatabase/libsql-client-go/libsql"
 )
 
 // Store defines the persistence interface for Microdote.
@@ -45,14 +45,21 @@ type Store interface {
 	// Cards
 	CreateCard(c *Card) error
 	GetCard(id int64) (*Card, error)
+	GetCardForUser(userID string, id int64) (*Card, error)
 	UpdateCard(c *Card) error
 	DeleteCard(id int64) error
 	GetDueCards(deckID int64, limit int) ([]*Card, error)
+	GetDueCardsForUser(userID string, deckID int64, limit int) ([]*Card, error)
 	ListCardsInDeck(deckID int64) ([]*Card, error)
 	GetDeckStats(deckID int64) (*DeckStats, error)
+	GetDeckStatsForUser(userID string, deckID int64) (*DeckStats, error)
+	CountDueCardsForUser(userID string) (int, error)
+	EnsureReviewStatesForUser(userID string) error
+	UpdateCardReviewState(userID string, c *Card) error
 
 	// Revlog
 	AddRevlog(r *fsrs.ReviewLog, cardID int64, timeTakenMs int) error
+	AddRevlogForUser(userID string, r *fsrs.ReviewLog, cardID int64, timeTakenMs int) error
 	GetRevlogForCard(cardID int64) ([]*fsrs.ReviewLog, error)
 
 	// Media
@@ -765,6 +772,107 @@ func (s *SQLiteStore) GetCard(id int64) (*Card, error) {
 	return &card, nil
 }
 
+func defaultReviewStateCard(now time.Time) fsrs.Card {
+	card := newDueNow(now)
+	card.Due = time.Unix(card.Due.Unix(), 0)
+	return card
+}
+
+func (s *SQLiteStore) ensureReviewStateForCard(userID string, cardID int64) error {
+	if strings.TrimSpace(userID) == "" {
+		return nil
+	}
+
+	now := time.Now()
+	initialCard := defaultReviewStateCard(now)
+	fsrsJSON, err := json.Marshal(initialCard)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(`
+		INSERT OR IGNORE INTO card_review_states (
+			user_id, card_id, due, state, fsrs_data, flag, marked, suspended, updated_at
+		)
+		SELECT ?, c.id, ?, ?, ?, 0, 0, 0, ?
+		FROM cards c
+		WHERE c.id = ?
+	`, userID, initialCard.Due.Unix(), int(initialCard.State), fsrsJSON, now.Unix(), cardID)
+	return err
+}
+
+func (s *SQLiteStore) EnsureReviewStatesForUser(userID string) error {
+	if strings.TrimSpace(userID) == "" {
+		return nil
+	}
+
+	now := time.Now()
+	initialCard := defaultReviewStateCard(now)
+	fsrsJSON, err := json.Marshal(initialCard)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(`
+		INSERT OR IGNORE INTO card_review_states (
+			user_id, card_id, due, state, fsrs_data, flag, marked, suspended, updated_at
+		)
+		SELECT ?, c.id, ?, ?, ?, 0, 0, 0, ?
+		FROM cards c
+	`, userID, initialCard.Due.Unix(), int(initialCard.State), fsrsJSON, now.Unix())
+	return err
+}
+
+func (s *SQLiteStore) applyReviewStateToCard(userID string, card *Card) error {
+	if strings.TrimSpace(userID) == "" {
+		return nil
+	}
+
+	if err := s.ensureReviewStateForCard(userID, card.ID); err != nil {
+		return err
+	}
+
+	query := `
+		SELECT due, state, fsrs_data, flag, marked, suspended, updated_at
+		FROM card_review_states
+		WHERE user_id = ? AND card_id = ?
+	`
+
+	var (
+		dueUnix   int64
+		state     int
+		fsrsJSON  []byte
+		flag      int
+		marked    int
+		suspended int
+		updatedAt int64
+	)
+	if err := s.db.QueryRow(query, userID, card.ID).Scan(&dueUnix, &state, &fsrsJSON, &flag, &marked, &suspended, &updatedAt); err != nil {
+		return err
+	}
+
+	if err := json.Unmarshal(fsrsJSON, &card.SRS); err != nil {
+		return err
+	}
+	card.SRS.Due = time.Unix(dueUnix, 0)
+	card.SRS.State = fsrs.State(state)
+	card.Flag = flag
+	card.Marked = marked == 1
+	card.Suspended = suspended == 1
+	return nil
+}
+
+func (s *SQLiteStore) GetCardForUser(userID string, id int64) (*Card, error) {
+	card, err := s.GetCard(id)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.applyReviewStateToCard(userID, card); err != nil {
+		return nil, err
+	}
+	return card, nil
+}
+
 func (s *SQLiteStore) UpdateCard(c *Card) error {
 	fsrsJSON, err := json.Marshal(c.SRS)
 	if err != nil {
@@ -779,6 +887,27 @@ func (s *SQLiteStore) UpdateCard(c *Card) error {
 	`
 	_, err = s.db.Exec(query, c.NoteID, c.DeckID, c.TemplateName, c.Ordinal, c.Front, c.Back,
 		c.SRS.Due.Unix(), int(c.SRS.State), fsrsJSON, c.Flag, c.Marked, c.Suspended, c.USN, c.ID)
+	return err
+}
+
+func (s *SQLiteStore) UpdateCardReviewState(userID string, c *Card) error {
+	if strings.TrimSpace(userID) == "" {
+		return s.UpdateCard(c)
+	}
+	if err := s.ensureReviewStateForCard(userID, c.ID); err != nil {
+		return err
+	}
+
+	fsrsJSON, err := json.Marshal(c.SRS)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(`
+		UPDATE card_review_states
+		SET due = ?, state = ?, fsrs_data = ?, flag = ?, marked = ?, suspended = ?, updated_at = ?
+		WHERE user_id = ? AND card_id = ?
+	`, c.SRS.Due.Unix(), int(c.SRS.State), fsrsJSON, c.Flag, c.Marked, c.Suspended, time.Now().Unix(), userID, c.ID)
 	return err
 }
 
@@ -875,6 +1004,64 @@ func (s *SQLiteStore) getTodayReviewedCounts(deckID int64, now time.Time) (int, 
 	return newReviewed, reviewed, nil
 }
 
+func (s *SQLiteStore) countDistinctReviewedCardsByStatesForUser(userID string, deckID, dayStart, dayEnd int64, states []int) (int, error) {
+	if len(states) == 0 {
+		return 0, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(states)), ",")
+	query := fmt.Sprintf(`
+		SELECT COUNT(DISTINCT r.card_id)
+		FROM revlog r
+		JOIN cards c ON c.id = r.card_id
+		WHERE r.user_id = ?
+		  AND c.deck_id = ?
+		  AND r.reviewed_at >= ?
+		  AND r.reviewed_at < ?
+		  AND r.state IN (%s)
+	`, placeholders)
+
+	args := make([]interface{}, 0, 4+len(states))
+	args = append(args, userID, deckID, dayStart, dayEnd)
+	for _, state := range states {
+		args = append(args, state)
+	}
+
+	var count int
+	if err := s.db.QueryRow(query, args...).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (s *SQLiteStore) getTodayReviewedCountsForUser(userID string, deckID int64, now time.Time) (int, int, error) {
+	if strings.TrimSpace(userID) == "" {
+		return s.getTodayReviewedCounts(deckID, now)
+	}
+
+	dayStartTime := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	dayStart := dayStartTime.Unix()
+	dayEnd := dayStartTime.Add(24 * time.Hour).Unix()
+
+	newReviewed, err := s.countDistinctReviewedCardsByStatesForUser(userID, deckID, dayStart, dayEnd, []int{int(fsrs.New)})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	reviewed, err := s.countDistinctReviewedCardsByStatesForUser(
+		userID,
+		deckID,
+		dayStart,
+		dayEnd,
+		[]int{int(fsrs.Review), int(fsrs.Relearning)},
+	)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return newReviewed, reviewed, nil
+}
+
 func (s *SQLiteStore) getDueCardIDsByStates(deckID, now int64, states []int, limit int) ([]int64, error) {
 	if len(states) == 0 || limit <= 0 {
 		return []int64{}, nil
@@ -894,6 +1081,50 @@ func (s *SQLiteStore) getDueCardIDsByStates(deckID, now int64, states []int, lim
 
 	args := make([]interface{}, 0, 3+len(states))
 	args = append(args, deckID, now)
+	for _, state := range states {
+		args = append(args, state)
+	}
+	args = append(args, limit)
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := make([]int64, 0, limit)
+	for rows.Next() {
+		var cardID int64
+		if err := rows.Scan(&cardID); err != nil {
+			return nil, err
+		}
+		ids = append(ids, cardID)
+	}
+
+	return ids, rows.Err()
+}
+
+func (s *SQLiteStore) getDueCardIDsByStatesForUser(userID string, deckID, now int64, states []int, limit int) ([]int64, error) {
+	if len(states) == 0 || limit <= 0 {
+		return []int64{}, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(states)), ",")
+	query := fmt.Sprintf(`
+		SELECT c.id
+		FROM cards c
+		JOIN card_review_states rs ON rs.card_id = c.id
+		WHERE rs.user_id = ?
+		  AND c.deck_id = ?
+		  AND rs.due <= ?
+		  AND rs.suspended = 0
+		  AND rs.state IN (%s)
+		ORDER BY rs.due ASC, c.id ASC
+		LIMIT ?
+	`, placeholders)
+
+	args := make([]interface{}, 0, 4+len(states))
+	args = append(args, userID, deckID, now)
 	for _, state := range states {
 		args = append(args, state)
 	}
@@ -987,6 +1218,79 @@ func (s *SQLiteStore) GetDueCards(deckID int64, limit int) ([]*Card, error) {
 	return cards, nil
 }
 
+func (s *SQLiteStore) GetDueCardsForUser(userID string, deckID int64, limit int) ([]*Card, error) {
+	if strings.TrimSpace(userID) == "" {
+		return s.GetDueCards(deckID, limit)
+	}
+	if limit <= 0 {
+		return []*Card{}, nil
+	}
+
+	if err := s.EnsureReviewStatesForUser(userID); err != nil {
+		return nil, err
+	}
+
+	now := time.Now().Unix()
+	newLimit, reviewLimit, err := s.getDeckDailyLimits(deckID)
+	if err != nil {
+		return nil, err
+	}
+
+	newReviewedToday, reviewedToday, err := s.getTodayReviewedCountsForUser(userID, deckID, time.Now())
+	if err != nil {
+		return nil, err
+	}
+
+	newRemaining := newLimit - newReviewedToday
+	if newRemaining < 0 {
+		newRemaining = 0
+	}
+
+	reviewRemaining := reviewLimit - reviewedToday
+	if reviewRemaining < 0 {
+		reviewRemaining = 0
+	}
+
+	remaining := limit
+	cardIDs := make([]int64, 0, limit)
+	appendCardIDs := func(stateGroup []int, groupLimit int) error {
+		if remaining <= 0 || groupLimit <= 0 {
+			return nil
+		}
+		if groupLimit > remaining {
+			groupLimit = remaining
+		}
+		ids, err := s.getDueCardIDsByStatesForUser(userID, deckID, now, stateGroup, groupLimit)
+		if err != nil {
+			return err
+		}
+		cardIDs = append(cardIDs, ids...)
+		remaining -= len(ids)
+		return nil
+	}
+
+	if err := appendCardIDs([]int{int(fsrs.Review), int(fsrs.Relearning)}, reviewRemaining); err != nil {
+		return nil, err
+	}
+	if err := appendCardIDs([]int{int(fsrs.Learning)}, remaining); err != nil {
+		return nil, err
+	}
+	if err := appendCardIDs([]int{int(fsrs.New)}, newRemaining); err != nil {
+		return nil, err
+	}
+
+	cards := make([]*Card, 0, len(cardIDs))
+	for _, cardID := range cardIDs {
+		card, err := s.GetCardForUser(userID, cardID)
+		if err != nil {
+			return nil, err
+		}
+		cards = append(cards, card)
+	}
+
+	return cards, nil
+}
+
 func (s *SQLiteStore) ListCardsInDeck(deckID int64) ([]*Card, error) {
 	query := `SELECT id FROM cards WHERE deck_id = ? ORDER BY id`
 	rows, err := s.db.Query(query, deckID)
@@ -1020,6 +1324,20 @@ func (s *SQLiteStore) AddRevlog(r *fsrs.ReviewLog, cardID int64, timeTakenMs int
 	// Generate ID (in real implementation, use proper ID generation)
 	id := time.Now().UnixNano()
 	_, err := s.db.Exec(query, id, cardID, int(r.Rating), int(r.State), r.Review.Unix(), r.Review.Unix(), timeTakenMs)
+	return err
+}
+
+func (s *SQLiteStore) AddRevlogForUser(userID string, r *fsrs.ReviewLog, cardID int64, timeTakenMs int) error {
+	if strings.TrimSpace(userID) == "" {
+		return s.AddRevlog(r, cardID, timeTakenMs)
+	}
+
+	query := `
+		INSERT INTO revlog (id, user_id, card_id, rating, state, due, reviewed_at, time_taken_ms)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`
+	id := time.Now().UnixNano()
+	_, err := s.db.Exec(query, id, userID, cardID, int(r.Rating), int(r.State), r.Review.Unix(), r.Review.Unix(), timeTakenMs)
 	return err
 }
 
@@ -1137,6 +1455,89 @@ func (s *SQLiteStore) GetDeckStats(deckID int64) (*DeckStats, error) {
 	}
 
 	return stats, nil
+}
+
+func (s *SQLiteStore) GetDeckStatsForUser(userID string, deckID int64) (*DeckStats, error) {
+	if strings.TrimSpace(userID) == "" {
+		return s.GetDeckStats(deckID)
+	}
+	if err := s.EnsureReviewStatesForUser(userID); err != nil {
+		return nil, err
+	}
+
+	stats := &DeckStats{DeckID: deckID}
+	now := time.Now().Unix()
+
+	rows, err := s.db.Query(`
+		SELECT rs.state, rs.suspended, rs.due
+		FROM cards c
+		JOIN card_review_states rs ON rs.card_id = c.id
+		WHERE rs.user_id = ? AND c.deck_id = ?
+	`, userID, deckID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var state, suspended int
+		var due int64
+
+		if err := rows.Scan(&state, &suspended, &due); err != nil {
+			return nil, err
+		}
+
+		stats.TotalCards++
+
+		if suspended == 1 {
+			stats.Suspended++
+			continue
+		}
+
+		switch state {
+		case int(fsrs.New):
+			stats.NewCards++
+			if due <= now {
+				stats.DueToday++
+			}
+		case int(fsrs.Learning):
+			stats.Learning++
+			if due <= now {
+				stats.DueToday++
+			}
+		case int(fsrs.Review):
+			stats.Review++
+			if due <= now {
+				stats.DueToday++
+			}
+		case int(fsrs.Relearning):
+			stats.Relearning++
+			if due <= now {
+				stats.DueToday++
+			}
+		}
+	}
+
+	return stats, rows.Err()
+}
+
+func (s *SQLiteStore) CountDueCardsForUser(userID string) (int, error) {
+	if strings.TrimSpace(userID) == "" {
+		var count int
+		err := s.db.QueryRow(`SELECT COUNT(*) FROM cards WHERE suspended = 0 AND due <= ?`, time.Now().Unix()).Scan(&count)
+		return count, err
+	}
+	if err := s.EnsureReviewStatesForUser(userID); err != nil {
+		return 0, err
+	}
+
+	var count int
+	err := s.db.QueryRow(`
+		SELECT COUNT(*)
+		FROM card_review_states
+		WHERE user_id = ? AND suspended = 0 AND due <= ?
+	`, userID, time.Now().Unix()).Scan(&count)
+	return count, err
 }
 
 // Profile methods (Task 0003)

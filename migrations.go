@@ -19,17 +19,18 @@ func (s *SQLiteStore) migrate() error {
 	}
 
 	// Run migrations sequentially
-		migrations := []struct {
-			version int
-			name    string
-			fn      func() error
-		}{
-			{1, "initial_schema", s.runMigration001_InitialSchema},
-			{2, "add_field_options", s.runMigration002_AddFieldOptions},
-			{3, "add_account_billing_schema", s.runMigration003_AddAccountBillingSchema},
-			{4, "add_otp_auth_schema", s.runMigration004_AddOTPAuthSchema},
-			{5, "add_phase1_foundation_schema", s.runMigration005_AddPhase1FoundationSchema},
-		}
+	migrations := []struct {
+		version int
+		name    string
+		fn      func() error
+	}{
+		{1, "initial_schema", s.runMigration001_InitialSchema},
+		{2, "add_field_options", s.runMigration002_AddFieldOptions},
+		{3, "add_account_billing_schema", s.runMigration003_AddAccountBillingSchema},
+		{4, "add_otp_auth_schema", s.runMigration004_AddOTPAuthSchema},
+		{5, "add_phase1_foundation_schema", s.runMigration005_AddPhase1FoundationSchema},
+		{6, "add_per_user_review_state", s.runMigration006_AddPerUserReviewState},
+	}
 
 	for _, m := range migrations {
 		if version < m.version {
@@ -75,6 +76,33 @@ func (s *SQLiteStore) setSchemaVersion(version int) error {
 	`
 	_, err := s.db.Exec(query, fmt.Sprintf("%d", version))
 	return err
+}
+
+func (s *SQLiteStore) columnExists(tableName, columnName string) (bool, error) {
+	rows, err := s.db.Query(fmt.Sprintf("PRAGMA table_info(%s)", tableName))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var (
+			cid          int
+			name         string
+			columnType   string
+			notNull      int
+			defaultValue sql.NullString
+			primaryKey   int
+		)
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &primaryKey); err != nil {
+			return false, err
+		}
+		if strings.EqualFold(name, columnName) {
+			return true, nil
+		}
+	}
+
+	return false, rows.Err()
 }
 
 // runMigration001_InitialSchema creates the initial database schema for M0.
@@ -492,6 +520,107 @@ func (s *SQLiteStore) runMigration005_AddPhase1FoundationSchema() error {
 	for _, statement := range statements {
 		if _, err := s.db.Exec(statement); err != nil && !isIgnorableMigrationError(err) {
 			return fmt.Errorf("failed to apply phase 1 foundation migration statement: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) runMigration006_AddPerUserReviewState() error {
+	schema := `
+		CREATE TABLE IF NOT EXISTS card_review_states (
+			user_id TEXT NOT NULL,
+			card_id INTEGER NOT NULL,
+			due INTEGER NOT NULL,
+			state INTEGER NOT NULL,
+			fsrs_data TEXT NOT NULL,
+			flag INTEGER DEFAULT 0,
+			marked INTEGER DEFAULT 0,
+			suspended INTEGER DEFAULT 0,
+			updated_at INTEGER NOT NULL,
+			PRIMARY KEY (user_id, card_id),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_card_review_states_card ON card_review_states(card_id);
+		CREATE INDEX IF NOT EXISTS idx_card_review_states_user_due ON card_review_states(user_id, due);
+	`
+
+	if _, err := s.db.Exec(schema); err != nil {
+		return fmt.Errorf("failed to create card review states schema: %w", err)
+	}
+
+	hasUserID, err := s.columnExists("revlog", "user_id")
+	if err != nil {
+		return fmt.Errorf("failed to inspect revlog schema: %w", err)
+	}
+	if !hasUserID {
+		if _, err := s.db.Exec(`ALTER TABLE revlog ADD COLUMN user_id TEXT`); err != nil {
+			return fmt.Errorf("failed to add revlog user_id column: %w", err)
+		}
+	}
+
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_revlog_user_card_reviewed ON revlog(user_id, card_id, reviewed_at)`); err != nil {
+		return fmt.Errorf("failed to create revlog user index: %w", err)
+	}
+
+	ownerUserIDs := make([]string, 0)
+	rows, err := s.db.Query(`
+		SELECT DISTINCT owner_user_id
+		FROM workspaces
+		WHERE owner_user_id IS NOT NULL AND owner_user_id != ''
+		ORDER BY owner_user_id
+	`)
+	if err != nil {
+		return fmt.Errorf("failed to load workspace owners for review-state migration: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var userID string
+		if err := rows.Scan(&userID); err != nil {
+			return fmt.Errorf("failed to scan workspace owner for review-state migration: %w", err)
+		}
+		ownerUserIDs = append(ownerUserIDs, userID)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to iterate workspace owners for review-state migration: %w", err)
+	}
+
+	if len(ownerUserIDs) == 0 {
+		userRows, err := s.db.Query(`SELECT id FROM users ORDER BY created_at ASC`)
+		if err != nil {
+			return fmt.Errorf("failed to load users for review-state migration: %w", err)
+		}
+		defer userRows.Close()
+		for userRows.Next() {
+			var userID string
+			if err := userRows.Scan(&userID); err != nil {
+				return fmt.Errorf("failed to scan user for review-state migration: %w", err)
+			}
+			ownerUserIDs = append(ownerUserIDs, userID)
+		}
+		if err := userRows.Err(); err != nil {
+			return fmt.Errorf("failed to iterate users for review-state migration: %w", err)
+		}
+	}
+
+	for _, userID := range ownerUserIDs {
+		if _, err := s.db.Exec(`
+			INSERT OR IGNORE INTO card_review_states (
+				user_id, card_id, due, state, fsrs_data, flag, marked, suspended, updated_at
+			)
+			SELECT ?, id, due, state, COALESCE(fsrs_data, '{}'), COALESCE(flag, 0), COALESCE(marked, 0), COALESCE(suspended, 0), strftime('%s','now')
+			FROM cards
+		`, userID); err != nil {
+			return fmt.Errorf("failed to backfill review states for user %s: %w", userID, err)
+		}
+	}
+
+	if len(ownerUserIDs) > 0 {
+		if _, err := s.db.Exec(`UPDATE revlog SET user_id = ? WHERE user_id IS NULL OR user_id = ''`, ownerUserIDs[0]); err != nil {
+			return fmt.Errorf("failed to backfill revlog user_id: %w", err)
 		}
 	}
 

@@ -59,15 +59,15 @@ type CreateDeckRequest struct {
 }
 
 type DeckResponse struct {
-	ID                int64   `json:"id"`
-	Name              string  `json:"name"`
-	ParentID          *int64  `json:"parentId,omitempty"`
-	CardIDs           []int64 `json:"cardIds"`
-	DueToday          int     `json:"dueToday"`
-	NoteCount         int     `json:"noteCount"`
-	CardCount         int     `json:"cardCount"`
-	CanDelete         bool    `json:"canDelete"`
-	DeleteBlockedReason string `json:"deleteBlockedReason,omitempty"`
+	ID                  int64   `json:"id"`
+	Name                string  `json:"name"`
+	ParentID            *int64  `json:"parentId,omitempty"`
+	CardIDs             []int64 `json:"cardIds"`
+	DueToday            int     `json:"dueToday"`
+	NoteCount           int     `json:"noteCount"`
+	CardCount           int     `json:"cardCount"`
+	CanDelete           bool    `json:"canDelete"`
+	DeleteBlockedReason string  `json:"deleteBlockedReason,omitempty"`
 }
 
 type DashboardResponse struct {
@@ -155,11 +155,16 @@ func (h *APIHandler) ListDecks(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	userID := h.userIDFromRequest(r)
+	if err := h.store.EnsureReviewStatesForUser(userID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	// Convert to response format
 	var response []DeckResponse
 	for _, d := range decks {
-		response = append(response, h.deckResponse(d))
+		response = append(response, h.deckResponse(userID, d))
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -197,7 +202,7 @@ func (h *APIHandler) CreateDeck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusCreated, h.deckResponse(deck))
+	respondJSON(w, http.StatusCreated, h.deckResponse(h.userIDFromRequest(r), deck))
 }
 
 func (h *APIHandler) GetDeck(w http.ResponseWriter, r *http.Request) {
@@ -214,14 +219,14 @@ func (h *APIHandler) GetDeck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get deck stats
-	stats, err := h.store.GetDeckStats(id)
+	stats, err := h.store.GetDeckStatsForUser(h.userIDFromRequest(r), id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"deck":  h.deckResponse(deck),
+		"deck":  h.deckResponse(h.userIDFromRequest(r), deck),
 		"stats": stats,
 	})
 }
@@ -232,6 +237,14 @@ func (h *APIHandler) buildNoteCardIndex() map[int64][]Card {
 		index[card.NoteID] = append(index[card.NoteID], *card)
 	}
 	return index
+}
+
+func (h *APIHandler) userIDFromRequest(r *http.Request) string {
+	session := h.sessionFromRequest(r)
+	if session == nil {
+		return ""
+	}
+	return strings.TrimSpace(session.UserID)
 }
 
 func (h *APIHandler) deckDeleteBlockedReason(deck *Deck, cardCount int) string {
@@ -246,8 +259,7 @@ func (h *APIHandler) deckDeleteBlockedReason(deck *Deck, cardCount int) string {
 	return ""
 }
 
-func (h *APIHandler) deckResponse(deck *Deck) DeckResponse {
-	now := time.Now()
+func (h *APIHandler) deckResponse(userID string, deck *Deck) DeckResponse {
 	dueToday := 0
 	noteIDs := make(map[int64]struct{})
 	cardCount := 0
@@ -259,22 +271,23 @@ func (h *APIHandler) deckResponse(deck *Deck) DeckResponse {
 		}
 		cardCount++
 		noteIDs[card.NoteID] = struct{}{}
-		if !card.Suspended && !card.SRS.Due.IsZero() && !card.SRS.Due.After(now) {
-			dueToday++
-		}
+	}
+
+	if stats, err := h.store.GetDeckStatsForUser(userID, deck.ID); err == nil {
+		dueToday = stats.DueToday
 	}
 
 	deleteBlockedReason := h.deckDeleteBlockedReason(deck, cardCount)
 
 	return DeckResponse{
-		ID:                 deck.ID,
-		Name:               deck.Name,
-		ParentID:           deck.ParentID,
-		CardIDs:            deck.Cards,
-		DueToday:           dueToday,
-		NoteCount:          len(noteIDs),
-		CardCount:          cardCount,
-		CanDelete:          deleteBlockedReason == "",
+		ID:                  deck.ID,
+		Name:                deck.Name,
+		ParentID:            deck.ParentID,
+		CardIDs:             deck.Cards,
+		DueToday:            dueToday,
+		NoteCount:           len(noteIDs),
+		CardCount:           cardCount,
+		CanDelete:           deleteBlockedReason == "",
 		DeleteBlockedReason: deleteBlockedReason,
 	}
 }
@@ -284,12 +297,8 @@ func (h *APIHandler) buildDashboardResponse(r *http.Request) DashboardResponse {
 	noteCards := h.buildNoteCardIndex()
 	recentNotes := make([]NoteListItemResponse, 0, len(h.collection.Notes))
 	dueToday := 0
-	now := time.Now()
-
-	for _, card := range h.collection.Cards {
-		if !card.Suspended && !card.SRS.Due.IsZero() && !card.SRS.Due.After(now) {
-			dueToday++
-		}
+	if count, err := h.store.CountDueCardsForUser(h.userIDFromRequest(r)); err == nil {
+		dueToday = count
 	}
 
 	for _, note := range h.collection.Notes {
@@ -338,7 +347,7 @@ func (h *APIHandler) GetDeckStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stats, err := h.store.GetDeckStats(id)
+	stats, err := h.store.GetDeckStatsForUser(h.userIDFromRequest(r), id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -518,7 +527,7 @@ func (h *APIHandler) GetDueCards(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	cards, err := h.store.GetDueCards(deckID, limit)
+	cards, err := h.store.GetDueCardsForUser(h.userIDFromRequest(r), deckID, limit)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -534,7 +543,7 @@ func (h *APIHandler) GetCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	card, err := h.store.GetCard(id)
+	card, err := h.store.GetCardForUser(h.userIDFromRequest(r), id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -561,28 +570,27 @@ func (h *APIHandler) AnswerCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use Collection.Answer to update FSRS scheduling
-	revlog, err := h.collection.Answer(id, fsrs.Rating(req.Rating), time.Now(), req.TimeTakenMs)
+	userID := h.userIDFromRequest(r)
+	card, err := h.store.GetCardForUser(userID, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Get updated card from collection
-	card, ok := h.collection.Cards[id]
+	sched := fsrs.NewFSRS(h.collection.Params).Repeat(card.SRS, time.Now())
+	info, ok := sched[fsrs.Rating(req.Rating)]
 	if !ok {
-		http.Error(w, "Card not found after update", http.StatusInternalServerError)
+		http.Error(w, "Unable to schedule card review", http.StatusInternalServerError)
 		return
 	}
+	card.SRS = info.Card
 
-	// Persist updated card to database
-	if err := h.store.UpdateCard(card); err != nil {
+	if err := h.store.UpdateCardReviewState(userID, card); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Persist revlog entry with actual card ID and time taken
-	if err := h.store.AddRevlog(revlog, id, req.TimeTakenMs); err != nil {
+	if err := h.store.AddRevlogForUser(userID, &info.ReviewLog, id, req.TimeTakenMs); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -603,8 +611,10 @@ func (h *APIHandler) UpdateCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := h.userIDFromRequest(r)
+
 	// Get card from store
-	card, err := h.store.GetCard(id)
+	card, err := h.store.GetCardForUser(userID, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -626,14 +636,9 @@ func (h *APIHandler) UpdateCard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Persist changes
-	if err := h.store.UpdateCard(card); err != nil {
+	if err := h.store.UpdateCardReviewState(userID, card); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	}
-
-	// Update collection cache if card exists there
-	if _, ok := h.collection.Cards[id]; ok {
-		h.collection.Cards[id] = card
 	}
 
 	respondJSON(w, http.StatusOK, card)

@@ -78,6 +78,18 @@ type Card struct {
 	USN       int64 `json:"usn"`       // Update Sequence Number for sync
 }
 
+// CardReviewState stores the per-user scheduling and review metadata for a card.
+// Card content remains shared in cards; due state lives here.
+type CardReviewState struct {
+	UserID    string    `json:"userId"`
+	CardID    int64     `json:"cardId"`
+	SRS       fsrs.Card `json:"srs"`
+	Flag      int       `json:"flag"`
+	Marked    bool      `json:"marked"`
+	Suspended bool      `json:"suspended"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 type Deck struct {
 	ID        int64 `json:"id"`
 	Name      string

@@ -26,16 +26,16 @@ type NoteResponse struct {
 }
 
 type NoteListItemResponse struct {
-	ID          int64             `json:"id"`
-	TypeID      string            `json:"typeId"`
-	FieldVals   map[string]string `json:"fieldVals"`
-	FieldPreview string           `json:"fieldPreview"`
-	Tags        []string          `json:"tags"`
-	CreatedAt   time.Time         `json:"createdAt"`
-	ModifiedAt  time.Time         `json:"modifiedAt"`
-	DeckID      int64             `json:"deckId,omitempty"`
-	DeckName    string            `json:"deckName,omitempty"`
-	CardCount   int               `json:"cardCount"`
+	ID           int64             `json:"id"`
+	TypeID       string            `json:"typeId"`
+	FieldVals    map[string]string `json:"fieldVals"`
+	FieldPreview string            `json:"fieldPreview"`
+	Tags         []string          `json:"tags"`
+	CreatedAt    time.Time         `json:"createdAt"`
+	ModifiedAt   time.Time         `json:"modifiedAt"`
+	DeckID       int64             `json:"deckId,omitempty"`
+	DeckName     string            `json:"deckName,omitempty"`
+	CardCount    int               `json:"cardCount"`
 }
 
 type ListNotesResponse struct {
@@ -570,7 +570,7 @@ func (h *APIHandler) UpdateDeck(w http.ResponseWriter, r *http.Request) {
 		existing.Name = deck.Name
 	}
 
-	respondJSON(w, http.StatusOK, h.deckResponse(deck))
+	respondJSON(w, http.StatusOK, h.deckResponse(h.userIDFromRequest(r), deck))
 }
 
 func (h *APIHandler) DeleteDeck(w http.ResponseWriter, r *http.Request) {

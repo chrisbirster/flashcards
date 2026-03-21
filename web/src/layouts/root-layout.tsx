@@ -3,16 +3,17 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAppRepository } from '#/lib/app-repository'
 import { appNavigation, pageTitleForPath } from '#/lib/app-navigation'
+import { ThemeToggle } from '#/components/theme-toggle'
 
 function AppMark() {
   return (
     <Link to="/" className="flex items-center gap-3">
-      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-lg font-semibold text-white">
+      <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] text-lg font-semibold text-[var(--app-accent-ink)] shadow-[0_12px_30px_rgba(112,214,108,0.18)]">
         V
       </span>
       <div>
-        <p className="text-lg font-semibold text-slate-950">Vutadex</p>
-        <p className="text-xs uppercase tracking-[0.26em] text-slate-400">Flashcards workspace</p>
+        <p className="text-lg font-semibold text-[var(--app-text)]">Vutadex</p>
+        <p className="text-xs uppercase tracking-[0.26em] text-[var(--app-muted)]">Flashcards workspace</p>
       </div>
     </Link>
   )
@@ -56,8 +57,8 @@ function SidebarContent({ onNavigate }: {onNavigate?: () => void}) {
                   [
                     'block rounded-2xl px-4 py-3 transition-colors',
                     isActive
-                      ? 'bg-slate-950 text-white shadow-sm'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950',
+                      ? 'bg-[var(--app-accent)] text-[var(--app-accent-ink)] shadow-sm'
+                      : 'text-[var(--app-text-soft)] hover:bg-[var(--app-muted-surface)] hover:text-[var(--app-text)]',
                   ].join(' ')
                 }
               >
@@ -69,21 +70,21 @@ function SidebarContent({ onNavigate }: {onNavigate?: () => void}) {
         </ul>
       </nav>
 
-      <div className="border-t border-slate-200 px-5 py-5">
-        <div className="rounded-2xl bg-slate-100 p-4">
+      <div className="border-t border-[var(--app-line)] px-5 py-5">
+        <div className="rounded-2xl bg-[var(--app-muted-surface)] p-4">
           <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-950 text-sm font-semibold text-white">
+            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--app-accent)] text-sm font-semibold text-[var(--app-accent-ink)]">
               {userInitial}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-slate-950">{userLabel}</p>
-              <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{plan} plan</p>
+              <p className="truncate text-sm font-semibold text-[var(--app-text)]">{userLabel}</p>
+              <p className="text-xs uppercase tracking-[0.18em] text-[var(--app-muted)]">{plan} plan</p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => logoutMutation.mutate()}
-            className="mt-4 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:border-slate-400 hover:bg-white"
+            className="mt-4 w-full rounded-xl border border-[var(--app-line-strong)] px-3 py-2 text-sm font-medium text-[var(--app-text-soft)] hover:border-[var(--app-accent)] hover:bg-[var(--app-card)] hover:text-[var(--app-text)]"
           >
             Sign out
           </button>
@@ -98,20 +99,20 @@ export function Layout({children}: {children?: ReactNode}) {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   return (
-    <div className="min-h-screen bg-stone-100 text-slate-950">
+    <div className="min-h-screen bg-[var(--app-bg)] text-[var(--app-text)]">
       <div className="flex min-h-screen">
-        <aside className="hidden w-80 shrink-0 border-r border-slate-200 bg-white md:block">
+        <aside className="hidden w-80 shrink-0 border-r border-[var(--app-line)] bg-[var(--app-panel)] md:block">
           <SidebarContent />
         </aside>
 
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 border-b border-slate-200 bg-stone-100/90 backdrop-blur">
+          <header className="sticky top-0 z-30 border-b border-[var(--app-line)] bg-[color:var(--app-header)] backdrop-blur">
             <div className="flex items-center justify-between gap-4 px-4 py-4 md:px-8">
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => setMobileOpen(true)}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-300 bg-white text-slate-700 md:hidden"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] text-[var(--app-text-soft)] md:hidden"
                   aria-label="Open navigation"
                 >
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -119,17 +120,20 @@ export function Layout({children}: {children?: ReactNode}) {
                   </svg>
                 </button>
                 <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Workspace</p>
+                  <p className="text-xs uppercase tracking-[0.24em] text-[var(--app-muted)]">Workspace</p>
                   <h1 className="text-2xl font-semibold tracking-tight">{pageTitleForPath(location.pathname)}</h1>
                 </div>
               </div>
 
-              <Link
-                to="/notes/add"
-                className="inline-flex items-center rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-slate-800"
-              >
-                Add note
-              </Link>
+              <div className="flex items-center gap-3">
+                <ThemeToggle compact />
+                <Link
+                  to="/notes/add"
+                  className="inline-flex items-center rounded-2xl bg-[var(--app-accent)] px-4 py-2.5 text-sm font-medium text-[var(--app-accent-ink)] shadow-sm transition hover:brightness-105"
+                >
+                  Add note
+                </Link>
+              </div>
             </div>
           </header>
 
@@ -139,19 +143,14 @@ export function Layout({children}: {children?: ReactNode}) {
 
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
-          <button
-            type="button"
-            onClick={() => setMobileOpen(false)}
-            className="absolute inset-0 bg-slate-950/45"
-            aria-label="Close navigation"
-          />
-          <div className="absolute inset-y-0 left-0 w-[88vw] max-w-sm bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <button type="button" onClick={() => setMobileOpen(false)} className="absolute inset-0 bg-black/55" aria-label="Close navigation" />
+          <div className="absolute inset-y-0 left-0 w-[88vw] max-w-sm bg-[var(--app-panel)] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--app-line)] px-5 py-4">
               <AppMark />
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-300 text-slate-700"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] text-[var(--app-text-soft)]"
                 aria-label="Close navigation"
               >
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

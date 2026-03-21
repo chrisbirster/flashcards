@@ -9,3 +9,4 @@ infra/.env
 infra/.env.*
 marketing/node_modules
 marketing/dist
+.env

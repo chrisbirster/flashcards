@@ -1,1 +1,318 @@
 @import "tailwindcss";
+
+:root {
+  --app-bg: #060806;
+  --app-panel: #090d09;
+  --app-header: rgba(6, 8, 6, 0.84);
+  --app-card: #0d120d;
+  --app-card-strong: #101610;
+  --app-muted-surface: #141a14;
+  --app-text: #f3f5f2;
+  --app-text-soft: #cad3c7;
+  --app-muted: #8f9d8f;
+  --app-accent: #70d66c;
+  --app-accent-strong: #85ea82;
+  --app-accent-ink: #061006;
+  --app-line: rgba(255, 255, 255, 0.08);
+  --app-line-strong: rgba(255, 255, 255, 0.14);
+  --app-success-surface: rgba(112, 214, 108, 0.12);
+  --app-success-line: rgba(112, 214, 108, 0.28);
+  --app-success-text: #b9f0b7;
+  --app-warning-surface: rgba(245, 203, 92, 0.12);
+  --app-warning-line: rgba(245, 203, 92, 0.24);
+  --app-warning-text: #f4df93;
+  --app-danger-surface: rgba(246, 113, 113, 0.14);
+  --app-danger-line: rgba(246, 113, 113, 0.26);
+  --app-danger-text: #ffb2b2;
+}
+
+:root[data-theme="light"] {
+  --app-bg: #f5faf4;
+  --app-panel: #eef6ed;
+  --app-header: rgba(245, 250, 244, 0.86);
+  --app-card: #ffffff;
+  --app-card-strong: #f8fcf7;
+  --app-muted-surface: #edf4eb;
+  --app-text: #132014;
+  --app-text-soft: #516152;
+  --app-muted: #748175;
+  --app-accent: #4fbf5a;
+  --app-accent-strong: #3cad48;
+  --app-accent-ink: #081208;
+  --app-line: rgba(19, 32, 20, 0.08);
+  --app-line-strong: rgba(19, 32, 20, 0.16);
+  --app-success-surface: rgba(79, 191, 90, 0.1);
+  --app-success-line: rgba(79, 191, 90, 0.22);
+  --app-success-text: #1d6d27;
+  --app-warning-surface: rgba(212, 165, 52, 0.12);
+  --app-warning-line: rgba(212, 165, 52, 0.2);
+  --app-warning-text: #8c6200;
+  --app-danger-surface: rgba(224, 84, 84, 0.1);
+  --app-danger-line: rgba(224, 84, 84, 0.18);
+  --app-danger-text: #b13d3d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--app-accent) 12%, transparent), transparent 26%),
+    linear-gradient(180deg, var(--app-bg) 0%, var(--app-panel) 100%);
+  color: var(--app-text);
+  font-family: "Inter Tight", "SF Pro Display", "Avenir Next", "Segoe UI", sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+body::selection {
+  background: color-mix(in srgb, var(--app-accent) 28%, transparent);
+  color: var(--app-text);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.app-auth-shell {
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--app-accent) 18%, transparent), transparent 34%),
+    linear-gradient(180deg, var(--app-bg) 0%, var(--app-panel) 100%);
+}
+
+[data-theme] .bg-white {
+  background-color: var(--app-card) !important;
+}
+
+[data-theme] .bg-white\/80,
+[data-theme] .bg-white\/60 {
+  background-color: color-mix(in srgb, var(--app-card) 88%, transparent) !important;
+}
+
+[data-theme] .bg-white\/15 {
+  background-color: color-mix(in srgb, var(--app-card) 30%, transparent) !important;
+}
+
+[data-theme] .bg-white\/5 {
+  background-color: color-mix(in srgb, var(--app-card) 55%, transparent) !important;
+}
+
+[data-theme] .bg-gray-50,
+[data-theme] .bg-gray-100,
+[data-theme] .bg-stone-50,
+[data-theme] .bg-stone-100,
+[data-theme] .bg-slate-50,
+[data-theme] .bg-slate-100,
+[data-theme] .bg-gray-200 {
+  background-color: var(--app-muted-surface) !important;
+}
+
+[data-theme] .bg-gray-300 {
+  background-color: color-mix(in srgb, var(--app-muted) 45%, var(--app-card)) !important;
+}
+
+[data-theme] .bg-slate-900,
+[data-theme] .bg-slate-950 {
+  background-color: var(--app-card-strong) !important;
+}
+
+[data-theme] .bg-gray-50\/80 {
+  background-color: color-mix(in srgb, var(--app-muted-surface) 90%, transparent) !important;
+}
+
+[data-theme] .bg-blue-50,
+[data-theme] .bg-blue-100,
+[data-theme] .bg-blue-600,
+[data-theme] .bg-blue-700,
+[data-theme] .bg-emerald-600,
+[data-theme] .bg-emerald-700,
+[data-theme] .bg-amber-300,
+[data-theme] .bg-amber-400 {
+  background-color: var(--app-accent) !important;
+}
+
+[data-theme] .bg-emerald-50,
+[data-theme] .bg-emerald-400\/10 {
+  background-color: var(--app-success-surface) !important;
+}
+
+[data-theme] .bg-amber-50 {
+  background-color: var(--app-warning-surface) !important;
+}
+
+[data-theme] .bg-red-50,
+[data-theme] .bg-rose-400\/10 {
+  background-color: var(--app-danger-surface) !important;
+}
+
+[data-theme] .bg-red-600,
+[data-theme] .bg-red-700 {
+  background-color: #d95353 !important;
+}
+
+[data-theme] .text-white {
+  color: var(--app-text) !important;
+}
+
+[data-theme] .text-slate-950,
+[data-theme] .text-slate-900,
+[data-theme] .text-gray-900 {
+  color: var(--app-text) !important;
+}
+
+[data-theme] .text-slate-800,
+[data-theme] .text-slate-700,
+[data-theme] .text-gray-700,
+[data-theme] .text-gray-600,
+[data-theme] .text-slate-600,
+[data-theme] .text-slate-500,
+[data-theme] .text-gray-500 {
+  color: var(--app-text-soft) !important;
+}
+
+[data-theme] .text-slate-400,
+[data-theme] .text-gray-400 {
+  color: var(--app-muted) !important;
+}
+
+[data-theme] .text-blue-600,
+[data-theme] .text-blue-700,
+[data-theme] .text-blue-800,
+[data-theme] .text-amber-200,
+[data-theme] .text-amber-300,
+[data-theme] .text-emerald-800,
+[data-theme] .text-emerald-900,
+[data-theme] .text-emerald-200 {
+  color: var(--app-accent) !important;
+}
+
+[data-theme] .text-amber-700,
+[data-theme] .text-amber-900 {
+  color: var(--app-warning-text) !important;
+}
+
+[data-theme] .text-red-600,
+[data-theme] .text-red-700,
+[data-theme] .text-rose-200 {
+  color: var(--app-danger-text) !important;
+}
+
+[data-theme] .border-slate-200,
+[data-theme] .border-gray-200,
+[data-theme] .divide-gray-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--app-line) !important;
+}
+
+[data-theme] .border-slate-300,
+[data-theme] .border-gray-300 {
+  border-color: var(--app-line-strong) !important;
+}
+
+[data-theme] .border-slate-400,
+[data-theme] .border-slate-500,
+[data-theme] .border-slate-700,
+[data-theme] .border-gray-400 {
+  border-color: color-mix(in srgb, var(--app-accent) 42%, var(--app-line-strong)) !important;
+}
+
+[data-theme] .border-white\/15 {
+  border-color: var(--app-line-strong) !important;
+}
+
+[data-theme] .border-blue-200,
+[data-theme] .border-blue-300,
+[data-theme] .border-blue-500,
+[data-theme] .border-emerald-200 {
+  border-color: color-mix(in srgb, var(--app-accent) 38%, var(--app-line-strong)) !important;
+}
+
+[data-theme] .border-amber-200 {
+  border-color: var(--app-warning-line) !important;
+}
+
+[data-theme] .border-red-200,
+[data-theme] .border-red-300,
+[data-theme] .border-rose-400\/30 {
+  border-color: var(--app-danger-line) !important;
+}
+
+[data-theme] .ring-slate-200,
+[data-theme] .border-dashed {
+  border-color: var(--app-line-strong) !important;
+}
+
+[data-theme] .hover\:bg-gray-50:hover,
+[data-theme] .hover\:bg-gray-100:hover,
+[data-theme] .hover\:bg-stone-50:hover,
+[data-theme] .hover\:bg-slate-100:hover {
+  background-color: color-mix(in srgb, var(--app-muted-surface) 82%, var(--app-card)) !important;
+}
+
+[data-theme] .hover\:bg-slate-800:hover,
+[data-theme] .hover\:bg-blue-700:hover,
+[data-theme] .hover\:bg-emerald-700:hover,
+[data-theme] .hover\:bg-blue-200:hover,
+[data-theme] .hover\:bg-amber-200:hover {
+  background-color: var(--app-accent-strong) !important;
+  color: var(--app-accent-ink) !important;
+}
+
+[data-theme] .hover\:bg-red-50:hover {
+  background-color: color-mix(in srgb, var(--app-danger-surface) 78%, var(--app-card)) !important;
+}
+
+[data-theme] .hover\:border-slate-400:hover,
+[data-theme] .hover\:border-slate-500:hover,
+[data-theme] .hover\:border-gray-300:hover,
+[data-theme] .hover\:border-red-300:hover {
+  border-color: var(--app-accent) !important;
+}
+
+[data-theme] .hover\:text-slate-950:hover,
+[data-theme] .hover\:text-slate-700:hover,
+[data-theme] .hover\:text-gray-900:hover,
+[data-theme] .hover\:text-gray-700:hover,
+[data-theme] .hover\:text-gray-600:hover,
+[data-theme] .hover\:text-blue-600:hover {
+  color: var(--app-text) !important;
+}
+
+[data-theme] .hover\:text-red-600:hover {
+  color: var(--app-danger-text) !important;
+}
+
+[data-theme] .focus\:border-blue-500:focus,
+[data-theme] .focus\:border-slate-500:focus {
+  border-color: var(--app-accent) !important;
+}
+
+[data-theme] .focus\:ring-blue-500:focus,
+[data-theme] .focus\:ring-1:focus,
+[data-theme] .focus\:ring-2:focus {
+  --tw-ring-color: color-mix(in srgb, var(--app-accent) 54%, transparent) !important;
+}
+
+[data-theme] .shadow,
+[data-theme] .shadow-sm,
+[data-theme] .shadow-lg,
+[data-theme] .shadow-xl {
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.14) !important;
+}

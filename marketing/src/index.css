@@ -2,14 +2,35 @@
 
 :root {
   color-scheme: light;
+  --canvas: #f4f1ea;
+  --canvas-soft: #fbfaf7;
+  --mist: #dce6de;
+  --clay-wash: #ead7cd;
+  --surface: rgba(255, 252, 247, 0.88);
+  --surface-strong: #f8f4ee;
+  --surface-muted: #edf2ec;
+  --surface-deep: #234338;
+  --surface-deeper: #1b342b;
+  --ink: #18231d;
+  --muted: #5f6d64;
+  --forest: #234338;
+  --forest-strong: #193229;
+  --accent: #b65f3f;
+  --accent-soft: #f0e0d6;
+  --line: rgba(35, 67, 56, 0.14);
+  --line-strong: rgba(35, 67, 56, 0.24);
 }
 
 body {
   margin: 0;
   min-width: 320px;
   font-family: "Instrument Sans", "Avenir Next", "Segoe UI", sans-serif;
-  background: #f6f0e8;
-  color: #0f172a;
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+#root {
+  min-height: 100vh;
 }
 
 a {

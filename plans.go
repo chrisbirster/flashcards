@@ -11,6 +11,7 @@ var planLimits = map[Plan]PlanLimits{
 	PlanGuest: {
 		MaxDecks:       2,
 		MaxNotes:       10,
+		MaxCardsTotal:  100,
 		MaxSharedDecks: 0,
 		MaxSyncDevices: 0,
 		MaxWorkspaces:  1,
@@ -18,6 +19,7 @@ var planLimits = map[Plan]PlanLimits{
 	PlanFree: {
 		MaxDecks:       2,
 		MaxNotes:       10,
+		MaxCardsTotal:  100,
 		MaxSharedDecks: 0,
 		MaxSyncDevices: 0,
 		MaxWorkspaces:  1,
@@ -25,6 +27,7 @@ var planLimits = map[Plan]PlanLimits{
 	PlanPro: {
 		MaxDecks:       100,
 		MaxNotes:       50000,
+		MaxCardsTotal:  100000,
 		MaxSharedDecks: 25,
 		MaxSyncDevices: 3,
 		MaxWorkspaces:  1,
@@ -32,9 +35,18 @@ var planLimits = map[Plan]PlanLimits{
 	PlanTeam: {
 		MaxDecks:       500,
 		MaxNotes:       500000,
+		MaxCardsTotal:  1000000,
 		MaxSharedDecks: 500,
 		MaxSyncDevices: 10,
 		MaxWorkspaces:  25,
+	},
+	PlanEnterprise: {
+		MaxDecks:       5000,
+		MaxNotes:       5000000,
+		MaxCardsTotal:  10000000,
+		MaxSharedDecks: 5000,
+		MaxSyncDevices: 250,
+		MaxWorkspaces:  250,
 	},
 }
 
@@ -46,6 +58,8 @@ func parsePlan(raw string) Plan {
 		return PlanFree
 	case PlanTeam:
 		return PlanTeam
+	case PlanEnterprise:
+		return PlanEnterprise
 	default:
 		return PlanPro
 	}
@@ -73,9 +87,12 @@ func entitlementsForPlan(plan Plan, usage EntitlementUsage) Entitlements {
 		Features: EntitlementFeatures{
 			GoogleLogin:   false,
 			AccountBacked: plan != PlanGuest,
-			Sync:          plan == PlanPro || plan == PlanTeam,
-			ShareDecks:    plan == PlanPro || plan == PlanTeam,
-			Organizations: plan == PlanTeam,
+			Sync:          plan == PlanPro || plan == PlanTeam || plan == PlanEnterprise,
+			ShareDecks:    plan == PlanPro || plan == PlanTeam || plan == PlanEnterprise,
+			Organizations: plan == PlanTeam || plan == PlanEnterprise,
+			StudyGroups:   plan == PlanTeam || plan == PlanEnterprise,
+			MarketplacePublish: plan == PlanPro || plan == PlanTeam || plan == PlanEnterprise,
+			Enterprise:    plan == PlanEnterprise,
 		},
 	}
 }
@@ -102,6 +119,14 @@ func validateNoteLimit(plan Plan, usage EntitlementUsage) error {
 	limits := planLimits[plan]
 	if usage.Notes >= limits.MaxNotes {
 		return fmt.Errorf("plan limit exceeded: %s allows up to %d notes", strings.ToUpper(string(plan)), limits.MaxNotes)
+	}
+	return nil
+}
+
+func validateCardsTotalLimit(plan Plan, usage EntitlementUsage, additionalCards int) error {
+	limits := planLimits[plan]
+	if usage.CardsTotal+additionalCards > limits.MaxCardsTotal {
+		return fmt.Errorf("plan limit exceeded: %s allows up to %d total cards", strings.ToUpper(string(plan)), limits.MaxCardsTotal)
 	}
 	return nil
 }

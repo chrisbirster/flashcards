@@ -261,16 +261,30 @@ func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Sanitize field values to prevent XSS
-	sanitizedFieldVals := make(map[string]string)
-	for field, value := range req.FieldVals {
-		sanitizedFieldVals[field] = sanitizeHTML(value)
-	}
+	sanitizedFieldVals := sanitizeFieldVals(req.FieldVals)
+	sanitizedTags := sanitizeTags(req.Tags)
 
-	// Sanitize tags (strip HTML since tags should be plain text)
-	sanitizedTags := make([]string, len(req.Tags))
-	for i, tag := range req.Tags {
-		sanitizedTags[i] = sanitizeHTML(tag)
+	noteType, ok := h.collection.NoteTypes[NoteTypeName(req.TypeID)]
+	if !ok {
+		respondAPIError(w, http.StatusBadRequest, "invalid_note_type", "Note type not found")
+		return
+	}
+	previewAt := time.Now()
+	previewNote := Note{
+		Type:       NoteTypeName(req.TypeID),
+		FieldMap:   sanitizedFieldVals,
+		Tags:       sanitizedTags,
+		CreatedAt:  previewAt,
+		ModifiedAt: previewAt,
+	}
+	previewCards, err := h.collection.generateCardsFromNote(noteType, previewNote, req.DeckID, previewAt)
+	if err != nil {
+		respondAPIError(w, http.StatusBadRequest, "note_create_failed", err.Error())
+		return
+	}
+	if err := validateCardsTotalLimit(plan, usage, len(previewCards)); err != nil {
+		respondAPIError(w, http.StatusForbidden, "plan_limit_exceeded", err.Error())
+		return
 	}
 
 	// Use Collection.AddNote to create note and generate cards
@@ -282,10 +296,6 @@ func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 
 	// Set tags if provided (use sanitized tags)
 	note.Tags = sanitizedTags
-	if sanitizedTags == nil {
-		note.Tags = []string{}
-	}
-
 	// Persist note to database
 	if err := h.store.CreateNote(h.collectionID, &note); err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "note_persist_failed", err.Error())
@@ -300,9 +310,14 @@ func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	responseCards := make([]Card, 0, len(cards))
+	for _, card := range cards {
+		responseCards = append(responseCards, *card)
+	}
+
 	respondJSON(w, http.StatusCreated, map[string]interface{}{
-		"note":  note,
-		"cards": cards,
+		"note":  h.noteToResponse(&note, responseCards),
+		"cards": responseCards,
 	})
 }
 
@@ -347,7 +362,13 @@ func (h *APIHandler) GetNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, note)
+	cards, err := h.store.GetCardsByNote(id)
+	if err != nil {
+		respondAPIError(w, http.StatusInternalServerError, "note_cards_failed", err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, h.noteToResponse(note, cards))
 }
 
 func (h *APIHandler) CheckDuplicate(w http.ResponseWriter, r *http.Request) {
@@ -551,6 +572,7 @@ type SetFieldOptionsRequest struct {
 }
 
 type UpdateTemplateRequest struct {
+	Name            *string `json:"name,omitempty"`
 	QFmt            *string `json:"qFmt,omitempty"`
 	AFmt            *string `json:"aFmt,omitempty"`
 	Styling         *string `json:"styling,omitempty"`
@@ -1038,7 +1060,25 @@ func (h *APIHandler) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	templateAliases := map[string]string{}
 	// Update fields if provided
+	if req.Name != nil {
+		nextName := sanitizeHTML(strings.TrimSpace(*req.Name))
+		if nextName == "" {
+			http.Error(w, "Template name is required", http.StatusBadRequest)
+			return
+		}
+		if !strings.EqualFold(nextName, templateName) {
+			for i, candidate := range nt.Templates {
+				if i != templateIndex && strings.EqualFold(candidate.Name, nextName) {
+					http.Error(w, "Template name already exists", http.StatusBadRequest)
+					return
+				}
+			}
+			templateAliases[templateName] = nextName
+			nt.Templates[templateIndex].Name = nextName
+		}
+	}
 	if req.QFmt != nil {
 		nt.Templates[templateIndex].QFmt = sanitizeHTML(*req.QFmt)
 	}
@@ -1072,36 +1112,21 @@ func (h *APIHandler) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 
 	// Regenerate cards for all notes of this type
 	// This ensures cards reflect the updated templates
-	if err := h.regenerateCardsForNoteType(noteTypeName); err != nil {
+	if err := h.regenerateCardsForNoteTypeWithAliases(noteTypeName, templateAliases); err != nil {
 		log.Printf("Warning: Failed to regenerate cards after template update: %v", err)
 		// Don't fail the request - template was updated successfully
 	}
 
-	// Build response with updated templates
-	var templates []TemplateInfo
-	for _, t := range nt.Templates {
-		templates = append(templates, TemplateInfo{
-			Name:            t.Name,
-			QFmt:            t.QFmt,
-			AFmt:            t.AFmt,
-			Styling:         t.Styling,
-			IfFieldNonEmpty: t.IfFieldNonEmpty,
-			IsCloze:         t.IsCloze,
-			DeckOverride:    t.DeckOverride,
-			BrowserQFmt:     t.BrowserQFmt,
-			BrowserAFmt:     t.BrowserAFmt,
-		})
-	}
-
-	respondJSON(w, http.StatusOK, TemplatesResponse{
-		Message:   "Template updated successfully",
-		Templates: templates,
-	})
+	respondJSON(w, http.StatusOK, buildTemplatesResponse(nt, "Template updated successfully"))
 }
 
 // regenerateCardsForNoteType regenerates cards for all notes of a given note type.
 // This preserves existing card scheduling data (SRS state, flags, etc.) while updating content.
 func (h *APIHandler) regenerateCardsForNoteType(noteTypeName string) error {
+	return h.regenerateCardsForNoteTypeWithAliases(noteTypeName, nil)
+}
+
+func (h *APIHandler) regenerateCardsForNoteTypeWithAliases(noteTypeName string, templateAliases map[string]string) error {
 	// Get all notes of this type
 	notes, err := h.store.GetNotesByType(h.collectionID, noteTypeName)
 	if err != nil {
@@ -1117,47 +1142,8 @@ func (h *APIHandler) regenerateCardsForNoteType(noteTypeName string) error {
 			deckID = existingCards[0].DeckID
 		}
 
-		// Generate new cards based on current templates
-		newCards, err := h.collection.GenerateCards(&note, deckID, time.Now())
-		if err != nil {
+		if _, err := h.regenerateCardsForSingleNote(&note, deckID, templateAliases); err != nil {
 			log.Printf("Warning: Failed to regenerate cards for note %d: %v", note.ID, err)
-			continue
-		}
-
-		// Build a map of existing cards by template name and ordinal
-		existingCardMap := make(map[string]*Card)
-		for _, card := range existingCards {
-			key := fmt.Sprintf("%s:%d", card.TemplateName, card.Ordinal)
-			existingCardMap[key] = &card
-		}
-
-		// Process each newly generated card
-		for _, newCard := range newCards {
-			key := fmt.Sprintf("%s:%d", newCard.TemplateName, newCard.Ordinal)
-
-			if existingCard, exists := existingCardMap[key]; exists {
-				// Card already exists - update content but preserve SRS state
-				existingCard.Front = newCard.Front
-				existingCard.Back = newCard.Back
-				if err := h.store.UpdateCard(existingCard); err != nil {
-					log.Printf("Warning: Failed to update card %d: %v", existingCard.ID, err)
-				}
-				// Remove from map so we know it was processed
-				delete(existingCardMap, key)
-			} else {
-				// New card needs to be created
-				if err := h.store.CreateCard(newCard); err != nil {
-					log.Printf("Warning: Failed to create new card for note %d: %v", note.ID, err)
-				}
-			}
-		}
-
-		// Any remaining cards in the map no longer match templates and should be deleted
-		// (e.g., ifFieldNonEmpty condition no longer met, or template removed)
-		for _, orphanCard := range existingCardMap {
-			if err := h.store.DeleteCard(orphanCard.ID); err != nil {
-				log.Printf("Warning: Failed to delete orphaned card %d: %v", orphanCard.ID, err)
-			}
 		}
 	}
 

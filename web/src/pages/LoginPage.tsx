@@ -20,6 +20,7 @@ export function LoginPage() {
   const [requestedEmail, setRequestedEmail] = useState('')
   const [code, setCode] = useState('')
   const [expiresAt, setExpiresAt] = useState('')
+  const [devCode, setDevCode] = useState('')
   const [requestError, setRequestError] = useState('')
   const [verifyError, setVerifyError] = useState('')
   const [requestMessage, setRequestMessage] = useState('')
@@ -41,11 +42,17 @@ export function LoginPage() {
       setRequestedEmail(normalized)
       setCode('')
       setExpiresAt(response.expiresAt)
+      setDevCode(response.devCode || '')
       setRequestError('')
       setVerifyError('')
-      setRequestMessage(`Code sent to ${normalized}. It expires at ${formatExpiresAt(response.expiresAt)}.`)
+      if (response.devCode) {
+        setRequestMessage(`Development mode: use the code below for ${normalized}. It expires at ${formatExpiresAt(response.expiresAt)}.`)
+      } else {
+        setRequestMessage(`Code sent to ${normalized}. It expires at ${formatExpiresAt(response.expiresAt)}.`)
+      }
     },
     onError: (error) => {
+      setDevCode('')
       setRequestMessage('')
       setRequestError(error instanceof Error ? error.message : 'Failed to send code')
     },
@@ -172,6 +179,11 @@ export function LoginPage() {
                   placeholder="123456"
                   className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-center text-2xl tracking-[0.45em] text-white outline-none transition focus:border-amber-300"
                 />
+                {devCode && (
+                  <p className="rounded-2xl border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
+                    Development code: <span className="font-mono text-base font-semibold">{devCode}</span>
+                  </p>
+                )}
                 <button
                   type="submit"
                   disabled={verifyMutation.isPending}

@@ -19,16 +19,17 @@ func (s *SQLiteStore) migrate() error {
 	}
 
 	// Run migrations sequentially
-	migrations := []struct {
-		version int
-		name    string
-		fn      func() error
-	}{
-		{1, "initial_schema", s.runMigration001_InitialSchema},
-		{2, "add_field_options", s.runMigration002_AddFieldOptions},
-		{3, "add_account_billing_schema", s.runMigration003_AddAccountBillingSchema},
-		{4, "add_otp_auth_schema", s.runMigration004_AddOTPAuthSchema},
-	}
+		migrations := []struct {
+			version int
+			name    string
+			fn      func() error
+		}{
+			{1, "initial_schema", s.runMigration001_InitialSchema},
+			{2, "add_field_options", s.runMigration002_AddFieldOptions},
+			{3, "add_account_billing_schema", s.runMigration003_AddAccountBillingSchema},
+			{4, "add_otp_auth_schema", s.runMigration004_AddOTPAuthSchema},
+			{5, "add_phase1_foundation_schema", s.runMigration005_AddPhase1FoundationSchema},
+		}
 
 	for _, m := range migrations {
 		if version < m.version {
@@ -411,4 +412,88 @@ func isIgnorableMigrationError(err error) bool {
 	}
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "duplicate column name")
+}
+
+func (s *SQLiteStore) runMigration005_AddPhase1FoundationSchema() error {
+	statements := []string{
+		`ALTER TABLE entitlements ADD COLUMN max_cards_total INTEGER NOT NULL DEFAULT 100`,
+		`
+		CREATE TABLE IF NOT EXISTS study_groups (
+			id TEXT PRIMARY KEY,
+			workspace_id TEXT NOT NULL,
+			primary_deck_id INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			description TEXT NOT NULL DEFAULT '',
+			visibility TEXT NOT NULL DEFAULT 'private',
+			join_policy TEXT NOT NULL DEFAULT 'invite',
+			created_by_user_id TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+			FOREIGN KEY (primary_deck_id) REFERENCES decks(id) ON DELETE CASCADE,
+			FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+		`,
+		`
+		CREATE TABLE IF NOT EXISTS study_group_members (
+			id TEXT PRIMARY KEY,
+			study_group_id TEXT NOT NULL,
+			user_id TEXT,
+			email TEXT NOT NULL,
+			role TEXT NOT NULL,
+			status TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			UNIQUE(study_group_id, email),
+			FOREIGN KEY (study_group_id) REFERENCES study_groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+		)
+		`,
+		`
+		CREATE TABLE IF NOT EXISTS marketplace_listings (
+			id TEXT PRIMARY KEY,
+			workspace_id TEXT NOT NULL,
+			deck_id INTEGER NOT NULL,
+			slug TEXT NOT NULL UNIQUE,
+			title TEXT NOT NULL,
+			summary TEXT NOT NULL DEFAULT '',
+			description TEXT NOT NULL DEFAULT '',
+			creator_user_id TEXT NOT NULL,
+			price_mode TEXT NOT NULL DEFAULT 'free',
+			price_cents INTEGER NOT NULL DEFAULT 0,
+			currency TEXT NOT NULL DEFAULT 'USD',
+			status TEXT NOT NULL DEFAULT 'draft',
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+			FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE,
+			FOREIGN KEY (creator_user_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+		`,
+		`
+		CREATE TABLE IF NOT EXISTS marketplace_installs (
+			id TEXT PRIMARY KEY,
+			listing_id TEXT NOT NULL,
+			workspace_id TEXT NOT NULL,
+			installed_by_user_id TEXT NOT NULL,
+			created_at INTEGER NOT NULL,
+			FOREIGN KEY (listing_id) REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+			FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+			FOREIGN KEY (installed_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+		`,
+		`CREATE INDEX IF NOT EXISTS idx_study_groups_workspace ON study_groups(workspace_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_study_groups_primary_deck ON study_groups(primary_deck_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_study_group_members_group ON study_group_members(study_group_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_listings_workspace ON marketplace_listings(workspace_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_listings_deck ON marketplace_listings(deck_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_installs_listing ON marketplace_installs(listing_id)`,
+	}
+
+	for _, statement := range statements {
+		if _, err := s.db.Exec(statement); err != nil && !isIgnorableMigrationError(err) {
+			return fmt.Errorf("failed to apply phase 1 foundation migration statement: %w", err)
+		}
+	}
+
+	return nil
 }

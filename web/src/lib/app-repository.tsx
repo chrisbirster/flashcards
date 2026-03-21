@@ -5,7 +5,11 @@ import {
   checkDuplicate,
   createBackup,
   createDeck,
+  createTemplate,
   createNote,
+  deleteDeck,
+  deleteNote,
+  deleteTemplate,
   deleteEmptyCards,
   fetchCard,
   fetchDeck,
@@ -15,6 +19,7 @@ import {
   fetchDueCards,
   fetchEntitlements,
   fetchNote,
+  fetchNotes,
   fetchNoteType,
   fetchNoteTypes,
   fetchSession,
@@ -30,12 +35,15 @@ import {
   reorderFields,
   setFieldOptions,
   setSortField,
+  updateDeck,
+  updateNote,
   updateCard,
   updateTemplate,
   type AddFieldRequest,
   type AnswerCardRequest,
   type Card,
   type CheckDuplicateRequest,
+  type CreateTemplateRequest,
   type CreateDeckRequest,
   type CreateNoteRequest,
   type Deck,
@@ -50,12 +58,16 @@ import {
   type FieldsResponse,
   type ImportFileRequest,
   type ImportNotesResponse,
+  type ListNotesParams,
+  type ListNotesResponse,
   type Note,
   type NoteType,
   type RenameFieldRequest,
   type ReorderFieldsRequest,
   type TemplatesResponse,
   type UpdateCardRequest,
+  type UpdateDeckRequest,
+  type UpdateNoteRequest,
   type UpdateTemplateRequest,
   type AuthSessionResponse,
   type OTPRequestResponse,
@@ -67,6 +79,8 @@ export interface AppRepository {
   fetchDeck(id: number): Promise<{deck: Deck; stats: DeckStats}>
   fetchDeckStats(id: number): Promise<DeckStats>
   fetchDeckNotes(deckId: number, limit?: number, cursor?: string): Promise<DeckNotesResponse>
+  updateDeck(id: number, req: UpdateDeckRequest): Promise<Deck>
+  deleteDeck(id: number): Promise<void>
   importNotesFile(req: ImportFileRequest): Promise<ImportNotesResponse>
   fetchNoteTypes(): Promise<NoteType[]>
   fetchNoteType(name: string): Promise<NoteType>
@@ -76,9 +90,14 @@ export interface AppRepository {
   reorderFields(noteTypeName: string, req: ReorderFieldsRequest): Promise<FieldsResponse>
   setSortField(noteTypeName: string, req: {fieldIndex: number}): Promise<{message: string; sortFieldIndex: number; sortFieldName: string}>
   setFieldOptions(noteTypeName: string, fieldName: string, options: FieldOptions): Promise<{message: string; fieldOptions: Record<string, FieldOptions>}>
+  createTemplate(noteTypeName: string, req: CreateTemplateRequest): Promise<TemplatesResponse>
   updateTemplate(noteTypeName: string, templateName: string, req: UpdateTemplateRequest): Promise<TemplatesResponse>
+  deleteTemplate(noteTypeName: string, templateName: string): Promise<TemplatesResponse>
   createNote(req: CreateNoteRequest): Promise<{note: Note; cards: Card[]}>
   fetchNote(id: number): Promise<Note>
+  fetchNotes(params?: ListNotesParams): Promise<ListNotesResponse>
+  updateNote(id: number, req: UpdateNoteRequest): Promise<{note: Note; cards: Card[]}>
+  deleteNote(id: number): Promise<void>
   checkDuplicate(req: CheckDuplicateRequest): Promise<DuplicateResult>
   fetchDueCards(deckId: number, limit?: number): Promise<Card[]>
   fetchCard(id: number): Promise<Card>
@@ -102,6 +121,8 @@ export const remoteRepository: AppRepository = {
   fetchDeck,
   fetchDeckStats,
   fetchDeckNotes,
+  updateDeck,
+  deleteDeck,
   importNotesFile,
   fetchNoteTypes,
   fetchNoteType,
@@ -111,9 +132,14 @@ export const remoteRepository: AppRepository = {
   reorderFields,
   setSortField,
   setFieldOptions,
+  createTemplate,
   updateTemplate,
+  deleteTemplate,
   createNote,
   fetchNote,
+  fetchNotes,
+  updateNote,
+  deleteNote,
   checkDuplicate,
   fetchDueCards,
   fetchCard,
@@ -142,6 +168,8 @@ export function createLocalRepository(): AppRepository {
     fetchDeck: () => notImplemented('fetchDeck'),
     fetchDeckStats: () => notImplemented('fetchDeckStats'),
     fetchDeckNotes: () => notImplemented('fetchDeckNotes'),
+    updateDeck: () => notImplemented('updateDeck'),
+    deleteDeck: () => notImplemented('deleteDeck'),
     importNotesFile: () => notImplemented('importNotesFile'),
     fetchNoteTypes: () => notImplemented('fetchNoteTypes'),
     fetchNoteType: () => notImplemented('fetchNoteType'),
@@ -151,9 +179,14 @@ export function createLocalRepository(): AppRepository {
     reorderFields: () => notImplemented('reorderFields'),
     setSortField: () => notImplemented('setSortField'),
     setFieldOptions: () => notImplemented('setFieldOptions'),
+    createTemplate: () => notImplemented('createTemplate'),
     updateTemplate: () => notImplemented('updateTemplate'),
+    deleteTemplate: () => notImplemented('deleteTemplate'),
     createNote: () => notImplemented('createNote'),
     fetchNote: () => notImplemented('fetchNote'),
+    fetchNotes: () => notImplemented('fetchNotes'),
+    updateNote: () => notImplemented('updateNote'),
+    deleteNote: () => notImplemented('deleteNote'),
     checkDuplicate: () => notImplemented('checkDuplicate'),
     fetchDueCards: () => notImplemented('fetchDueCards'),
     fetchCard: () => notImplemented('fetchCard'),
@@ -174,6 +207,7 @@ export function createLocalRepository(): AppRepository {
           limits: {
             maxDecks: 2,
             maxNotes: 10,
+            maxCardsTotal: 100,
             maxSharedDecks: 0,
             maxSyncDevices: 0,
             maxWorkspaces: 1,
@@ -181,6 +215,7 @@ export function createLocalRepository(): AppRepository {
           usage: {
             decks: 0,
             notes: 0,
+            cardsTotal: 0,
             sharedDecks: 0,
             syncDevices: 0,
             workspaces: 1,
@@ -191,6 +226,9 @@ export function createLocalRepository(): AppRepository {
             sync: false,
             shareDecks: false,
             organizations: false,
+            studyGroups: false,
+            marketplacePublish: false,
+            enterprise: false,
           },
         },
       }),
@@ -202,6 +240,7 @@ export function createLocalRepository(): AppRepository {
         limits: {
           maxDecks: 2,
           maxNotes: 10,
+          maxCardsTotal: 100,
           maxSharedDecks: 0,
           maxSyncDevices: 0,
           maxWorkspaces: 1,
@@ -209,6 +248,7 @@ export function createLocalRepository(): AppRepository {
         usage: {
           decks: 0,
           notes: 0,
+          cardsTotal: 0,
           sharedDecks: 0,
           syncDevices: 0,
           workspaces: 1,
@@ -219,6 +259,9 @@ export function createLocalRepository(): AppRepository {
           sync: false,
           shareDecks: false,
           organizations: false,
+          studyGroups: false,
+          marketplacePublish: false,
+          enterprise: false,
         },
       }),
     logout: () => Promise.resolve({ok: true}),

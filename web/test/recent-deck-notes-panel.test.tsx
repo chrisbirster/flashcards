@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { cleanup, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router'
 import { RecentDeckNotesPanel } from '#/components/recent-deck-notes-panel'
 import { AppRepositoryProvider, type AppRepository } from '#/lib/app-repository'
 
@@ -16,11 +17,17 @@ function renderPanel(repository: AppRepository) {
   return render(
     <QueryClientProvider client={queryClient}>
       <AppRepositoryProvider repository={repository}>
-        <RecentDeckNotesPanel deckId={1} />
+        <MemoryRouter>
+          <RecentDeckNotesPanel deckId={1} />
+        </MemoryRouter>
       </AppRepositoryProvider>
     </QueryClientProvider>,
   )
 }
+
+afterEach(() => {
+  cleanup()
+})
 
 describe('RecentDeckNotesPanel', () => {
   it('shows a loading state while recent notes are fetching', () => {
@@ -64,5 +71,6 @@ describe('RecentDeckNotesPanel', () => {
 
     expect(await screen.findByText('Newest recent note')).toBeInTheDocument()
     expect(screen.getByText('#aws')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'View all' })[0]).toBeInTheDocument()
   })
 })

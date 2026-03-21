@@ -2,8 +2,11 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'rea
 import { useQuery } from '@tanstack/react-query'
 import { Layout } from '#/layouts/root-layout'
 import { DecksPage } from '#/pages/DecksPage'
+import { HomePage } from '#/pages/HomePage'
+import { NotesPage } from '#/pages/NotesPage'
 import { StudyPage } from '#/pages/StudyPage'
 import { AddNotePage } from '#/pages/AddNotePage'
+import { StudyGroupsPage } from '#/pages/StudyGroupsPage'
 import { TemplatesPage } from '#/pages/TemplatesPage'
 import { EmptyCardsPage } from '#/pages/EmptyCardsPage'
 import { LoginPage } from '#/pages/LoginPage'
@@ -47,8 +50,10 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<RequireAuthLayout />}>
-          <Route index element={<Navigate to="/decks" replace />} />
+          <Route index element={<HomePage />} />
+          <Route path="notes/view" element={<NotesPage />} />
           <Route path="decks" element={<DecksPage />} />
+          <Route path="study-groups" element={<StudyGroupsPage />} />
           <Route path="study/:deckId" element={<StudyPage />} />
           <Route path="notes/add" element={<AddNotePage />}>
             <Route path="note-types/:noteTypeName/fields" element={<AddNoteFieldEditorRoutePage />} />
@@ -66,7 +71,7 @@ export default function App() {
           {/* <Route path="stats" element={<StatsPage />} /> */}
           {/* <Route path="settings" element={<SettingsPage />} /> */}
         </Route>
-        <Route path="*" element={<Navigate to="/decks" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )

@@ -101,6 +101,19 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
     })
   }
 
+  const handleTemplatesResponse = (templates: CardTemplate[], preferredTemplateName?: string) => {
+    syncNoteTypeCache(templates)
+    const nextTemplate =
+      templates.find((template) => template.name === preferredTemplateName) ??
+      templates.find((template) => template.name === selectedTemplate.name) ??
+      templates[0]
+
+    if (nextTemplate) {
+      applyTemplate(nextTemplate)
+    }
+    invalidateNoteTypes()
+  }
+
   const updateTemplateMutation = useMutation({
     mutationFn: () =>
       repository.updateTemplate(noteType.name, selectedTemplate.name, {
@@ -111,16 +124,35 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
         deckOverride: deckOverride || undefined,
       }),
     onSuccess: (data) => {
-      // Update selected template with new data
-      syncNoteTypeCache(data.templates)
-      const updated = data.templates.find(t => t.name === selectedTemplate.name)
-      if (updated) {
-        applyTemplate(updated)
-      } else {
-        setHasChanges(false)
-        setError(null)
-      }
-      invalidateNoteTypes()
+      handleTemplatesResponse(data.templates)
+    },
+    onError: (err: Error) => setError(err.message),
+  })
+
+  const createTemplateMutation = useMutation({
+    mutationFn: (req: {name: string; sourceTemplateName?: string}) => repository.createTemplate(noteType.name, req),
+    onSuccess: (data, variables) => {
+      handleTemplatesResponse(data.templates, variables.name)
+      setError(null)
+    },
+    onError: (err: Error) => setError(err.message),
+  })
+
+  const renameTemplateMutation = useMutation({
+    mutationFn: (nextName: string) =>
+      repository.updateTemplate(noteType.name, selectedTemplate.name, { name: nextName }),
+    onSuccess: (data, nextName) => {
+      handleTemplatesResponse(data.templates, nextName)
+      setError(null)
+    },
+    onError: (err: Error) => setError(err.message),
+  })
+
+  const deleteTemplateMutation = useMutation({
+    mutationFn: () => repository.deleteTemplate(noteType.name, selectedTemplate.name),
+    onSuccess: (data) => {
+      handleTemplatesResponse(data.templates)
+      setError(null)
     },
     onError: (err: Error) => setError(err.message),
   })
@@ -151,6 +183,33 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
     setSampleFieldVals(prev => ({ ...prev, [field]: value }))
   }
 
+  const handleCreateTemplate = () => {
+    const nextName = window.prompt('Template name')
+    if (!nextName?.trim()) return
+    createTemplateMutation.mutate({ name: nextName.trim() })
+  }
+
+  const handleDuplicateTemplate = () => {
+    const suggestedName = `${selectedTemplate.name} Copy`
+    const nextName = window.prompt('Duplicate template as', suggestedName)
+    if (!nextName?.trim()) return
+    createTemplateMutation.mutate({
+      name: nextName.trim(),
+      sourceTemplateName: selectedTemplate.name,
+    })
+  }
+
+  const handleRenameTemplate = () => {
+    const nextName = window.prompt('Rename template', selectedTemplate.name)
+    if (!nextName?.trim() || nextName.trim() === selectedTemplate.name) return
+    renameTemplateMutation.mutate(nextName.trim())
+  }
+
+  const handleDeleteTemplate = () => {
+    if (!window.confirm(`Delete the template "${selectedTemplate.name}"?`)) return
+    deleteTemplateMutation.mutate()
+  }
+
   // Render template with sample values (non-recursive version)
   const renderPreview = (template: string, fieldVals: Record<string, string>, isBack: boolean = false): string => {
     let result = template
@@ -176,6 +235,8 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
   }
 
   const currentValue = activeTab === 'front' ? qFmt : activeTab === 'back' ? aFmt : styling
+  const frontPreviewHtml = DOMPurify.sanitize(renderPreview(qFmt, sampleFieldVals))
+  const backPreviewHtml = DOMPurify.sanitize(renderPreview(aFmt, sampleFieldVals, true))
   const tabLabels: Record<TabType, string> = {
     front: 'Front Template',
     back: 'Back Template',
@@ -231,9 +292,8 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
             </div>
           )}
 
-          {/* Template selector (for note types with multiple templates) */}
-          {noteType.templates.length > 1 && (
-            <div className="mb-4">
+          <div className="mb-4 space-y-3">
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Template
               </label>
@@ -250,7 +310,42 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
                 ))}
               </select>
             </div>
-          )}
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleCreateTemplate}
+                disabled={createTemplateMutation.isPending}
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              >
+                New template
+              </button>
+              <button
+                type="button"
+                onClick={handleDuplicateTemplate}
+                disabled={createTemplateMutation.isPending}
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              >
+                Duplicate
+              </button>
+              <button
+                type="button"
+                onClick={handleRenameTemplate}
+                disabled={renameTemplateMutation.isPending}
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              >
+                Rename
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteTemplate}
+                disabled={noteType.templates.length <= 1 || deleteTemplateMutation.isPending}
+                className="rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
 
           {/* Conditional generation */}
           {!selectedTemplate?.isCloze && (
@@ -392,25 +487,52 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
                   {activeTab === 'front' ? 'Front Preview' : activeTab === 'back' ? 'Back Preview' : 'Styling Preview'}
                 </div>
                 <div className="p-4 min-h-[200px] bg-white">
+                  {styling && (
+                    <style>{styling}</style>
+                  )}
                   {activeTab === 'styling' ? (
-                    <div className="text-xs font-mono text-gray-600 whitespace-pre-wrap">
-                      {styling || '(No custom styling)'}
+                    <div className="space-y-4" data-testid="styling-preview">
+                      <p className="text-xs text-gray-500">
+                        Previewing the current front and back card output with this CSS applied.
+                      </p>
+                      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                        <div className="overflow-hidden rounded-md border border-gray-200">
+                          <div className="border-b bg-gray-50 px-3 py-2 text-xs font-medium uppercase tracking-[0.2em] text-gray-500">
+                            Front card
+                          </div>
+                          <div className="bg-slate-50 p-4">
+                            <div
+                              className="card"
+                              dangerouslySetInnerHTML={{ __html: frontPreviewHtml }}
+                              data-testid="preview-content-front"
+                            />
+                          </div>
+                        </div>
+                        <div className="overflow-hidden rounded-md border border-gray-200">
+                          <div className="border-b bg-gray-50 px-3 py-2 text-xs font-medium uppercase tracking-[0.2em] text-gray-500">
+                            Back card
+                          </div>
+                          <div className="bg-slate-50 p-4">
+                            <div
+                              className="card"
+                              dangerouslySetInnerHTML={{ __html: backPreviewHtml }}
+                              data-testid="preview-content-back"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      {!styling.trim() && (
+                        <p className="text-xs text-gray-500">(No custom styling yet. Add CSS on the left to change the card preview.)</p>
+                      )}
                     </div>
                   ) : (
-                    <>
-                      {styling && (
-                        <style>{styling}</style>
-                      )}
-                      <div
-                        className="card"
-                        dangerouslySetInnerHTML={{
-                          __html: DOMPurify.sanitize(
-                            renderPreview(activeTab === 'front' ? qFmt : aFmt, sampleFieldVals, activeTab === 'back')
-                          ),
-                        }}
-                        data-testid="preview-content"
-                      />
-                    </>
+                    <div
+                      className="card"
+                      dangerouslySetInnerHTML={{
+                        __html: activeTab === 'front' ? frontPreviewHtml : backPreviewHtml,
+                      }}
+                      data-testid="preview-content"
+                    />
                   )}
                 </div>
               </div>

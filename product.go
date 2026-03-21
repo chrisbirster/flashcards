@@ -9,11 +9,13 @@ const (
 	PlanFree  Plan = "free"
 	PlanPro   Plan = "pro"
 	PlanTeam  Plan = "team"
+	PlanEnterprise Plan = "enterprise"
 )
 
 type PlanLimits struct {
 	MaxDecks       int `json:"maxDecks"`
 	MaxNotes       int `json:"maxNotes"`
+	MaxCardsTotal  int `json:"maxCardsTotal"`
 	MaxSharedDecks int `json:"maxSharedDecks"`
 	MaxSyncDevices int `json:"maxSyncDevices"`
 	MaxWorkspaces  int `json:"maxWorkspaces"`
@@ -22,6 +24,7 @@ type PlanLimits struct {
 type EntitlementUsage struct {
 	Decks       int `json:"decks"`
 	Notes       int `json:"notes"`
+	CardsTotal  int `json:"cardsTotal"`
 	SharedDecks int `json:"sharedDecks"`
 	SyncDevices int `json:"syncDevices"`
 	Workspaces  int `json:"workspaces"`
@@ -33,6 +36,9 @@ type EntitlementFeatures struct {
 	Sync          bool `json:"sync"`
 	ShareDecks    bool `json:"shareDecks"`
 	Organizations bool `json:"organizations"`
+	StudyGroups   bool `json:"studyGroups"`
+	MarketplacePublish bool `json:"marketplacePublish"`
+	Enterprise    bool `json:"enterprise"`
 }
 
 type Entitlements struct {
@@ -183,4 +189,45 @@ type ShareDeckRequest struct {
 
 type ImportLocalCollectionRequest struct {
 	Collection Collection `json:"collection"`
+}
+
+type StudyGroup struct {
+	ID              string    `json:"id"`
+	WorkspaceID     string    `json:"workspaceId"`
+	PrimaryDeckID   int64     `json:"primaryDeckId"`
+	Name            string    `json:"name"`
+	Description     string    `json:"description"`
+	Visibility      string    `json:"visibility"`
+	JoinPolicy      string    `json:"joinPolicy"`
+	CreatedByUserID string    `json:"createdByUserId"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
+}
+
+type StudyGroupMember struct {
+	ID           string    `json:"id"`
+	StudyGroupID string    `json:"studyGroupId"`
+	UserID       string    `json:"userId,omitempty"`
+	Email        string    `json:"email"`
+	Role         string    `json:"role"`
+	Status       string    `json:"status"`
+	CreatedAt    time.Time `json:"createdAt"`
+}
+
+type MarketplaceListing struct {
+	ID              string    `json:"id"`
+	WorkspaceID     string    `json:"workspaceId"`
+	DeckID          int64     `json:"deckId"`
+	Slug            string    `json:"slug"`
+	Title           string    `json:"title"`
+	Summary         string    `json:"summary"`
+	Description     string    `json:"description"`
+	CreatorUserID   string    `json:"creatorUserId"`
+	PriceMode       string    `json:"priceMode"`
+	PriceCents      int       `json:"priceCents"`
+	Currency        string    `json:"currency"`
+	Status          string    `json:"status"`
+	InstallCount    int       `json:"installCount,omitempty"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
 }

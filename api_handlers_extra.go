@@ -69,13 +69,15 @@ func registerAPIRoutes(r chi.Router, handler *APIHandler) {
 		r.Post("/import", handler.ImportNotes)
 
 		r.Get("/decks", handler.ListDecks)
-		r.Post("/decks", handler.CreateDeck)
-		r.Get("/decks/{id}", handler.GetDeck)
-		r.Get("/decks/{id}/stats", handler.GetDeckStats)
-		r.Get("/decks/{deckId}/notes", handler.GetDeckNotes)
-		r.Get("/decks/{deckId}/due", handler.GetDueCards)
-		r.Post("/decks/{deckId}/share", handler.CreateDeckShare)
-		r.Delete("/decks/{deckId}/share", handler.DeleteDeckShare)
+			r.Post("/decks", handler.CreateDeck)
+			r.Get("/decks/{id}", handler.GetDeck)
+			r.Patch("/decks/{id}", handler.UpdateDeck)
+			r.Delete("/decks/{id}", handler.DeleteDeck)
+			r.Get("/decks/{id}/stats", handler.GetDeckStats)
+			r.Get("/decks/{deckId}/notes", handler.GetDeckNotes)
+			r.Get("/decks/{deckId}/due", handler.GetDueCards)
+			r.Post("/decks/{deckId}/share", handler.CreateDeckShare)
+			r.Delete("/decks/{deckId}/share", handler.DeleteDeckShare)
 
 		r.Get("/note-types", handler.ListNoteTypes)
 		r.Get("/note-types/{name}", handler.GetNoteType)
@@ -83,13 +85,18 @@ func registerAPIRoutes(r chi.Router, handler *APIHandler) {
 		r.Patch("/note-types/{name}/fields/rename", handler.RenameField)
 		r.Delete("/note-types/{name}/fields", handler.RemoveField)
 		r.Put("/note-types/{name}/fields/reorder", handler.ReorderFields)
-		r.Put("/note-types/{name}/sort-field", handler.SetSortField)
-		r.Put("/note-types/{name}/fields/options", handler.SetFieldOptions)
-		r.Patch("/note-types/{name}/templates/{templateName}", handler.UpdateTemplate)
+			r.Put("/note-types/{name}/sort-field", handler.SetSortField)
+			r.Put("/note-types/{name}/fields/options", handler.SetFieldOptions)
+			r.Post("/note-types/{name}/templates", handler.CreateTemplate)
+			r.Patch("/note-types/{name}/templates/{templateName}", handler.UpdateTemplate)
+			r.Delete("/note-types/{name}/templates/{templateName}", handler.DeleteTemplate)
 
-		r.Post("/notes", handler.CreateNote)
-		r.Get("/notes/{id}", handler.GetNote)
-		r.Post("/notes/check-duplicate", handler.CheckDuplicate)
+			r.Get("/notes", handler.ListNotes)
+			r.Post("/notes", handler.CreateNote)
+			r.Get("/notes/{id}", handler.GetNote)
+			r.Patch("/notes/{id}", handler.UpdateNote)
+			r.Delete("/notes/{id}", handler.DeleteNote)
+			r.Post("/notes/check-duplicate", handler.CheckDuplicate)
 
 		r.Get("/cards/{id}", handler.GetCard)
 		r.Post("/cards/{id}/answer", handler.AnswerCard)
@@ -226,8 +233,9 @@ func (h *APIHandler) planForRequest(r *http.Request, session *SessionRecord) Pla
 
 func (h *APIHandler) usageForSession(session *SessionRecord) EntitlementUsage {
 	usage := EntitlementUsage{
-		Decks: len(h.collection.Decks),
-		Notes: len(h.collection.Notes),
+		Decks:      len(h.collection.Decks),
+		Notes:      len(h.collection.Notes),
+		CardsTotal: len(h.collection.Cards),
 	}
 	if session == nil || session.WorkspaceID == "" {
 		return usage

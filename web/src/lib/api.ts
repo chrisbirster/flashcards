@@ -64,6 +64,8 @@ export interface Note {
   tags: string[]
   createdAt: string
   modifiedAt: string
+  deckId?: number
+  cardCount?: number
 }
 
 export interface Card {
@@ -136,6 +138,22 @@ export interface CreateNoteRequest {
   tags?: string[]
 }
 
+export interface UpdateNoteRequest {
+  typeId: string
+  deckId: number
+  fieldVals: Record<string, string>
+  tags?: string[]
+}
+
+export interface UpdateDeckRequest {
+  name: string
+}
+
+export interface CreateTemplateRequest {
+  name: string
+  sourceTemplateName?: string
+}
+
 export interface AnswerCardRequest {
   rating: number // 1=Again, 2=Hard, 3=Good, 4=Easy
   timeTakenMs?: number // Time spent on the card in milliseconds
@@ -174,9 +192,39 @@ export interface DeckNotesResponse {
   notes: RecentDeckNoteSummary[]
 }
 
+export interface NoteListItem {
+  id: number
+  typeId: string
+  fieldVals: Record<string, string>
+  fieldPreview: string
+  tags: string[]
+  createdAt: string
+  modifiedAt: string
+  deckId?: number
+  deckName?: string
+  cardCount: number
+}
+
+export interface ListNotesResponse {
+  notes: NoteListItem[]
+  total: number
+  nextCursor?: string
+  prevCursor?: string
+}
+
+export interface ListNotesParams {
+  deckId?: number
+  q?: string
+  typeId?: string
+  tag?: string
+  limit?: number
+  cursor?: string
+}
+
 export interface PlanLimits {
   maxDecks: number
   maxNotes: number
+  maxCardsTotal: number
   maxSharedDecks: number
   maxSyncDevices: number
   maxWorkspaces: number
@@ -185,6 +233,7 @@ export interface PlanLimits {
 export interface EntitlementUsage {
   decks: number
   notes: number
+  cardsTotal: number
   sharedDecks: number
   syncDevices: number
   workspaces: number
@@ -196,10 +245,13 @@ export interface EntitlementFeatures {
   sync: boolean
   shareDecks: boolean
   organizations: boolean
+  studyGroups: boolean
+  marketplacePublish: boolean
+  enterprise: boolean
 }
 
 export interface Entitlements {
-  plan: 'guest' | 'free' | 'pro' | 'team'
+  plan: 'guest' | 'free' | 'pro' | 'team' | 'enterprise'
   limits: PlanLimits
   usage: EntitlementUsage
   features: EntitlementFeatures
@@ -232,6 +284,8 @@ export interface OTPRequestResponse {
   ok: boolean
   expiresAt: string
   retryAfterSeconds: number
+  delivery?: 'email' | 'dev-inline'
+  devCode?: string
 }
 
 // Deck endpoints
@@ -259,6 +313,20 @@ export async function fetchDeckNotes(deckId: number, limit: number = 20, cursor?
   const params = new URLSearchParams({limit: String(limit)})
   if (cursor) params.set('cursor', cursor)
   return requestJSON(`${API_BASE}/decks/${deckId}/notes?${params.toString()}`)
+}
+
+export async function updateDeck(id: number, req: UpdateDeckRequest): Promise<Deck> {
+  return requestJSON(`${API_BASE}/decks/${id}`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+}
+
+export async function deleteDeck(id: number): Promise<void> {
+  return requestJSON(`${API_BASE}/decks/${id}`, {
+    method: 'DELETE',
+  })
 }
 
 export async function importNotesFile(req: ImportFileRequest): Promise<ImportNotesResponse> {
@@ -316,6 +384,7 @@ export interface FieldsResponse {
 }
 
 export interface UpdateTemplateRequest {
+  name?: string
   qFmt?: string
   aFmt?: string
   styling?: string
@@ -328,6 +397,14 @@ export interface UpdateTemplateRequest {
 export interface TemplatesResponse {
   message: string
   templates: CardTemplate[]
+}
+
+export async function createTemplate(noteTypeName: string, req: CreateTemplateRequest): Promise<TemplatesResponse> {
+  return requestJSON(`${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/templates`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
 }
 
 export async function addField(noteTypeName: string, req: AddFieldRequest): Promise<FieldsResponse> {
@@ -401,6 +478,15 @@ export async function updateTemplate(
   )
 }
 
+export async function deleteTemplate(noteTypeName: string, templateName: string): Promise<TemplatesResponse> {
+  return requestJSON(
+    `${API_BASE}/note-types/${encodeURIComponent(noteTypeName)}/templates/${encodeURIComponent(templateName)}`,
+    {
+      method: 'DELETE',
+    }
+  )
+}
+
 // Note endpoints
 export async function createNote(req: CreateNoteRequest): Promise<{note: Note; cards: Card[]}> {
   return requestJSON(`${API_BASE}/notes`, {
@@ -412,6 +498,32 @@ export async function createNote(req: CreateNoteRequest): Promise<{note: Note; c
 
 export async function fetchNote(id: number): Promise<Note> {
   return requestJSON(`${API_BASE}/notes/${id}`)
+}
+
+export async function fetchNotes(params: ListNotesParams = {}): Promise<ListNotesResponse> {
+  const query = new URLSearchParams()
+  if (params.deckId) query.set('deckId', String(params.deckId))
+  if (params.q) query.set('q', params.q)
+  if (params.typeId) query.set('typeId', params.typeId)
+  if (params.tag) query.set('tag', params.tag)
+  if (params.limit) query.set('limit', String(params.limit))
+  if (params.cursor) query.set('cursor', params.cursor)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return requestJSON(`${API_BASE}/notes${suffix}`)
+}
+
+export async function updateNote(id: number, req: UpdateNoteRequest): Promise<{note: Note; cards: Card[]}> {
+  return requestJSON(`${API_BASE}/notes/${id}`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+}
+
+export async function deleteNote(id: number): Promise<void> {
+  return requestJSON(`${API_BASE}/notes/${id}`, {
+    method: 'DELETE',
+  })
 }
 
 export async function checkDuplicate(req: CheckDuplicateRequest): Promise<DuplicateResult> {

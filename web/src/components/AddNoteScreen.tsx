@@ -260,7 +260,7 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
         cardCountInDeck: data.cards.filter((card) => card.deckId === selectedDeckId).length || data.cards.length,
       }
       queryClient.setQueryData<DeckNotesResponse>(['deck-notes', selectedDeckId], (existing) => ({
-        notes: [recentNote, ...(existing?.notes || []).filter((note) => note.noteId !== recentNote.noteId)].slice(0, 20),
+        notes: [recentNote, ...(existing?.notes || []).filter((note) => note.noteId !== recentNote.noteId)].slice(0, 10),
       }))
       // Clear fields for next note
       if (currentNoteType) {

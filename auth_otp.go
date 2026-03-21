@@ -90,11 +90,18 @@ func (h *APIHandler) RequestOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]interface{}{
+	response := map[string]interface{}{
 		"ok":                true,
 		"expiresAt":         challenge.ExpiresAt.Format(time.RFC3339),
 		"retryAfterSeconds": int(h.config.OTP.ResendCooldown.Seconds()),
-	})
+		"delivery":          "email",
+	}
+	if h.config.IsDevelopment() {
+		response["delivery"] = "dev-inline"
+		response["devCode"] = code
+	}
+
+	respondJSON(w, http.StatusOK, response)
 }
 
 func (h *APIHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {

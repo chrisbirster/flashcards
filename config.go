@@ -41,6 +41,7 @@ type EmailConfig struct {
 }
 
 type AppConfig struct {
+	Environment     string
 	Port            string
 	Host            string
 	AppOrigin       string
@@ -56,8 +57,9 @@ type AppConfig struct {
 }
 
 func LoadAppConfig() (AppConfig, error) {
-	appOrigin := stringEnv("VUTADEX_APP_ORIGIN", "https://app.vutadex.com")
-	marketingOrigin := stringEnv("VUTADEX_MARKETING_ORIGIN", "https://vutadex.com")
+	environment := stringEnv("VUTADEX_ENV", "development")
+	appOrigin := stringEnv("VUTADEX_APP_ORIGIN", "http://localhost:8000")
+	marketingOrigin := stringEnv("VUTADEX_MARKETING_ORIGIN", "http://localhost:4173")
 	port := stringEnv("PORT", "8000")
 	host := "localhost"
 	if os.Getenv("PORT") != "" {
@@ -91,6 +93,7 @@ func LoadAppConfig() (AppConfig, error) {
 	}
 
 	cfg := AppConfig{
+		Environment:     environment,
 		Port:            port,
 		Host:            host,
 		AppOrigin:       appOrigin,
@@ -130,6 +133,7 @@ func mustLocalAppConfig() AppConfig {
 	}
 
 	return AppConfig{
+		Environment:     "development",
 		Port:            "8000",
 		Host:            "localhost",
 		AppOrigin:       "http://localhost:3000",
@@ -154,6 +158,10 @@ func mustLocalAppConfig() AppConfig {
 		},
 		AuthSuccessPath: "/decks",
 	}
+}
+
+func (cfg AppConfig) IsDevelopment() bool {
+	return strings.ToLower(strings.TrimSpace(cfg.Environment)) != "production"
 }
 
 func buildAllowedOrigins(appOrigin, marketingOrigin string) []string {

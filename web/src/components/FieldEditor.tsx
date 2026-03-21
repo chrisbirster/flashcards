@@ -148,8 +148,8 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
     setFieldOptionsMutation.isPending
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 p-2 sm:p-0">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-0 sm:mx-4 h-[95vh] sm:h-auto max-h-[95vh] sm:max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-2 sm:items-center sm:p-0">
+      <div className="flex h-[100dvh] max-h-[100dvh] w-full max-w-2xl flex-col rounded-t-[1.75rem] border border-[var(--app-line)] bg-[var(--app-panel)] shadow-xl sm:mx-4 sm:h-auto sm:max-h-[90vh] sm:rounded-[1.75rem]">
         <EditFieldPanelHeader noteTypeName={noteType.name} onClose={onClose} />
         <div className="p-3 sm:p-4 overflow-auto">
           {/* Error message */}
@@ -161,7 +161,7 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
             <div className="space-y-2">
               {fields.map((field, index) => (
                 <div key={field} className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2 p-2 bg-gray-50 rounded-md">
+                  <div className="flex flex-wrap items-center gap-2 rounded-[1.25rem] border border-[var(--app-line)] bg-[var(--app-card-strong)] p-3">
                     {editingField === field ? (
                       <input
                         type="text"
@@ -172,12 +172,12 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
                           if (e.key === 'Enter') handleRenameField(field)
                           if (e.key === 'Escape') setEditingField(null)
                         }}
-                        className="flex-1 px-2 py-1 border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="flex-1 rounded-xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-3 py-2 text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
                         autoFocus
                       />
                     ) : (
                       <span
-                        className="flex-1 min-w-[10rem] cursor-pointer hover:text-blue-600"
+                        className="flex-1 min-w-[10rem] cursor-pointer text-[var(--app-text)] hover:text-[var(--app-accent)]"
                         onClick={() => {
                           setEditingField(field)
                           setEditFieldName(field)
@@ -200,7 +200,7 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
                     {sortFieldIndex !== index && (
                       <button
                         onClick={() => handleSetSortField(index)}
-                        className="text-xs text-gray-500 hover:text-blue-600 px-2 py-1"
+                        className="rounded-xl px-2 py-1 text-xs text-[var(--app-text-soft)] hover:text-[var(--app-accent)]"
                         title="Set as sort field"
                         disabled={isPending}
                       >
@@ -269,7 +269,7 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
                       />
                       {/* HTML editor default */}
                       <div>
-                        <label className="block text-xs text-gray-600 mb-1">Editor</label>
+                        <label className="mb-1 block text-xs text-[var(--app-text-soft)]">Editor</label>
                         <label className="flex items-center gap-2 cursor-pointer">
                           <input
                             type="checkbox"
@@ -278,11 +278,11 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
                               ...fieldOptions[field],
                               htmlEditor: !fieldOptions[field]?.htmlEditor,
                             })}
-                            className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            className="h-4 w-4 rounded border-[var(--app-line-strong)] text-[var(--app-accent)]"
                             disabled={isPending}
                             data-testid={`field-html-${field}`}
                           />
-                          <span className="text-xs text-gray-700">HTML by default</span>
+                          <span className="text-xs text-[var(--app-text)]">HTML by default</span>
                         </label>
                       </div>
                     </ EditFieldPopup>
@@ -300,28 +300,28 @@ export function FieldEditor({ noteType, onClose }: FieldEditorProps) {
               value={newFieldName}
               onChange={(e) => setNewFieldName(e.target.value)}
               placeholder="New field name..."
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-3 py-2 text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
               disabled={isPending}
             />
             <button
               type="submit"
               disabled={!newFieldName.trim() || isPending}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed w-full sm:w-auto"
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
               data-testid="field-editor-add-button"
             >
               Add
             </button>
           </form>
 
-          <p className="mt-2 text-xs text-gray-500">
+          <p className="mt-2 text-xs text-[var(--app-text-soft)]">
             Click a field name to rename it. Reserved names: Tags, Type, Deck, Card, FrontSide
           </p>
         </div>
 
-        <div className="flex justify-end gap-2 p-3 sm:p-4 border-t bg-gray-50">
+        <div className="flex justify-end gap-2 border-t border-[var(--app-line)] bg-[color:var(--app-header)]/95 p-3 backdrop-blur sm:p-4">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 w-full sm:w-auto"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)] sm:w-auto"
             data-testid="close-field-editor-footer"
           >
             Close

@@ -2,6 +2,7 @@ import { Outlet, useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import type { NoteType } from '#/lib/api'
 import { useAppRepository } from '#/lib/app-repository'
+import { EmptyState, PageContainer, PageSection, SurfaceCard } from '#/components/page-layout'
 
 export function TemplatesPage() {
   const navigate = useNavigate()
@@ -18,104 +19,112 @@ export function TemplatesPage() {
 
   if (isLoading) {
     return (
-      <div className="max-w-5xl mx-auto">
-        <div className="text-gray-600">Loading note types...</div>
-      </div>
+      <PageContainer>
+        <PageSection className="px-5 py-16 text-center text-sm text-[var(--app-text-soft)]">
+          Loading template workspace...
+        </PageSection>
+      </PageContainer>
     )
   }
 
   if (error) {
     return (
-      <div className="max-w-5xl mx-auto">
-        <div className="text-red-600">
+      <PageContainer>
+        <PageSection className="px-5 py-16 text-center text-sm text-[var(--app-danger-text)]">
           Error: {error instanceof Error ? error.message : 'Failed to load note types'}
-        </div>
-      </div>
+        </PageSection>
+      </PageContainer>
     )
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Card Templates</h1>
-        <p className="text-gray-600">
-          Manage templates for your note types. Templates control how cards are generated and displayed.
+    <PageContainer className="space-y-4">
+      <PageSection className="p-4 sm:p-5">
+        <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-muted)]">Templates</p>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--app-text)]">Card Templates</h1>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--app-text-soft)]">
+          Manage note-type templates, tune conditional generation, and preview how cards render on both mobile and desktop.
         </p>
-      </div>
+      </PageSection>
 
-      <div className="grid gap-6">
-        {noteTypes && noteTypes.map((noteType) => (
-          <div key={noteType.name} className="bg-white rounded-lg shadow border border-gray-200">
-            <div className="p-4 sm:p-6">
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">{noteType.name}</h3>
-                  <p className="text-sm text-gray-600 mt-1">
-                    {noteType.fields.length} field{noteType.fields.length !== 1 ? 's' : ''}, {' '}
+      {!noteTypes || noteTypes.length === 0 ? (
+        <EmptyState
+          title="No note types found"
+          description="Create a note type first, then return here to edit fields and card templates."
+        />
+      ) : (
+        <div className="grid gap-4">
+          {noteTypes.map((noteType) => (
+            <PageSection key={noteType.name} className="p-4 sm:p-5">
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div className="min-w-0">
+                  <h2 className="text-lg font-semibold text-[var(--app-text)]">{noteType.name}</h2>
+                  <p className="mt-2 text-sm text-[var(--app-text-soft)]">
+                    {noteType.fields.length} field{noteType.fields.length !== 1 ? 's' : ''},{' '}
                     {noteType.templates.length} template{noteType.templates.length !== 1 ? 's' : ''}
                   </p>
                 </div>
                 <button
+                  type="button"
                   onClick={() => handleEditTemplate(noteType)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium w-full sm:w-auto"
+                  className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)]"
                 >
-                  Edit Template
+                  Edit templates
                 </button>
               </div>
 
-              {/* Fields */}
-              <div className="mb-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-2">Fields:</h4>
-                <div className="flex flex-wrap gap-2">
-                  {noteType.fields.map((field) => (
-                    <span
-                      key={field}
-                      className="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm"
-                    >
-                      {field}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                <SurfaceCard className="space-y-3 border-none bg-[var(--app-card-strong)] p-4">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--app-muted)]">Fields</p>
+                  <div className="flex flex-wrap gap-2">
+                    {noteType.fields.map((field) => (
+                      <span
+                        key={field}
+                        className="rounded-full border border-[var(--app-line)] bg-[var(--app-card)] px-3 py-1 text-xs font-medium text-[var(--app-text)]"
+                      >
+                        {field}
+                      </span>
+                    ))}
+                  </div>
+                </SurfaceCard>
 
-              {/* Templates */}
-              <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-2">Card Templates:</h4>
-                <div className="space-y-2">
+                <div className="grid gap-3">
                   {noteType.templates.map((template) => (
-                    <div
-                      key={template.name}
-                      className="p-3 bg-gray-50 rounded-md border border-gray-200"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-gray-900">{template.name}</span>
-                        {template.isCloze && (
-                          <span className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded">
-                            Cloze
-                          </span>
-                        )}
+                    <SurfaceCard key={template.name} className="space-y-2 border-none bg-[var(--app-card-strong)] p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-sm font-semibold text-[var(--app-text)]">{template.name}</span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {template.isCloze ? (
+                            <span className="rounded-full bg-[var(--app-accent)] px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--app-accent-ink)]">
+                              Cloze
+                            </span>
+                          ) : null}
+                          {template.deckOverride ? (
+                            <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card)] px-2.5 py-1 text-[11px] text-[var(--app-text-soft)]">
+                              {template.deckOverride}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
-                      {template.ifFieldNonEmpty && (
-                        <p className="text-xs text-gray-500 mt-1">
-                          Conditional: Generated only if "{template.ifFieldNonEmpty}" is not empty
+                      {template.ifFieldNonEmpty ? (
+                        <p className="text-xs leading-5 text-[var(--app-text-soft)]">
+                          Conditional on field <span className="font-medium text-[var(--app-text)]">{template.ifFieldNonEmpty}</span>
+                        </p>
+                      ) : (
+                        <p className="text-xs leading-5 text-[var(--app-text-soft)]">
+                          Generated whenever the note has enough content for this template.
                         </p>
                       )}
-                    </div>
+                    </SurfaceCard>
                   ))}
                 </div>
               </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {!noteTypes || noteTypes.length === 0 && (
-        <div className="bg-white rounded-lg shadow p-6 sm:p-8 text-center">
-          <p className="text-gray-500">No note types found.</p>
+            </PageSection>
+          ))}
         </div>
       )}
 
       <Outlet />
-    </div>
+    </PageContainer>
   )
 }

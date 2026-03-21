@@ -19,7 +19,7 @@ const RtlOptionInput = forwardRef<HTMLInputElement, RtlOptionFieldProps>(functio
             type="checkbox"
             checked={isChecked}
             onChange={handleChange}
-            className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+            className="h-4 w-4 rounded border-[var(--app-line-strong)] text-[var(--app-accent)]"
             disabled={isPending}
             data-testid={datatestid}
             {...props}
@@ -38,7 +38,7 @@ export const RtlOptionField = ({
 ) => {
     return (
         <div>
-            <label className="block text-xs text-gray-600 mb-1">Direction</label>
+            <label className="mb-1 block text-xs text-[var(--app-text-soft)]">Direction</label>
             <label className="flex items-center gap-2 cursor-pointer">
                 <RtlOptionInput
                     isChecked={isChecked}
@@ -46,7 +46,7 @@ export const RtlOptionField = ({
                     datatestid={datatestid}
                     isPending={isPending}
                 />
-                <span className="text-xs text-gray-700">RTL</span>
+                <span className="text-xs text-[var(--app-text)]">RTL</span>
             </label>
         </div>
     )

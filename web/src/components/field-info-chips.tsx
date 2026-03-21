@@ -18,7 +18,9 @@ const FieldInfoChip = forwardRef<HTMLDivElement, FieldInfoChipProps>(function Fi
     )
 })
 
-const RtlChip = () => (<span className="text-xs text-purple-600 bg-purple-100 px-2 py-0.5 rounded">RTL</span>)
+const RtlChip = () => (
+  <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card)] px-2 py-0.5 text-xs text-[var(--app-text-soft)]">RTL</span>
+)
 
 const RTLFieldInfoChip = forwardRef<HTMLDivElement, FieldInfoChipProps>(function FieldInfoChips({
     booleanIndicator,
@@ -37,7 +39,9 @@ const RTLFieldInfoChip = forwardRef<HTMLDivElement, FieldInfoChipProps>(function
     )
 })
 
-const SortChip = () => (<span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded">Sort</span>)
+const SortChip = () => (
+  <span className="rounded-full bg-[var(--app-accent)] px-2 py-0.5 text-xs font-medium text-[var(--app-accent-ink)]">Sort</span>
+)
 
 const SortFieldInfoChip = forwardRef<HTMLDivElement, FieldInfoChipProps>(function FieldInfoChips({
     booleanIndicator,

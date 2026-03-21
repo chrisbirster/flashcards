@@ -2,17 +2,45 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import DOMPurify from 'dompurify'
 import { useAppRepository } from '#/lib/app-repository'
+import { ActionBar } from '#/components/action-bar'
+import { EmptyState, PageContainer, PageSection } from '#/components/page-layout'
 
-// Flag colors matching Anki
 const FLAG_COLORS = [
-  { id: 0, name: 'None', color: 'bg-gray-200', textColor: 'text-gray-600' },
-  { id: 1, name: 'Red', color: 'bg-red-500', textColor: 'text-white' },
-  { id: 2, name: 'Orange', color: 'bg-orange-500', textColor: 'text-white' },
-  { id: 3, name: 'Green', color: 'bg-green-500', textColor: 'text-white' },
-  { id: 4, name: 'Blue', color: 'bg-blue-500', textColor: 'text-white' },
-  { id: 5, name: 'Pink', color: 'bg-pink-500', textColor: 'text-white' },
-  { id: 6, name: 'Turquoise', color: 'bg-teal-500', textColor: 'text-white' },
-  { id: 7, name: 'Purple', color: 'bg-purple-500', textColor: 'text-white' },
+  { id: 0, name: 'None', color: 'bg-[var(--app-card-strong)] text-[var(--app-text-soft)] border-[var(--app-line-strong)]' },
+  { id: 1, name: 'Red', color: 'bg-rose-500 text-white border-rose-500' },
+  { id: 2, name: 'Orange', color: 'bg-orange-500 text-white border-orange-500' },
+  { id: 3, name: 'Green', color: 'bg-emerald-500 text-white border-emerald-500' },
+  { id: 4, name: 'Blue', color: 'bg-sky-500 text-white border-sky-500' },
+  { id: 5, name: 'Pink', color: 'bg-pink-500 text-white border-pink-500' },
+  { id: 6, name: 'Turquoise', color: 'bg-teal-500 text-white border-teal-500' },
+  { id: 7, name: 'Purple', color: 'bg-violet-500 text-white border-violet-500' },
+]
+
+const ANSWER_BUTTONS = [
+  {
+    rating: 1,
+    label: 'Again',
+    shortcut: '1',
+    className: 'border-rose-500/40 bg-rose-500/12 text-rose-200',
+  },
+  {
+    rating: 2,
+    label: 'Hard',
+    shortcut: '2',
+    className: 'border-orange-500/40 bg-orange-500/12 text-orange-200',
+  },
+  {
+    rating: 3,
+    label: 'Good',
+    shortcut: '3',
+    className: 'border-emerald-500/40 bg-emerald-500/12 text-emerald-200',
+  },
+  {
+    rating: 4,
+    label: 'Easy',
+    shortcut: '4',
+    className: 'border-sky-500/40 bg-sky-500/12 text-sky-200',
+  },
 ]
 
 interface StudyScreenProps {
@@ -34,21 +62,19 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
     queryFn: () => repository.fetchDueCards(deckId, 50),
   })
 
-
   const answerMutation = useMutation({
     mutationFn: ({ cardId, rating, timeTakenMs }: { cardId: number; rating: number; timeTakenMs: number }) =>
       repository.answerCard(cardId, { rating, timeTakenMs }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['due-cards', deckId] })
       queryClient.invalidateQueries({ queryKey: ['deck-stats', deckId] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
 
-      // Move to next card
       if (cards && currentCardIndex < cards.length - 1) {
         setCurrentCardIndex(currentCardIndex + 1)
         setShowAnswer(false)
         questionStartTimeRef.current = Date.now()
       } else {
-        // No more cards, exit study
         onExit()
       }
     },
@@ -59,11 +85,13 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
       repository.updateCard(cardId, { flag, marked, suspended }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['due-cards', deckId] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setShowFlagMenu(false)
     },
   })
 
   const currentCard = cards?.[currentCardIndex]
+  const progress = `${currentCardIndex + 1} / ${cards?.length ?? 0}`
 
   const handleAnswer = useCallback((rating: number) => {
     if (!currentCard) return
@@ -77,45 +105,39 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
     })
   }, [answerMutation, currentCard])
 
-  // Keyboard shortcuts
   useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
+    const handleKeyPress = (event: KeyboardEvent) => {
       if (!currentCard) return
 
-      // M: toggle mark
-      if (e.key === 'm' || e.key === 'M') {
-        e.preventDefault()
+      if (event.key === 'm' || event.key === 'M') {
+        event.preventDefault()
         updateCardMutation.mutate({ cardId: currentCard.id, marked: !currentCard.marked })
         return
       }
 
-      // Escape: close flag menu
-      if (e.key === 'Escape' && showFlagMenu) {
+      if (event.key === 'Escape' && showFlagMenu) {
         setShowFlagMenu(false)
         return
       }
 
-      // @ or Shift+2: suspend card
-      if (e.key === '@') {
-        e.preventDefault()
+      if (event.key === '@') {
+        event.preventDefault()
         updateCardMutation.mutate({ cardId: currentCard.id, suspended: true })
         return
       }
 
-      // Space or Enter: show answer or select "Good"
-      if (e.key === ' ' || e.key === 'Enter') {
-        e.preventDefault()
+      if (event.key === ' ' || event.key === 'Enter') {
+        event.preventDefault()
         if (!showAnswer) {
           setShowAnswer(true)
         } else {
-          handleAnswer(3) // Good
+          handleAnswer(3)
         }
         return
       }
 
-      // Number keys: select answer
-      if (showAnswer && ['1', '2', '3', '4'].includes(e.key)) {
-        handleAnswer(parseInt(e.key))
+      if (showAnswer && ['1', '2', '3', '4'].includes(event.key)) {
+        handleAnswer(parseInt(event.key))
       }
     }
 
@@ -123,7 +145,6 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
     return () => window.removeEventListener('keydown', handleKeyPress)
   }, [currentCard, handleAnswer, showAnswer, showFlagMenu, updateCardMutation])
 
-  // Reset timer when current card changes
   useEffect(() => {
     if (currentCard) {
       questionStartTimeRef.current = Date.now()
@@ -132,202 +153,195 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-gray-600">Loading cards...</div>
-      </div>
+      <PageContainer>
+        <PageSection className="px-5 py-16 text-center text-sm text-[var(--app-text-soft)]">
+          Loading study queue...
+        </PageSection>
+      </PageContainer>
     )
   }
 
   if (!cards || cards.length === 0) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">All done!</h2>
-          <p className="text-gray-600 mb-8">No more cards due for this deck.</p>
-          <button
-            onClick={onExit}
-            className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            Back to Decks
-          </button>
-        </div>
-      </div>
+      <PageContainer>
+        <EmptyState
+          title="All caught up"
+          description="There are no due cards in this deck right now."
+          action={
+            <button
+              type="button"
+              onClick={onExit}
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)]"
+            >
+              Back to Decks
+            </button>
+          }
+        />
+      </PageContainer>
     )
   }
 
   if (!currentCard) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-red-600">Error loading card</div>
-      </div>
+      <PageContainer>
+        <PageSection className="px-5 py-16 text-center text-sm text-[var(--app-danger-text)]">
+          Error loading card.
+        </PageSection>
+      </PageContainer>
     )
   }
 
-  const progress = `${currentCardIndex + 1} / ${cards.length}`
-
   return (
-    <div className="min-h-screen bg-gray-50 py-4 sm:py-8 px-3 sm:px-4">
-      <div className="max-w-3xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+    <PageContainer className="space-y-4">
+      <PageSection className="p-4 sm:p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">{deckName}</h1>
-            <p className="text-sm text-gray-600">Card {progress}</p>
+            <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-muted)]">Study session</p>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--app-text)]">{deckName}</h1>
+            <p className="mt-2 text-sm text-[var(--app-text-soft)]">Card {progress}</p>
           </div>
           <button
+            type="button"
             onClick={onExit}
-            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md w-full sm:w-auto"
+            className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 text-sm font-medium text-[var(--app-text)]"
           >
             Exit
           </button>
         </div>
+      </PageSection>
 
-        {/* Card Tools */}
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          {/* Flag button with dropdown */}
+      <PageSection className="p-4 sm:p-5">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <button
-              onClick={() => setShowFlagMenu(!showFlagMenu)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1 ${currentCard.flag > 0
-                  ? `${FLAG_COLORS[currentCard.flag].color} ${FLAG_COLORS[currentCard.flag].textColor}`
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
+              type="button"
+              onClick={() => setShowFlagMenu((current) => !current)}
+              className={`inline-flex min-h-11 items-center gap-2 rounded-2xl border px-4 text-sm font-medium ${
+                currentCard.flag > 0
+                  ? FLAG_COLORS[currentCard.flag].color
+                  : 'border-[var(--app-line-strong)] bg-[var(--app-card-strong)] text-[var(--app-text-soft)]'
+              }`}
               data-testid="flag-button"
             >
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 3.4A1 1 0 0116 13H6a1 1 0 00-1 1v3a1 1 0 11-2 0V6z" clipRule="evenodd" />
               </svg>
               Flag
             </button>
-            {showFlagMenu && (
-              <div className="absolute left-0 top-full mt-1 bg-white rounded-lg shadow-lg border z-10 py-1 min-w-[140px] max-w-[calc(100vw-2rem)]">
+            {showFlagMenu ? (
+              <div className="absolute left-0 top-full z-10 mt-2 min-w-[12rem] overflow-hidden rounded-[1.25rem] border border-[var(--app-line)] bg-[var(--app-panel)] shadow-2xl">
                 {FLAG_COLORS.map((flag) => (
                   <button
                     key={flag.id}
-                    onClick={() => {
-                      updateCardMutation.mutate({ cardId: currentCard.id, flag: flag.id })
-                    }}
-                    className="w-full px-3 py-1.5 text-left text-sm flex items-center gap-2 hover:bg-gray-100"
+                    type="button"
+                    onClick={() => updateCardMutation.mutate({ cardId: currentCard.id, flag: flag.id })}
+                    className="flex w-full items-center gap-2 border-b border-[var(--app-line)] px-4 py-3 text-left text-sm text-[var(--app-text)] last:border-b-0 hover:bg-[var(--app-card-strong)]"
                   >
-                    <span className={`w-3 h-3 rounded-full ${flag.color}`}></span>
+                    <span className={`h-3 w-3 rounded-full ${flag.id === 0 ? 'border border-[var(--app-line-strong)] bg-transparent' : flag.color.split(' ')[0]}`} />
                     {flag.name}
                   </button>
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
 
-          {/* Mark button */}
           <button
+            type="button"
             onClick={() => updateCardMutation.mutate({ cardId: currentCard.id, marked: !currentCard.marked })}
-            className={`px-3 py-1.5 rounded-md text-sm font-medium flex items-center gap-1 ${currentCard.marked
-                ? 'bg-yellow-500 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
+            className={`inline-flex min-h-11 items-center gap-2 rounded-2xl border px-4 text-sm font-medium ${
+              currentCard.marked
+                ? 'border-amber-500/40 bg-amber-500/12 text-amber-200'
+                : 'border-[var(--app-line-strong)] bg-[var(--app-card-strong)] text-[var(--app-text-soft)]'
+            }`}
             data-testid="mark-button"
           >
-            <svg className="w-4 h-4" fill={currentCard.marked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="h-4 w-4" fill={currentCard.marked ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
             </svg>
             Mark
           </button>
 
-          {/* Suspend button */}
           <button
-            onClick={() => {
-              updateCardMutation.mutate({ cardId: currentCard.id, suspended: true })
-            }}
-            className="px-3 py-1.5 rounded-md text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center gap-1"
+            type="button"
+            onClick={() => updateCardMutation.mutate({ cardId: currentCard.id, suspended: true })}
+            className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 text-sm font-medium text-[var(--app-text-soft)]"
             data-testid="suspend-button"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             Suspend
           </button>
         </div>
+      </PageSection>
 
-        {/* Card */}
-        <div className="bg-white rounded-lg shadow-lg p-4 sm:p-8 mb-6">
-          {/* Question */}
-          <div className="mb-6 sm:mb-8">
-            <div className="text-sm text-gray-500 mb-2">Question</div>
-            <div
-              className="text-base sm:text-xl prose max-w-none"
-              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(currentCard.front) }}
-            />
+      <PageSection className="overflow-hidden">
+        <div className="border-b border-[var(--app-line)] px-4 py-3 text-xs uppercase tracking-[0.18em] text-[var(--app-muted)] sm:px-5">
+          Question
+        </div>
+        <div className="px-4 py-6 sm:px-5 sm:py-8">
+          <div
+            className="prose prose-invert max-w-none text-base leading-8 text-[var(--app-text)] sm:text-xl"
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(currentCard.front) }}
+          />
+        </div>
+
+        {showAnswer ? (
+          <>
+            <div className="border-b border-t border-[var(--app-line)] px-4 py-3 text-xs uppercase tracking-[0.18em] text-[var(--app-muted)] sm:px-5">
+              Answer
             </div>
-
-          {/* Answer (revealed) */}
-          {showAnswer && (
-            <div className="border-t pt-6 sm:pt-8">
-              <div className="text-sm text-gray-500 mb-2">Answer</div>
+            <div className="px-4 py-6 sm:px-5 sm:py-8">
               <div
-                className="text-base sm:text-xl prose max-w-none"
+                className="prose prose-invert max-w-none text-base leading-8 text-[var(--app-text)] sm:text-xl"
                 dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(currentCard.back) }}
               />
             </div>
-          )}
-        </div>
+          </>
+        ) : null}
+      </PageSection>
 
-        {/* Actions */}
-        {!showAnswer ? (
-          <div className="text-center">
+      {!showAnswer ? (
+        <ActionBar>
+          <div className="space-y-3">
             <button
+              type="button"
               onClick={() => setShowAnswer(true)}
-              className="px-8 py-4 bg-blue-600 text-white text-base sm:text-lg rounded-lg hover:bg-blue-700 font-medium w-full sm:w-auto"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-base font-semibold text-[var(--app-accent-ink)]"
             >
               Show Answer
             </button>
-            <p className="mt-4 text-sm text-gray-500">
-              Press <kbd className="px-2 py-1 bg-gray-200 rounded">Space</kbd> or{' '}
-              <kbd className="px-2 py-1 bg-gray-200 rounded">Enter</kbd>
+            <p className="text-center text-xs text-[var(--app-muted)]">
+              Press <kbd className="rounded-lg border border-[var(--app-line-strong)] bg-[var(--app-card)] px-2 py-1">Space</kbd> or{' '}
+              <kbd className="rounded-lg border border-[var(--app-line-strong)] bg-[var(--app-card)] px-2 py-1">Enter</kbd>
             </p>
           </div>
-        ) : (
-          <div>
-            <div className="grid grid-cols-2 sm:flex gap-3 sm:gap-4 justify-center">
-              <button
-                onClick={() => handleAnswer(1)}
-                disabled={answerMutation.isPending}
-                className="w-full sm:flex-1 sm:max-w-xs px-4 sm:px-6 py-3 sm:py-4 bg-red-100 text-red-800 rounded-lg hover:bg-red-200 disabled:opacity-50 font-medium"
-              >
-                <div className="text-lg">Again</div>
-                <div className="text-xs mt-1">1</div>
-              </button>
-              <button
-                onClick={() => handleAnswer(2)}
-                disabled={answerMutation.isPending}
-                className="w-full sm:flex-1 sm:max-w-xs px-4 sm:px-6 py-3 sm:py-4 bg-orange-100 text-orange-800 rounded-lg hover:bg-orange-200 disabled:opacity-50 font-medium"
-              >
-                <div className="text-lg">Hard</div>
-                <div className="text-xs mt-1">2</div>
-              </button>
-              <button
-                onClick={() => handleAnswer(3)}
-                disabled={answerMutation.isPending}
-                className="w-full sm:flex-1 sm:max-w-xs px-4 sm:px-6 py-3 sm:py-4 bg-green-100 text-green-800 rounded-lg hover:bg-green-200 disabled:opacity-50 font-medium"
-              >
-                <div className="text-lg">Good</div>
-                <div className="text-xs mt-1">3</div>
-              </button>
-              <button
-                onClick={() => handleAnswer(4)}
-                disabled={answerMutation.isPending}
-                className="w-full sm:flex-1 sm:max-w-xs px-4 sm:px-6 py-3 sm:py-4 bg-blue-100 text-blue-800 rounded-lg hover:bg-blue-200 disabled:opacity-50 font-medium"
-              >
-                <div className="text-lg">Easy</div>
-                <div className="text-xs mt-1">4</div>
-              </button>
+        </ActionBar>
+      ) : (
+        <ActionBar>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {ANSWER_BUTTONS.map((button) => (
+                <button
+                  key={button.rating}
+                  type="button"
+                  onClick={() => handleAnswer(button.rating)}
+                  disabled={answerMutation.isPending}
+                  className={`inline-flex min-h-14 flex-col items-center justify-center rounded-2xl border px-4 py-3 text-sm font-semibold ${button.className} disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  <span className="text-base">{button.label}</span>
+                  <span className="mt-1 text-xs opacity-80">{button.shortcut}</span>
+                </button>
+              ))}
             </div>
-            <p className="mt-4 text-center text-sm text-gray-500">
-              Press <kbd className="px-2 py-1 bg-gray-200 rounded">1</kbd>-
-              <kbd className="px-2 py-1 bg-gray-200 rounded">4</kbd> or{' '}
-              <kbd className="px-2 py-1 bg-gray-200 rounded">Space</kbd> for Good
+            <p className="text-center text-xs text-[var(--app-muted)]">
+              Press <kbd className="rounded-lg border border-[var(--app-line-strong)] bg-[var(--app-card)] px-2 py-1">1</kbd>-
+              <kbd className="rounded-lg border border-[var(--app-line-strong)] bg-[var(--app-card)] px-2 py-1">4</kbd> or{' '}
+              <kbd className="rounded-lg border border-[var(--app-line-strong)] bg-[var(--app-card)] px-2 py-1">Space</kbd> for Good
             </p>
           </div>
-        )}
-      </div>
-    </div>
+        </ActionBar>
+      )}
+    </PageContainer>
   )
 }

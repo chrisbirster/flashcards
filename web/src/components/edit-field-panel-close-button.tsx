@@ -15,7 +15,7 @@ export const EditFieldPanelCloseButton = forwardRef<HTMLButtonElement, JSX.Intri
   return (
     <button
       onClick={onClick}
-      className="text-gray-400 hover:text-gray-600"
+      className="rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] p-2 text-[var(--app-text-soft)]"
       {...props}
       ref={ref}
     >

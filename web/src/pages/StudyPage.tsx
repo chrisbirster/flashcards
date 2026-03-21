@@ -2,6 +2,7 @@ import { useParams, useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { StudyScreen } from '#/components/StudyScreen'
 import { useAppRepository } from '#/lib/app-repository'
+import { EmptyState, PageContainer, PageSection } from '#/components/page-layout'
 
 export function StudyPage() {
   const { deckId } = useParams<{ deckId: string }>()
@@ -15,9 +16,11 @@ export function StudyPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-gray-600">Loading...</div>
-      </div>
+      <PageContainer>
+        <PageSection className="px-5 py-16 text-center text-sm text-[var(--app-text-soft)]">
+          Loading study deck...
+        </PageSection>
+      </PageContainer>
     )
   }
 
@@ -25,17 +28,21 @@ export function StudyPage() {
 
   if (!deck) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="text-red-600 mb-4">Deck not found</div>
-          <button
-            onClick={() => navigate('/decks')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            Back to Decks
-          </button>
-        </div>
-      </div>
+      <PageContainer>
+        <EmptyState
+          title="Deck not found"
+          description="The deck you tried to study is missing or no longer accessible."
+          action={
+            <button
+              type="button"
+              onClick={() => navigate('/decks')}
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)]"
+            >
+              Back to Decks
+            </button>
+          }
+        />
+      </PageContainer>
     )
   }
 

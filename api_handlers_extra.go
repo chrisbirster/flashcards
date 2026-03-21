@@ -66,6 +66,7 @@ func registerAPIRoutes(r chi.Router, handler *APIHandler) {
 		r.Use(handler.RequireAuthenticatedUser)
 
 		r.Get("/collection", handler.GetCollection)
+		r.Get("/dashboard", handler.GetDashboard)
 		r.Post("/import", handler.ImportNotes)
 
 		r.Get("/decks", handler.ListDecks)
@@ -315,6 +316,10 @@ func (h *APIHandler) GetAuthSession(w http.ResponseWriter, r *http.Request) {
 func (h *APIHandler) GetEntitlements(w http.ResponseWriter, r *http.Request) {
 	response := h.buildSessionResponse(r)
 	respondJSON(w, http.StatusOK, response.Entitlements)
+}
+
+func (h *APIHandler) GetDashboard(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, h.buildDashboardResponse(r))
 }
 
 func (h *APIHandler) GetDeckNotes(w http.ResponseWriter, r *http.Request) {

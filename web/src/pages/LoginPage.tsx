@@ -95,18 +95,18 @@ export function LoginPage() {
       <div className="mx-auto mb-6 flex max-w-6xl justify-end">
         <ThemeToggle />
       </div>
-      <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.15fr_0.85fr]">
-        <section className="rounded-[2rem] border border-[var(--app-line-strong)] bg-[color:var(--app-panel)]/92 p-8 shadow-[0_40px_120px_rgba(0,0,0,0.16)] backdrop-blur sm:p-10">
+      <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:gap-8">
+        <section className="order-2 rounded-[2rem] border border-[var(--app-line-strong)] bg-[color:var(--app-panel)]/92 p-6 shadow-[0_40px_120px_rgba(0,0,0,0.16)] backdrop-blur sm:p-8 lg:order-1 lg:p-10">
           <span className="inline-flex rounded-full border border-[var(--app-line-strong)] bg-[var(--app-muted-surface)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-[var(--app-muted)]">
             Vutadex
           </span>
-          <h1 className="mt-6 max-w-xl text-4xl font-black tracking-tight text-[var(--app-text)] sm:text-5xl">
+          <h1 className="mt-5 max-w-xl text-3xl font-black tracking-tight text-[var(--app-text)] sm:text-4xl lg:text-5xl">
             Study faster with a browser-first flashcard workflow.
           </h1>
-          <p className="mt-5 max-w-2xl text-lg leading-8 text-[var(--app-text-soft)]">
+          <p className="mt-4 max-w-2xl text-base leading-7 text-[var(--app-text-soft)] sm:text-lg sm:leading-8">
             Sign in with a one-time code to manage decks, create notes, and keep your collection ready for future desktop and mobile sync.
           </p>
-          <div className="mt-10 grid gap-4 sm:grid-cols-3">
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
             <div className="rounded-3xl border border-[var(--app-line)] bg-[var(--app-card)]/90 p-5">
               <p className="text-sm font-semibold text-[var(--app-text)]">Build intentionally</p>
               <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">Recent notes, duplicate checks, and deck-aware editing keep card creation fast and coherent.</p>
@@ -122,10 +122,10 @@ export function LoginPage() {
           </div>
         </section>
 
-        <section className="rounded-[2rem] bg-[var(--app-card-strong)] p-8 text-[var(--app-text)] shadow-[0_40px_120px_rgba(0,0,0,0.28)] sm:p-10">
+        <section className="order-1 rounded-[2rem] bg-[var(--app-card-strong)] p-6 text-[var(--app-text)] shadow-[0_40px_120px_rgba(0,0,0,0.28)] sm:p-8 lg:order-2 lg:p-10">
           <div className="mx-auto max-w-md">
             <p className="text-sm font-semibold uppercase tracking-[0.28em] text-[var(--app-accent)]">Sign in</p>
-            <h2 className="mt-3 text-3xl font-bold">Use a one-time code</h2>
+            <h2 className="mt-3 text-2xl font-bold sm:text-3xl">Use a one-time code</h2>
             <p className="mt-3 text-sm leading-6 text-[var(--app-text-soft)]">
               Enter your email address and we’ll send a 6-digit code. Sessions are stored in secure HttpOnly cookies and stay active for 7 days while you use the app.
             </p>

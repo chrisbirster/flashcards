@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { useAppRepository } from '#/lib/app-repository'
 import type { RecentDeckNoteSummary } from '#/lib/api'
+import { ConfirmSheet } from '#/components/sheet'
 
 function formatTimestamp(value: string) {
   const date = new Date(value)
@@ -44,26 +46,26 @@ function RecentDeckNoteItem({
   deleting: boolean
 }) {
   return (
-    <li className="group relative rounded-lg border border-gray-200 p-3">
+    <li className="group relative rounded-[1.5rem] border border-[var(--app-line)] bg-[var(--app-card)] p-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 pr-0 sm:pr-28">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+            <span className="inline-flex items-center rounded-full bg-[var(--app-accent)] px-2.5 py-1 text-xs font-semibold text-[var(--app-accent-ink)]">
               {note.noteType}
             </span>
             {note.cardCountInDeck > 1 && (
-              <span className="text-xs text-gray-500">{note.cardCountInDeck} cards</span>
+              <span className="text-xs text-[var(--app-muted)]">{note.cardCountInDeck} cards</span>
             )}
           </div>
-          <p className="mt-2 break-words text-sm text-gray-900">
+          <p className="mt-3 break-words text-sm leading-6 text-[var(--app-text)]">
             {note.fieldPreview || 'No preview available'}
           </p>
           {note.tags.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
+            <div className="mt-3 flex flex-wrap gap-2">
               {note.tags.slice(0, 4).map((tag) => (
                 <span
                   key={tag}
-                  className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"
+                  className="inline-flex items-center rounded-full border border-[var(--app-line)] bg-[var(--app-muted-surface)] px-2.5 py-1 text-xs text-[var(--app-text-soft)]"
                 >
                   #{tag}
                 </span>
@@ -72,14 +74,14 @@ function RecentDeckNoteItem({
           )}
         </div>
 
-        <div className="shrink-0 text-xs text-gray-500">{formatTimestamp(note.createdAt)}</div>
+        <div className="shrink-0 text-xs text-[var(--app-muted)]">{formatTimestamp(note.createdAt)}</div>
       </div>
 
       <div className="mt-3 flex items-center justify-end gap-2 sm:absolute sm:bottom-3 sm:right-3 sm:mt-0 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
         <button
           type="button"
           onClick={onEdit}
-          className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+          className="inline-flex min-h-11 items-center gap-1 rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-3 text-xs font-medium text-[var(--app-text)] hover:border-[var(--app-accent)]"
           aria-label={`Edit note ${note.noteId}`}
         >
           <EditIcon />
@@ -89,7 +91,7 @@ function RecentDeckNoteItem({
           type="button"
           onClick={onDelete}
           disabled={deleting}
-          className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex min-h-11 items-center gap-1 rounded-2xl border border-[var(--app-danger-line)] bg-[var(--app-danger-surface)] px-3 text-xs font-medium text-[var(--app-danger-text)] disabled:cursor-not-allowed disabled:opacity-50"
           aria-label={`Delete note ${note.noteId}`}
         >
           <TrashIcon />
@@ -104,6 +106,7 @@ export function RecentDeckNotesPanel({ deckId }: {deckId?: number }) {
   const repository = useAppRepository()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<number | null>(null)
   const enabled = typeof deckId === 'number' && deckId > 0
   const { data, isLoading, isError } = useQuery({
     queryKey: ['deck-notes', deckId],
@@ -127,27 +130,27 @@ export function RecentDeckNotesPanel({ deckId }: {deckId?: number }) {
   }
 
   return (
-    <section className="rounded-lg bg-white p-4 shadow sm:p-6" data-testid="recent-deck-notes">
+    <section className="rounded-[1.75rem] border border-[var(--app-line)] bg-[var(--app-card)] p-4 shadow-sm sm:p-6" data-testid="recent-deck-notes">
       <div className="mb-4 flex items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Recent Notes in This Deck</h2>
-          <p className="text-sm text-gray-500">
+          <h2 className="text-lg font-semibold text-[var(--app-text)]">Recent Notes in This Deck</h2>
+          <p className="text-sm text-[var(--app-text-soft)]">
             Newest first so you can track deck-building progress while adding notes.
           </p>
         </div>
         <button
           type="button"
           onClick={() => navigate(`/notes/view?deckId=${deckId}`)}
-          className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:border-gray-300 hover:bg-gray-50"
+          className="inline-flex min-h-11 items-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 text-sm font-medium text-[var(--app-text)] hover:border-[var(--app-accent)]"
         >
           View all
         </button>
       </div>
 
-      {isLoading && <p className="text-sm text-gray-500">Loading recent notes...</p>}
-      {isError && <p className="text-sm text-red-600">Failed to load recent notes.</p>}
+      {isLoading && <p className="text-sm text-[var(--app-text-soft)]">Loading recent notes...</p>}
+      {isError && <p className="text-sm text-[var(--app-danger-text)]">Failed to load recent notes.</p>}
       {!isLoading && !isError && data?.notes.length === 0 && (
-        <p className="text-sm text-gray-500">No notes in this deck yet.</p>
+        <p className="text-sm text-[var(--app-text-soft)]">No notes in this deck yet.</p>
       )}
       {!isLoading && !isError && data?.notes.length ? (
         <ul className="space-y-3">
@@ -157,16 +160,24 @@ export function RecentDeckNotesPanel({ deckId }: {deckId?: number }) {
               note={note}
               deleting={deleteMutation.isPending && deleteMutation.variables === note.noteId}
               onEdit={() => navigate(`/notes/view?deckId=${deckId}&noteId=${note.noteId}`)}
-              onDelete={() => {
-                if (!window.confirm('Delete this note and all cards generated from it?')) {
-                  return
-                }
-                deleteMutation.mutate(note.noteId)
-              }}
+              onDelete={() => setPendingDeleteNoteId(note.noteId)}
             />
           ))}
         </ul>
       ) : null}
+      <ConfirmSheet
+        open={pendingDeleteNoteId !== null}
+        onClose={() => setPendingDeleteNoteId(null)}
+        title="Delete note"
+        description="Delete this note and every card generated from it."
+        confirmLabel={deleteMutation.isPending ? 'Deleting...' : 'Delete note'}
+        onConfirm={() => {
+          if (pendingDeleteNoteId !== null) {
+            deleteMutation.mutate(pendingDeleteNoteId)
+          }
+        }}
+        destructive
+      />
     </section>
   )
 }

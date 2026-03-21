@@ -54,7 +54,7 @@ const FontOptionFieldSelect = forwardRef<HTMLSelectElement, FontOptionFieldProps
         <select
             value={fieldValue ?? 0}
             onChange={handleChange}
-            className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full rounded-xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-2 py-1.5 text-xs text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
             disabled={isPending}
             data-testid={datatestid}
             {...props}
@@ -76,7 +76,7 @@ function FontTypeOptionField({
 ) {
     return (
         <div>
-            <label className="block text-xs text-gray-600 mb-1">Font</label>
+            <label className="mb-1 block text-xs text-[var(--app-text-soft)]">Font</label>
             <FontOptionFieldSelect
                 fieldValue={fieldValue}
                 handleChange={handleChange}
@@ -97,7 +97,7 @@ function FontSizeOptionField({
 ) {
     return (
         <div>
-            <label className="block text-xs text-gray-600 mb-1">Size</label>
+            <label className="mb-1 block text-xs text-[var(--app-text-soft)]">Size</label>
             <FontOptionFieldSelect
                 fieldValue={fieldValue}
                 handleChange={handleChange}

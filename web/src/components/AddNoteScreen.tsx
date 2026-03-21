@@ -8,10 +8,12 @@ import DOMPurify from 'dompurify'
 import { TemplateFieldPreview } from './template-field-preview'
 import { ErrorMessage, SuccessMessage } from './message'
 import { EditFieldIcon } from './edit-field-icon'
-import { IconButton } from './edit-field-icon-button'
 import { ShowTemplateIcon } from './show-template-icon'
 import { RecentDeckNotesPanel } from './recent-deck-notes-panel'
 import { useAppRepository } from '#/lib/app-repository'
+import { ActionBar, FormActions } from '#/components/action-bar'
+import { FieldRow } from '#/components/field-row'
+import { EmptyState, PageContainer, PageSection, SurfaceCard } from '#/components/page-layout'
 
 
 // Helper to find the next cloze number in text
@@ -28,9 +30,9 @@ function renderClozePreview(text: string, targetOrdinal: number, reveal: boolean
     const clozeNum = parseInt(num)
     if (clozeNum === targetOrdinal) {
       if (reveal) {
-        return `<span class="text-blue-600 font-semibold">${answer}</span>`
+        return `<span style="color: var(--app-accent); font-weight: 600;">${answer}</span>`
       } else {
-        return `<span class="bg-blue-100 text-blue-800 px-1 rounded">[${hint || '...'}]</span>`
+        return `<span style="background: var(--app-muted-surface); color: var(--app-accent); padding: 0 0.35rem; border-radius: 0.4rem;">[${hint || '...'}]</span>`
       }
     }
     return answer
@@ -318,116 +320,135 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
 
   if (loadingNoteTypes || loadingDecks) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-gray-600">Loading...</div>
-      </div>
+      <PageContainer>
+        <PageSection className="px-5 py-16 text-center text-sm text-[var(--app-text-soft)]">
+          Loading add-note workspace...
+        </PageSection>
+      </PageContainer>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-4 sm:py-8 px-3 sm:px-4">
-      <div className="max-w-3xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Add Note</h1>
+    <PageContainer className="space-y-4">
+      <PageSection className="p-4 sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-muted)]">Create</p>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--app-text)]">Add Note</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--app-text-soft)]">
+              Build notes in a single vertical flow, preview the cards they generate, and keep recent work close by.
+            </p>
+          </div>
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md w-full sm:w-auto"
+            className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 text-sm font-medium text-[var(--app-text)]"
           >
             Close
           </button>
         </div>
+      </PageSection>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Note Type and Deck Selectors */}
-          <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Note Type
-                </label>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <select
-                    value={selectedNoteType}
-                    onChange={(e) => setSelectedNoteType(e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {noteTypes?.map((nt) => (
-                      <option key={nt.name} value={nt.name}>
-                        {nt.name}
-                      </option>
-                    ))}
-                  </select>
-                  <IconButton
-                    title="Edit Fields"
-                    testId="edit-fields-button"
-                    handleClick={openFieldEditorRoute}
-                    icon={<EditFieldIcon />}
-                  />
-                  <IconButton
-                    title="Edit Templates"
-                    testId="edit-templates-button"
-                    handleClick={openTemplateEditorRoute}
-                    icon={<ShowTemplateIcon />}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Deck
-                </label>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <PageSection className="p-4 sm:p-5">
+          <div className="grid gap-4">
+            <FieldRow label="Note type">
+              <div className="space-y-3">
                 <select
-                  value={selectedDeckId}
-                  onChange={(e) => setSelectedDeckId(Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={selectedNoteType}
+                  onChange={(e) => setSelectedNoteType(e.target.value)}
+                  className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 py-3 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
                 >
-                  {decks?.map((deck) => (
-                    <option key={deck.id} value={deck.id}>
-                      {deck.name}
+                  {noteTypes?.map((nt) => (
+                    <option key={nt.name} value={nt.name}>
+                      {nt.name}
                     </option>
                   ))}
                 </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Field Inputs */}
-          <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Fields</h2>
-              {/* Cloze toolbar - only shown for Cloze note type */}
-              {isClozeType && (
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <button
                     type="button"
-                    onClick={insertCloze}
-                    disabled={!activeField}
-                    className="px-3 py-1.5 bg-blue-100 text-blue-700 text-sm font-medium rounded-md hover:bg-blue-200 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center gap-1"
-                    title="Add Cloze (Ctrl+Shift+C)"
-                    data-testid="add-cloze-button"
+                    onClick={openFieldEditorRoute}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
+                    data-testid="edit-fields-button"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    [...] Cloze
+                    <EditFieldIcon />
+                    Edit fields
                   </button>
-                  <span className="text-xs text-gray-400">Ctrl+Shift+C</span>
+                  <button
+                    type="button"
+                    onClick={openTemplateEditorRoute}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
+                    data-testid="edit-templates-button"
+                  >
+                    <ShowTemplateIcon />
+                    Edit templates
+                  </button>
                 </div>
-              )}
-            </div>
-            <div className="space-y-4">
-              {currentNoteType?.fields.map((field) => (
-                <div key={field}>
-                  {(() => {
-                    const options = currentNoteType?.fieldOptions?.[field]
-                    const isHtmlEditor = options?.htmlEditor || false
-                    const fieldStyle = buildFieldEditorStyle(options)
+              </div>
+            </FieldRow>
 
-                    return (
-                      <>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {field}
-                  </label>
+            <FieldRow label="Deck">
+              <select
+                value={selectedDeckId}
+                onChange={(e) => setSelectedDeckId(Number(e.target.value))}
+                className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 py-3 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
+              >
+                {decks?.map((deck) => (
+                  <option key={deck.id} value={deck.id}>
+                    {deck.name}
+                  </option>
+                ))}
+              </select>
+            </FieldRow>
+          </div>
+        </PageSection>
+
+        <PageSection className="p-4 sm:p-5">
+          <div className="flex flex-col gap-3 border-b border-[var(--app-line)] pb-4">
+            <div>
+              <h2 className="text-lg font-semibold text-[var(--app-text)]">Fields</h2>
+              <p className="mt-1 text-sm text-[var(--app-text-soft)]">
+                Mobile uses a single-column editor so each field stays readable while typing.
+              </p>
+            </div>
+            {isClozeType && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={insertCloze}
+                  disabled={!activeField}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)] disabled:cursor-not-allowed disabled:opacity-55"
+                  title="Add Cloze (Ctrl+Shift+C)"
+                  data-testid="add-cloze-button"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Insert cloze
+                </button>
+                <span className="text-xs text-[var(--app-muted)]">Shortcut: Ctrl+Shift+C</span>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-5 space-y-5">
+            {currentNoteType?.fields.map((field) => {
+              const options = currentNoteType?.fieldOptions?.[field]
+              const isHtmlEditor = options?.htmlEditor || false
+              const fieldStyle = buildFieldEditorStyle(options)
+
+              return (
+                <FieldRow
+                  key={field}
+                  label={field}
+                  hint={
+                    isClozeType && field === 'Text'
+                      ? 'Select text and insert cloze markers directly inside the active field.'
+                      : isHtmlEditor
+                        ? 'HTML editor default enabled for this field.'
+                        : undefined
+                  }
+                >
                   <textarea
                     ref={(el) => { textareaRefs.current[field] = el }}
                     value={fieldValues[field] || ''}
@@ -438,203 +459,181 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
                       : isHtmlEditor
                         ? `Enter ${field.toLowerCase()} (HTML)...`
                         : `Enter ${field.toLowerCase()}...`}
-                    rows={3}
-                    className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y ${
-                      isHtmlEditor ? '' : 'font-mono'
-                    }`}
+                    rows={4}
+                    className={`w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 py-3 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)] ${isHtmlEditor ? '' : 'font-mono'}`}
                     style={fieldStyle}
                     dir={options?.rtl ? 'rtl' : 'ltr'}
                   />
-                  {isHtmlEditor && (
-                    <p className="mt-1 text-xs text-gray-500">HTML editor default enabled for this field.</p>
-                  )}
-                  {isClozeType && field === 'Text' && (
-                    <p className="mt-1 text-xs text-gray-500">
-                      Select text and click "[...] Cloze" or press Ctrl+Shift+C to create cloze deletions
-                    </p>
-                  )}
-                      </>
-                    )
-                  })()}
-                </div>
-              ))}
-            </div>
+                </FieldRow>
+              )
+            })}
           </div>
+        </PageSection>
 
-          {/* Duplicate Warning */}
-          {showDuplicateWarning && duplicates.length > 0 && (
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4" data-testid="duplicate-warning">
-              <div className="flex items-start">
-                <svg className="w-5 h-5 text-yellow-600 mt-0.5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                <div className="flex-1">
-                  <h3 className="text-sm font-medium text-yellow-800">
-                    Possible duplicate found
-                  </h3>
-                  <div className="mt-2 text-sm text-yellow-700">
-                    <p>A similar note already exists:</p>
-                    <ul className="mt-1 list-disc list-inside">
-                      {duplicates.slice(0, 3).map((dup) => {
-                        const firstFieldKey = Object.keys(dup.fieldVals)[0]
-                        const preview = dup.fieldVals[firstFieldKey] || ''
-                        return (
-                          <li key={dup.id} className="truncate">
-                            {preview.substring(0, 50)}{preview.length > 50 ? '...' : ''}
-                          </li>
-                        )
-                      })}
-                    </ul>
-                    {duplicates.length > 3 && (
-                      <p className="mt-1 text-xs">...and {duplicates.length - 3} more</p>
-                    )}
-                  </div>
-                  <p className="mt-2 text-xs text-yellow-600">
-                    You can still add this note if it's intentional.
-                  </p>
+        {showDuplicateWarning && duplicates.length > 0 && (
+          <PageSection className="border-[var(--app-warning-line)] bg-[var(--app-warning-surface)] p-4 sm:p-5" data-testid="duplicate-warning">
+            <div className="flex items-start gap-3">
+              <svg className="mt-0.5 h-5 w-5 text-[var(--app-warning-text)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div className="flex-1">
+                <h3 className="text-sm font-semibold text-[var(--app-warning-text)]">Possible duplicate found</h3>
+                <div className="mt-3 space-y-2 text-sm text-[var(--app-warning-text)]/90">
+                  <p>A similar note already exists:</p>
+                  <ul className="space-y-1">
+                    {duplicates.slice(0, 3).map((dup) => {
+                      const firstFieldKey = Object.keys(dup.fieldVals)[0]
+                      const preview = dup.fieldVals[firstFieldKey] || ''
+                      return (
+                        <li key={dup.id} className="rounded-xl border border-[var(--app-warning-line)]/80 bg-black/5 px-3 py-2">
+                          {preview.substring(0, 80)}{preview.length > 80 ? '...' : ''}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                  {duplicates.length > 3 && (
+                    <p className="text-xs text-[var(--app-warning-text)]/80">...and {duplicates.length - 3} more</p>
+                  )}
                 </div>
               </div>
             </div>
-          )}
+          </PageSection>
+        )}
 
-          {/* Checking indicator */}
-          {isCheckingDuplicate && (
-            <div className="text-sm text-gray-500 flex items-center gap-2">
-              <svg className="animate-spin h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24">
+        {isCheckingDuplicate && (
+          <PageSection className="p-4 sm:p-5">
+            <div className="flex items-center gap-2 text-sm text-[var(--app-text-soft)]">
+              <svg className="h-4 w-4 animate-spin text-[var(--app-muted)]" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
               Checking for duplicates...
             </div>
-          )}
+          </PageSection>
+        )}
 
-          {/* Tags */}
-          <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tags
-            </label>
+        <PageSection className="p-4 sm:p-5">
+          <FieldRow label="Tags" hint="Separate multiple tags with commas or spaces.">
             <input
               type="text"
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              placeholder="Enter tags (comma or space separated)..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter tags..."
+              className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 py-3 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
             />
-            <p className="mt-1 text-sm text-gray-500">
-              Separate multiple tags with commas or spaces
-            </p>
-          </div>
+          </FieldRow>
+        </PageSection>
 
-          {/* Actions */}
-          <div className="flex flex-col-reverse sm:flex-row gap-3 sm:gap-4">
-            <button
-              type="submit"
-              disabled={createNoteMutation.isPending || !hasRequiredContent()}
-              className="flex-1 px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed w-full"
-            >
-              {createNoteMutation.isPending ? 'Adding...' : 'Add Note'}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-3 text-gray-700 bg-gray-100 font-medium rounded-lg hover:bg-gray-200 w-full sm:w-auto"
-            >
-              Cancel
-            </button>
-          </div>
+        <PageSection className="overflow-hidden">
+          {createNoteMutation.isError ? (
+            <div className="border-b border-[var(--app-line)] px-4 py-4 sm:px-5">
+              <ErrorMessage message={createNoteMutation.error instanceof Error ? createNoteMutation.error.message : undefined} />
+            </div>
+          ) : null}
+          {createNoteMutation.isSuccess ? (
+            <div className="border-b border-[var(--app-line)] px-4 py-4 sm:px-5">
+              <SuccessMessage />
+            </div>
+          ) : null}
+          <ActionBar>
+            <FormActions>
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={createNoteMutation.isPending || !hasRequiredContent()}
+                className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {createNoteMutation.isPending ? 'Adding...' : 'Add Note'}
+              </button>
+            </FormActions>
+          </ActionBar>
+        </PageSection>
+      </form>
 
-          {/* Error message */}
-          {createNoteMutation.isError && (
-            <ErrorMessage message={createNoteMutation.error instanceof Error ? createNoteMutation.error.message : undefined} />
-          )}
-          {/* Success message */}
-          {createNoteMutation.isSuccess && <SuccessMessage />}
-        </form>
-
-        {/* Preview section */}
-        {currentNoteType && hasRequiredContent() && (
-          <div className="mt-6 bg-white rounded-lg shadow p-4 sm:p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Preview</h2>
-            <div className="space-y-4">
-              {isClozeType ? (
-                // Cloze preview - show one card per cloze ordinal
-                (() => {
-                  const textField = fieldValues['Text'] || ''
-                  const ordinals = extractClozeOrdinals(textField)
-
-                  if (ordinals.length === 0) {
-                    return (
-                      <div className="text-sm text-gray-500 italic">
-                        No cloze deletions found. Use {"{{c1::text}}"} syntax or click the Cloze button.
-                      </div>
-                    )
-                  }
-
-                  return ordinals.map((ordinal) => {
-                    const frontHtml = renderClozePreview(textField, ordinal, false)
-                    const backHtml = renderClozePreview(textField, ordinal, true)
-
-                    return (
-                      <div key={ordinal} className="border rounded-lg p-4">
-                        <div className="text-sm text-gray-500 mb-2">
-                          Card {ordinal}: Cloze {ordinal}
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div>
-                            <div className="text-xs text-gray-400 mb-1">Front (hidden)</div>
-                            <div
-                              className="p-2 bg-gray-50 rounded text-sm whitespace-pre-wrap"
-                              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(frontHtml) }}
-                            />
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-400 mb-1">Back (revealed)</div>
-                            <div
-                              className="p-2 bg-gray-50 rounded text-sm whitespace-pre-wrap"
-                              dangerouslySetInnerHTML={{
-                                __html:
-                                  DOMPurify.sanitize(backHtml)
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })
-                })()
-              ) : (
-                // Regular note type preview
-                currentNoteType.templates.map((template, idx) => {
-                  // Simple preview - replace field placeholders
-                  let front = template.qFmt
-                  let back = template.aFmt
-                  Object.entries(fieldValues).forEach(([field, value]) => {
-                    const regex = new RegExp(`\\{\\{${field}\\}\\}`, 'g')
-                    front = front.replace(regex, value || `[${field}]`)
-                    back = back.replace(regex, value || `[${field}]`)
-                  })
-
-                  return (
-                    <div key={idx} className="border rounded-lg p-4">
-                      <div className="text-sm text-gray-500 mb-2">
-                        Card {idx + 1}: {template.name}
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <TemplateFieldPreview previewContent={front} label="Front" />
-                        <TemplateFieldPreview previewContent={back} label="Back" />
-                      </div>
-                    </div>
-                  )
-                })
-              )}
+      {currentNoteType && hasRequiredContent() && (
+        <PageSection className="p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-4 border-b border-[var(--app-line)] pb-4">
+            <div>
+              <h2 className="text-lg font-semibold text-[var(--app-text)]">Preview</h2>
+              <p className="mt-1 text-sm text-[var(--app-text-soft)]">
+                Review the generated card faces before saving the note.
+              </p>
             </div>
           </div>
-        )}
+          <div className="mt-5 space-y-4">
+            {isClozeType ? (
+              (() => {
+                const textField = fieldValues['Text'] || ''
+                const ordinals = extractClozeOrdinals(textField)
 
-        <div className="mt-6">
-          <RecentDeckNotesPanel deckId={selectedDeckId} />
-        </div>
-      </div>
-    </div>
+                if (ordinals.length === 0) {
+                  return (
+                    <EmptyState
+                      title="No cloze deletions yet"
+                      description='Use the cloze button or enter {{c1::text}} markers to generate preview cards.'
+                    />
+                  )
+                }
+
+                return ordinals.map((ordinal) => {
+                  const frontHtml = renderClozePreview(textField, ordinal, false)
+                  const backHtml = renderClozePreview(textField, ordinal, true)
+
+                  return (
+                    <SurfaceCard key={ordinal} className="space-y-4">
+                      <div className="text-sm font-medium text-[var(--app-text-soft)]">Card {ordinal}: Cloze {ordinal}</div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <div className="text-xs uppercase tracking-[0.18em] text-[var(--app-muted)]">Front (hidden)</div>
+                          <div
+                            className="rounded-2xl border border-[var(--app-line)] bg-[var(--app-card-strong)] p-3 text-sm text-[var(--app-text)]"
+                            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(frontHtml) }}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <div className="text-xs uppercase tracking-[0.18em] text-[var(--app-muted)]">Back (revealed)</div>
+                          <div
+                            className="rounded-2xl border border-[var(--app-line)] bg-[var(--app-card-strong)] p-3 text-sm text-[var(--app-text)]"
+                            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(backHtml) }}
+                          />
+                        </div>
+                      </div>
+                    </SurfaceCard>
+                  )
+                })
+              })()
+            ) : (
+              currentNoteType.templates.map((template, idx) => {
+                let front = template.qFmt
+                let back = template.aFmt
+                Object.entries(fieldValues).forEach(([field, value]) => {
+                  const regex = new RegExp(`\\{\\{${field}\\}\\}`, 'g')
+                  front = front.replace(regex, value || `[${field}]`)
+                  back = back.replace(regex, value || `[${field}]`)
+                })
+
+                return (
+                  <SurfaceCard key={idx} className="space-y-4">
+                    <div className="text-sm font-medium text-[var(--app-text-soft)]">Card {idx + 1}: {template.name}</div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <TemplateFieldPreview previewContent={front} label="Front" />
+                      <TemplateFieldPreview previewContent={back} label="Back" />
+                    </div>
+                  </SurfaceCard>
+                )
+              })
+            )}
+          </div>
+        </PageSection>
+      )}
+
+      <RecentDeckNotesPanel deckId={selectedDeckId} />
+    </PageContainer>
   )
 }

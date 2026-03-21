@@ -570,12 +570,7 @@ func (h *APIHandler) UpdateDeck(w http.ResponseWriter, r *http.Request) {
 		existing.Name = deck.Name
 	}
 
-	respondJSON(w, http.StatusOK, DeckResponse{
-		ID:       deck.ID,
-		Name:     deck.Name,
-		ParentID: deck.ParentID,
-		CardIDs:  deck.Cards,
-	})
+	respondJSON(w, http.StatusOK, h.deckResponse(deck))
 }
 
 func (h *APIHandler) DeleteDeck(w http.ResponseWriter, r *http.Request) {

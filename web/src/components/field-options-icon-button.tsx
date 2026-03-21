@@ -23,7 +23,7 @@ export const FieldOptionsIconButton = forwardRef<HTMLButtonElement, FieldOptions
     return (
         <button
             onClick={handleClick}
-            className={`p-1 ${isEditing? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+            className={`rounded-xl p-1 ${isEditing ? 'text-[var(--app-accent)]' : 'text-[var(--app-text-soft)] hover:text-[var(--app-text)]'}`}
             title="Field options (font, size, RTL)"
             disabled={isPending}
             data-testid={datatestid}

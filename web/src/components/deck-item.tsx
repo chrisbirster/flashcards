@@ -1,9 +1,24 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Deck } from '#/lib/api'
-import { DeckStatItem } from './deck-stat-item'
 import { useAppRepository } from '#/lib/app-repository'
+import { ConfirmSheet, Sheet } from '#/components/sheet'
+
+function StatPill({
+  label,
+  value,
+}: {
+  label: string
+  value: string | number
+}) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-[var(--app-line)] bg-[var(--app-muted-surface)] px-3 py-1 text-xs font-medium text-[var(--app-text-soft)]">
+      <span className="text-[var(--app-text)]">{value}</span>
+      <span>{label}</span>
+    </span>
+  )
+}
 
 export function DeckItem({ deck }: { deck: Deck }) {
   const navigate = useNavigate()
@@ -12,11 +27,8 @@ export function DeckItem({ deck }: { deck: Deck }) {
   const [isEditing, setIsEditing] = useState(false)
   const [draftName, setDraftName] = useState(deck.name)
   const [actionError, setActionError] = useState<string | null>(null)
-
-  const { data: stats } = useQuery({
-    queryKey: ['deck-stats', deck.id],
-    queryFn: () => repository.fetchDeckStats(deck.id),
-  })
+  const [actionsOpen, setActionsOpen] = useState(false)
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
 
   const renameMutation = useMutation({
     mutationFn: (name: string) => repository.updateDeck(deck.id, { name }),
@@ -24,6 +36,7 @@ export function DeckItem({ deck }: { deck: Deck }) {
       setIsEditing(false)
       setActionError(null)
       queryClient.invalidateQueries({ queryKey: ['decks'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     },
     onError: (error: Error) => setActionError(error.message),
   })
@@ -34,17 +47,22 @@ export function DeckItem({ deck }: { deck: Deck }) {
       setActionError(null)
       queryClient.invalidateQueries({ queryKey: ['decks'] })
       queryClient.invalidateQueries({ queryKey: ['entitlements'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     },
     onError: (error: Error) => setActionError(error.message),
   })
 
-  const isEmptyDeck = (stats?.totalCards ?? 0) === 0
+  const canStudy = deck.dueToday > 0
+
+  const runDelete = () => {
+    deleteMutation.mutate()
+  }
 
   return (
-    <li className="p-4 sm:p-6 hover:bg-gray-50 transition-colors">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex-1">
+    <>
+      <li className="rounded-[1.5rem] border border-[var(--app-line)] bg-[var(--app-card)] p-4 shadow-sm sm:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
             {isEditing ? (
               <form
                 onSubmit={(event) => {
@@ -52,19 +70,19 @@ export function DeckItem({ deck }: { deck: Deck }) {
                   if (!draftName.trim()) return
                   renameMutation.mutate(draftName.trim())
                 }}
-                className="flex flex-col gap-2 sm:flex-row"
+                className="space-y-3"
               >
                 <input
                   type="text"
                   value={draftName}
                   onChange={(event) => setDraftName(event.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none sm:max-w-sm"
+                  className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 py-3 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
                 />
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <button
                     type="submit"
                     disabled={renameMutation.isPending || !draftName.trim()}
-                    className="rounded-xl bg-slate-950 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:bg-gray-300"
+                    className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)] disabled:opacity-60"
                   >
                     {renameMutation.isPending ? 'Saving...' : 'Save'}
                   </button>
@@ -74,62 +92,75 @@ export function DeckItem({ deck }: { deck: Deck }) {
                       setIsEditing(false)
                       setDraftName(deck.name)
                     }}
-                    className="rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text-soft)]"
                   >
                     Cancel
                   </button>
                 </div>
               </form>
             ) : (
-              <h3 className="text-lg font-medium text-gray-900">{deck.name}</h3>
-            )}
+              <>
+                <div className="flex flex-wrap items-center gap-3">
+                  <h3 className="truncate text-lg font-semibold text-[var(--app-text)]">{deck.name}</h3>
+                  {deck.dueToday > 0 ? (
+                    <span className="rounded-full bg-[var(--app-success-surface)] px-2.5 py-1 text-xs font-semibold text-[var(--app-success-text)] ring-1 ring-[var(--app-success-line)]">
+                      {deck.dueToday} due today
+                    </span>
+                  ) : null}
+                </div>
 
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-              {stats ? (
-                <>
-                  <DeckStatItem stat={stats.newCards} label={'new'} color={'text-blue-600'} />
-                  <DeckStatItem stat={stats.learning} label={'learning'} color={'text-orange-600'} />
-                  <DeckStatItem stat={stats.review} label={'review'} color={'text-green-600'} />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <StatPill label="notes" value={deck.noteCount} />
+                  <StatPill label="cards" value={deck.cardCount} />
+                  <StatPill label="due" value={deck.dueToday} />
+                </div>
 
-                  {stats.suspended > 0 && <span className="text-gray-500">{stats.suspended} suspended</span>}
-                  <span className="text-gray-400">({stats.totalCards} total)</span>
-                </>
-              ) : (
-                <span className="text-gray-500">Loading stats...</span>
-              )}
-            </div>
+                <p className="mt-3 text-sm leading-6 text-[var(--app-text-soft)]">
+                  {deck.canDelete
+                    ? 'Empty decks can be deleted directly.'
+                    : deck.deleteBlockedReason || 'Delete is disabled until this deck is empty.'}
+                </p>
 
-            {stats && stats.dueToday > 0 && (
-              <div className="mt-1 text-sm font-semibold text-indigo-600">{stats.dueToday} due today</div>
-            )}
-            {!isEmptyDeck && (
-              <div className="mt-2 text-xs text-gray-500">
-                Delete is disabled until this deck is empty.
-              </div>
-            )}
-            {actionError && (
-              <div className="mt-2 text-sm text-red-600">
-                {actionError}
-              </div>
+                {actionError ? (
+                  <p className="mt-3 rounded-2xl border border-[var(--app-danger-line)] bg-[var(--app-danger-surface)] px-4 py-3 text-sm text-[var(--app-danger-text)]">
+                    {actionError}
+                  </p>
+                ) : null}
+              </>
             )}
           </div>
 
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
+          {!isEditing ? (
             <button
-              className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:bg-gray-300 sm:w-auto"
-              disabled={!stats || stats.dueToday === 0}
+              type="button"
+              onClick={() => setActionsOpen(true)}
+              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] text-[var(--app-text-soft)] md:hidden"
+              aria-label={`Open actions for ${deck.name}`}
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 6h.01M12 12h.01M12 18h.01" />
+              </svg>
+            </button>
+          ) : null}
+        </div>
+
+        {!isEditing ? (
+          <div className="mt-4 hidden flex-wrap gap-3 md:flex">
+            <button
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)] disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!canStudy}
               onClick={() => navigate(`/study/${deck.id}`)}
             >
               Study
             </button>
             <button
-              className="w-full rounded-md px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 sm:w-auto"
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
               onClick={() => navigate(`/notes/add?deckId=${deck.id}`)}
             >
               Add Note
             </button>
             <button
-              className="w-full rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 sm:w-auto"
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text-soft)]"
               onClick={() => {
                 setActionError(null)
                 setIsEditing(true)
@@ -138,20 +169,79 @@ export function DeckItem({ deck }: { deck: Deck }) {
               Rename
             </button>
             <button
-              className="w-full rounded-md border border-red-200 px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-400 sm:w-auto"
-              disabled={!isEmptyDeck || deleteMutation.isPending}
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-danger-line)] bg-[var(--app-danger-surface)] px-4 text-sm font-medium text-[var(--app-danger-text)] disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={!deck.canDelete || deleteMutation.isPending}
               onClick={() => {
-                if (!window.confirm(`Delete the deck "${deck.name}"?`)) {
-                  return
-                }
-                deleteMutation.mutate()
+                if (!window.confirm(`Delete the deck "${deck.name}"?`)) return
+                runDelete()
               }}
             >
               {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
             </button>
           </div>
+        ) : null}
+      </li>
+
+      <Sheet open={actionsOpen} onClose={() => setActionsOpen(false)} title={deck.name}>
+        <div className="space-y-3">
+          <button
+            type="button"
+            disabled={!canStudy}
+            onClick={() => {
+              navigate(`/study/${deck.id}`)
+              setActionsOpen(false)
+            }}
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)] disabled:opacity-60"
+          >
+            Study
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              navigate(`/notes/add?deckId=${deck.id}`)
+              setActionsOpen(false)
+            }}
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
+          >
+            Add note
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActionError(null)
+              setIsEditing(true)
+              setActionsOpen(false)
+            }}
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text-soft)]"
+          >
+            Rename
+          </button>
+          <button
+            type="button"
+            disabled={!deck.canDelete || deleteMutation.isPending}
+            onClick={() => {
+              setActionsOpen(false)
+              setConfirmDeleteOpen(true)
+            }}
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-[var(--app-danger-line)] bg-[var(--app-danger-surface)] px-4 text-sm font-medium text-[var(--app-danger-text)] disabled:opacity-45"
+          >
+            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+          </button>
+          {!deck.canDelete && deck.deleteBlockedReason ? (
+            <p className="text-sm leading-6 text-[var(--app-text-soft)]">{deck.deleteBlockedReason}</p>
+          ) : null}
         </div>
-      </div>
-    </li>
+      </Sheet>
+
+      <ConfirmSheet
+        open={confirmDeleteOpen}
+        onClose={() => setConfirmDeleteOpen(false)}
+        title={`Delete ${deck.name}?`}
+        description="This only works for empty decks in the current tranche. Move or delete cards first if the action is disabled."
+        confirmLabel="Delete deck"
+        onConfirm={runDelete}
+        destructive
+      />
+    </>
   )
 }

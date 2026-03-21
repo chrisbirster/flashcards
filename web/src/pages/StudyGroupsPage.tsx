@@ -1,5 +1,18 @@
 import { useQuery } from '@tanstack/react-query'
 import { useAppRepository } from '#/lib/app-repository'
+import { PageContainer, PageSection, SurfaceCard } from '#/components/page-layout'
+
+const upcomingFeatures = [
+  'Deck-linked study groups with owner, admin, and member roles.',
+  'Invite and remove members with explicit membership status.',
+  'Shared deck dashboards, weekly leaderboards, and announcements.',
+]
+
+const futureWorkflows = [
+  'Attach a primary deck and keep collaboration scoped to that study surface.',
+  'Track member participation, due-card totals, and weekly activity from one dashboard.',
+  'Open the feature to Team and Enterprise workspaces first, with invitees able to join.',
+]
 
 export function StudyGroupsPage() {
   const repository = useAppRepository()
@@ -11,37 +24,77 @@ export function StudyGroupsPage() {
   const canCreate = entitlementsQuery.data?.features.studyGroups ?? false
 
   return (
-    <div className="mx-auto max-w-4xl">
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm md:p-8">
-        <p className="text-xs uppercase tracking-[0.28em] text-slate-400">Coming soon</p>
-        <h2 className="mt-4 text-3xl font-semibold tracking-tight text-slate-950">Study Groups</h2>
-        <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500">
-          Study Groups will let you attach a collaborative space to a primary deck, invite members, and manage deck-specific participation without mixing that workflow into basic deck CRUD.
+    <PageContainer className="space-y-4">
+      <PageSection className="p-5 sm:p-6">
+        <p className="text-[11px] uppercase tracking-[0.26em] text-[var(--app-muted)]">Coming soon</p>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--app-text)]">Study Groups</h1>
+        <p className="mt-4 max-w-3xl text-sm leading-7 text-[var(--app-text-soft)]">
+          Study Groups will give each shared deck a collaborative layer for invites, participation, and accountability without overloading basic deck CRUD.
         </p>
+      </PageSection>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-2">
-          <div className="rounded-2xl bg-stone-50 p-5">
-            <h3 className="text-lg font-semibold text-slate-950">What lands in the next tranche</h3>
-            <ul className="mt-4 space-y-2 text-sm text-slate-600">
-              <li>Deck-linked study groups with owner, admin, and member roles.</li>
-              <li>Invite and remove members with explicit membership status.</li>
-              <li>Team and Enterprise plan gating for group creation.</li>
-            </ul>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+        <PageSection className="p-5 sm:p-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <SurfaceCard className="space-y-3 border-none bg-[var(--app-card-strong)]">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-muted)]">Next tranche</p>
+              <ul className="space-y-3 text-sm leading-6 text-[var(--app-text-soft)]">
+                {upcomingFeatures.map((feature) => (
+                  <li key={feature} className="rounded-2xl border border-[var(--app-line)] bg-[var(--app-card)] px-4 py-3">
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+            </SurfaceCard>
+
+            <SurfaceCard className="space-y-3 border-none bg-[var(--app-card-strong)]">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-muted)]">How it will work</p>
+              <ul className="space-y-3 text-sm leading-6 text-[var(--app-text-soft)]">
+                {futureWorkflows.map((workflow) => (
+                  <li key={workflow} className="rounded-2xl border border-[var(--app-line)] bg-[var(--app-card)] px-4 py-3">
+                    {workflow}
+                  </li>
+                ))}
+              </ul>
+            </SurfaceCard>
           </div>
+        </PageSection>
 
-          <div className="rounded-2xl border border-slate-200 p-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-400">Plan access</p>
-            <p className="mt-3 text-2xl font-semibold text-slate-950">
+        <PageSection className="p-5 sm:p-6">
+          <div className="rounded-[1.75rem] border border-[var(--app-line)] bg-[linear-gradient(180deg,rgba(112,214,108,0.10),rgba(112,214,108,0.03))] p-5">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-muted)]">Plan access</p>
+            <p className="mt-3 text-2xl font-semibold text-[var(--app-text)]">
               {canCreate ? 'Eligible to create later' : 'Upgrade required'}
             </p>
-            <p className="mt-3 text-sm text-slate-500">
+            <p className="mt-3 text-sm leading-6 text-[var(--app-text-soft)]">
               {canCreate
-                ? 'This workspace can create study groups once the feature is shipped.'
+                ? 'This workspace can create study groups as soon as the feature is shipped.'
                 : 'Study group creation is reserved for Team and Enterprise workspaces.'}
             </p>
           </div>
-        </div>
+
+          <div className="mt-4 grid gap-3">
+            <SurfaceCard className="border-none bg-[var(--app-card-strong)]">
+              <p className="text-sm font-semibold text-[var(--app-text)]">Shared decks</p>
+              <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+                Group-owned decks stay collaborative while each member keeps their own review state and due queue.
+              </p>
+            </SurfaceCard>
+            <SurfaceCard className="border-none bg-[var(--app-card-strong)]">
+              <p className="text-sm font-semibold text-[var(--app-text)]">Member management</p>
+              <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+                Owners and admins will be able to invite, approve, and remove people without touching core deck ownership.
+              </p>
+            </SurfaceCard>
+            <SurfaceCard className="border-none bg-[var(--app-card-strong)]">
+              <p className="text-sm font-semibold text-[var(--app-text)]">Team-first rollout</p>
+              <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+                The placeholder stays intentionally simple until the per-user review-state split is ready.
+              </p>
+            </SurfaceCard>
+          </div>
+        </PageSection>
       </div>
-    </div>
+    </PageContainer>
   )
 }

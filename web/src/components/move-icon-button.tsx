@@ -41,7 +41,7 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconB
         <button
             onClick={handleClick}
             disabled={disabled}
-            className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="rounded-xl p-1 text-[var(--app-text-soft)] hover:text-[var(--app-text)] disabled:cursor-not-allowed disabled:opacity-30"
             title={title}
             ref={ref}
             {...props}

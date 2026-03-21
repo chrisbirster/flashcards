@@ -12,14 +12,14 @@ interface EditorRouteStateProps {
 
 function EditorRouteState({ message, onClose }: EditorRouteStateProps) {
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 p-2 sm:p-0">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-0 sm:mx-4 p-4 sm:p-6">
-        <p className="text-gray-700">{message}</p>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-2 sm:items-center sm:p-0">
+      <div className="max-h-[95dvh] w-full max-w-md rounded-t-[1.75rem] border border-[var(--app-line)] bg-[var(--app-panel)] p-4 shadow-xl sm:mx-4 sm:rounded-[1.75rem] sm:p-6">
+        <p className="text-sm leading-6 text-[var(--app-text-soft)]">{message}</p>
         <div className="mt-4 flex justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+            className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
           >
             Close
           </button>

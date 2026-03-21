@@ -1,19 +1,50 @@
 import { useRef, useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { APIError, type ImportNotesResponse, type ImportSource } from '#/lib/api'
-import { DeckItem } from '#/components/deck-item'
 import { useAppRepository } from '#/lib/app-repository'
+import { DeckItem } from '#/components/deck-item'
+import { EmptyState, PageContainer, PageSection } from '#/components/page-layout'
+
+function SectionToggle({
+  title,
+  description,
+  expanded,
+  onToggle,
+}: {
+  title: string
+  description: string
+  expanded: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="flex w-full items-center justify-between gap-4 rounded-[1.25rem] border border-[var(--app-line)] bg-[var(--app-card)] px-4 py-4 text-left md:hidden"
+    >
+      <div>
+        <p className="text-sm font-semibold text-[var(--app-text)]">{title}</p>
+        <p className="mt-1 text-sm text-[var(--app-text-soft)]">{description}</p>
+      </div>
+      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--app-accent)]">
+        {expanded ? 'Hide' : 'Open'}
+      </span>
+    </button>
+  )
+}
 
 export function DecksPage() {
   const repository = useAppRepository()
+  const queryClient = useQueryClient()
   const [newDeckName, setNewDeckName] = useState('')
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importSource, setImportSource] = useState<ImportSource>('auto')
   const [importDeckName, setImportDeckName] = useState('')
   const [importNoteType, setImportNoteType] = useState('Basic')
   const [importResult, setImportResult] = useState<ImportNotesResponse | null>(null)
+  const [showCreateSection, setShowCreateSection] = useState(false)
+  const [showImportSection, setShowImportSection] = useState(false)
   const importInputRef = useRef<HTMLInputElement>(null)
-  const queryClient = useQueryClient()
 
   const { data: decks, isLoading, error } = useQuery({
     queryKey: ['decks'],
@@ -21,11 +52,13 @@ export function DecksPage() {
   })
 
   const createDeckMutation = useMutation({
-    mutationFn: (req: {name: string}) => repository.createDeck(req),
+    mutationFn: (req: { name: string }) => repository.createDeck(req),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['decks'] })
       queryClient.invalidateQueries({ queryKey: ['entitlements'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setNewDeckName('')
+      setShowCreateSection(false)
     },
   })
 
@@ -33,23 +66,25 @@ export function DecksPage() {
     mutationFn: (req: Parameters<typeof repository.importNotesFile>[0]) => repository.importNotesFile(req),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['decks'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setImportResult(result)
       setImportFile(null)
+      setShowImportSection(false)
       if (importInputRef.current) {
         importInputRef.current.value = ''
       }
     },
   })
 
-  const handleCreateDeck = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleCreateDeck = (event: React.FormEvent) => {
+    event.preventDefault()
     if (newDeckName.trim()) {
       createDeckMutation.mutate({ name: newDeckName })
     }
   }
 
-  const handleImportDeck = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleImportDeck = (event: React.FormEvent) => {
+    event.preventDefault()
     if (!importFile) return
 
     setImportResult(null)
@@ -63,77 +98,120 @@ export function DecksPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-gray-600">Loading...</div>
-      </div>
+      <PageContainer className="space-y-4">
+        <PageSection className="p-5 text-sm text-[var(--app-text-soft)]">Loading decks...</PageSection>
+      </PageContainer>
     )
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-red-600">
+      <PageContainer className="space-y-4">
+        <PageSection className="border-[var(--app-danger-line)] bg-[var(--app-danger-surface)] p-5 text-sm text-[var(--app-danger-text)]">
           Error: {error instanceof Error ? error.message : 'Failed to load decks'}
-        </div>
-      </div>
+        </PageSection>
+      </PageContainer>
     )
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6">
-        <h2 className="text-lg sm:text-xl font-semibold mb-4">Create New Deck</h2>
-        <form onSubmit={handleCreateDeck} className="flex flex-col sm:flex-row gap-2">
+    <PageContainer className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-[1.75rem] border border-[var(--app-line)] bg-[var(--app-card-strong)] p-5 shadow-sm sm:p-6">
+          <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-muted)]">Deck workspace</p>
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--app-text)]">Organize the decks you study from every day.</h2>
+          <p className="mt-3 text-sm leading-6 text-[var(--app-text-soft)]">
+            Create new decks, import source material, and jump straight into study or note creation from a phone-friendly deck list.
+          </p>
+        </div>
+
+        <PageSection className="p-5 sm:p-6">
+          <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-muted)]">Current inventory</p>
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            <div className="rounded-2xl bg-[var(--app-muted-surface)] p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-[var(--app-muted)]">Decks</p>
+              <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">{decks?.length ?? 0}</p>
+            </div>
+            <div className="rounded-2xl bg-[var(--app-muted-surface)] p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-[var(--app-muted)]">Notes</p>
+              <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">
+                {(decks ?? []).reduce((sum, deck) => sum + deck.noteCount, 0)}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-[var(--app-muted-surface)] p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-[var(--app-muted)]">Due</p>
+              <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">
+                {(decks ?? []).reduce((sum, deck) => sum + deck.dueToday, 0)}
+              </p>
+            </div>
+          </div>
+        </PageSection>
+      </div>
+
+      <SectionToggle
+        title="Create a deck"
+        description="Open a compact mobile form for new deck creation."
+        expanded={showCreateSection}
+        onToggle={() => setShowCreateSection((current) => !current)}
+      />
+      <PageSection className={`${showCreateSection ? 'block' : 'hidden'} p-5 sm:p-6 md:block`}>
+        <h3 className="text-lg font-semibold text-[var(--app-text)]">Create new deck</h3>
+        <p className="mt-2 text-sm text-[var(--app-text-soft)]">Deck names are lightweight on purpose. You can rename later once the structure settles.</p>
+        <form onSubmit={handleCreateDeck} className="mt-4 flex flex-col gap-3 sm:flex-row">
           <input
             type="text"
             value={newDeckName}
-            onChange={(e) => setNewDeckName(e.target.value)}
+            onChange={(event) => setNewDeckName(event.target.value)}
             placeholder="Deck name"
-            className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 py-3 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
           />
           <button
             type="submit"
             disabled={createDeckMutation.isPending || !newDeckName.trim()}
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 w-full sm:w-auto"
+            className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-5 text-sm font-semibold text-[var(--app-accent-ink)] disabled:opacity-60"
           >
             {createDeckMutation.isPending ? 'Creating...' : 'Create'}
           </button>
         </form>
-        {createDeckMutation.isError && (
-          <p className="mt-2 text-red-600 text-sm">
+        {createDeckMutation.isError ? (
+          <p className="mt-3 text-sm text-[var(--app-danger-text)]">
             Error: {createDeckMutation.error instanceof Error ? createDeckMutation.error.message : 'Failed to create deck'}
           </p>
-        )}
-      </div>
+        ) : null}
+      </PageSection>
 
-      {createDeckMutation.isError && createDeckMutation.error instanceof APIError && createDeckMutation.error.code === 'plan_limit_exceeded' && (
-        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+      {createDeckMutation.isError && createDeckMutation.error instanceof APIError && createDeckMutation.error.code === 'plan_limit_exceeded' ? (
+        <PageSection className="border-[var(--app-warning-line)] bg-[var(--app-warning-surface)] p-5 text-sm text-[var(--app-warning-text)]">
           <p className="font-medium">Deck limit reached.</p>
-          <p className="mt-1">
-            {createDeckMutation.error.message} Sign in or upgrade when billing is configured to unlock more decks.
-          </p>
-        </div>
-      )}
+          <p className="mt-1">{createDeckMutation.error.message} Sign in or upgrade when billing is configured to unlock more decks.</p>
+        </PageSection>
+      ) : null}
 
-      <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6">
-        <h2 className="text-lg sm:text-xl font-semibold mb-2">Import Notes</h2>
-        <p className="text-sm text-gray-600 mb-4">
-          Recommended format is JSON/YAML (safe for tabs/newlines). Also supports Anki text/APKG and Quizlet exports.
+      <SectionToggle
+        title="Import notes"
+        description="Bring in notes from JSON, YAML, text, or Anki exports."
+        expanded={showImportSection}
+        onToggle={() => setShowImportSection((current) => !current)}
+      />
+      <PageSection className={`${showImportSection ? 'block' : 'hidden'} p-5 sm:p-6 md:block`}>
+        <h3 className="text-lg font-semibold text-[var(--app-text)]">Import notes</h3>
+        <p className="mt-2 text-sm text-[var(--app-text-soft)]">
+          Recommended format is JSON or YAML. Text, TSV, and supported Anki exports still work when you need a quick migration.
         </p>
-        <form onSubmit={handleImportDeck} className="grid gap-3 md:grid-cols-2">
+        <form onSubmit={handleImportDeck} className="mt-4 grid gap-3 md:grid-cols-2">
           <input
             ref={importInputRef}
             type="file"
             accept=".json,.yaml,.yml,.csv,.tsv,.txt,.apkg,.colpkg"
-            onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
-            className="w-full px-3 py-2 border rounded-md"
+            onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+            className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 py-3 text-sm text-[var(--app-text)]"
           />
           <select
             value={importSource}
-            onChange={(e) => setImportSource(e.target.value as ImportSource)}
-            className="w-full px-3 py-2 border rounded-md bg-white"
+            onChange={(event) => setImportSource(event.target.value as ImportSource)}
+            className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 py-3 text-sm text-[var(--app-text)]"
           >
-            <option value="auto">Auto Detect</option>
+            <option value="auto">Auto detect</option>
             <option value="native">Native JSON/YAML</option>
             <option value="anki">Anki</option>
             <option value="quizlet">Quizlet</option>
@@ -141,14 +219,14 @@ export function DecksPage() {
           <input
             type="text"
             value={importDeckName}
-            onChange={(e) => setImportDeckName(e.target.value)}
+            onChange={(event) => setImportDeckName(event.target.value)}
             placeholder="Optional deck override"
-            className="w-full px-3 py-2 border rounded-md"
+            className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 py-3 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
           />
           <select
             value={importNoteType}
-            onChange={(e) => setImportNoteType(e.target.value)}
-            className="w-full px-3 py-2 border rounded-md bg-white"
+            onChange={(event) => setImportNoteType(event.target.value)}
+            className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 py-3 text-sm text-[var(--app-text)]"
           >
             <option value="Basic">Basic</option>
             <option value="Cloze">Cloze</option>
@@ -156,47 +234,52 @@ export function DecksPage() {
           <button
             type="submit"
             disabled={importMutation.isPending || !importFile}
-            className="md:col-span-2 px-6 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 disabled:bg-gray-300 w-full"
+            className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-5 text-sm font-semibold text-[var(--app-accent-ink)] disabled:opacity-60 md:col-span-2"
           >
-            {importMutation.isPending ? 'Importing...' : 'Import File'}
+            {importMutation.isPending ? 'Importing...' : 'Import file'}
           </button>
         </form>
 
-        {importMutation.isError && (
-          <p className="mt-3 text-red-600 text-sm">
+        {importMutation.isError ? (
+          <p className="mt-3 text-sm text-[var(--app-danger-text)]">
             Error: {importMutation.error instanceof Error ? importMutation.error.message : 'Failed to import file'}
           </p>
-        )}
+        ) : null}
 
-        {importResult && (
-          <div className="mt-3 p-3 rounded-md bg-emerald-50 text-sm text-emerald-900">
+        {importResult ? (
+          <div className="mt-4 rounded-2xl border border-[var(--app-success-line)] bg-[var(--app-success-surface)] p-4 text-sm text-[var(--app-success-text)]">
             <p>
               Imported {importResult.imported} note(s), skipped {importResult.skipped}. Detected source: {importResult.source}, format: {importResult.format}.
             </p>
-            {importResult.decksCreated && importResult.decksCreated.length > 0 && (
-              <p className="mt-1">Created decks: {importResult.decksCreated.join(', ')}</p>
-            )}
-            {importResult.errors && importResult.errors.length > 0 && (
-              <p className="mt-1 text-amber-700">Warnings: {importResult.errors.slice(0, 5).join(' | ')}</p>
-            )}
+            {importResult.decksCreated?.length ? <p className="mt-1">Created decks: {importResult.decksCreated.join(', ')}</p> : null}
+            {importResult.errors?.length ? <p className="mt-1">{importResult.errors.slice(0, 5).join(' | ')}</p> : null}
           </div>
-        )}
-      </div>
+        ) : null}
+      </PageSection>
 
-      <div className="bg-white rounded-lg shadow">
-        <h2 className="text-lg sm:text-xl font-semibold p-4 sm:p-6 pb-3 sm:pb-4">Your Decks</h2>
-        {decks && decks.length > 0 ? (
-          <ul className="divide-y divide-gray-200">
+      <PageSection className="p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--app-line)] px-1 pb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-[var(--app-text)]">Your decks</h3>
+            <p className="text-sm text-[var(--app-text-soft)]">Study, rename, or add notes without leaving the list.</p>
+          </div>
+        </div>
+
+        {decks?.length ? (
+          <ul className="mt-4 space-y-4">
             {decks.map((deck) => (
               <DeckItem key={deck.id} deck={deck} />
             ))}
           </ul>
         ) : (
-          <p className="p-6 text-gray-500 text-center">
-            No decks yet. Create your first deck above!
-          </p>
+          <div className="mt-4">
+            <EmptyState
+              title="No decks yet"
+              description="Create a deck or import source notes above and your workspace will start filling out here."
+            />
+          </div>
         )}
-      </div>
-    </div>
+      </PageSection>
+    </PageContainer>
   )
 }

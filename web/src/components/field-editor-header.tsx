@@ -7,13 +7,13 @@ type FieldEditorHeaderProps = JSX.IntrinsicElements['div'] & {
 export const FieldEditorHeader = forwardRef<HTMLDivElement, FieldEditorHeaderProps>(function FieldEditorHeader(
     { sortField, ...props }, ref) {
     return (
-        <div className="flex items-center justify-between mb-2"
+        <div className="mb-3 flex items-center justify-between"
             ref={ref}
             {...props}
         >
-            <h3 className="text-sm font-medium text-gray-700">Fields</h3>
-            <div className="text-xs text-gray-500">
-                Sort field: <span className="font-medium text-blue-600">{sortField}</span>
+            <h3 className="text-sm font-medium text-[var(--app-text)]">Fields</h3>
+            <div className="text-xs text-[var(--app-text-soft)]">
+                Sort field: <span className="font-medium text-[var(--app-accent)]">{sortField}</span>
             </div>
         </div>
     )

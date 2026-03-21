@@ -4,6 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAppRepository } from '#/lib/app-repository'
 import { appNavigation, pageTitleForPath } from '#/lib/app-navigation'
 import { ThemeToggle } from '#/components/theme-toggle'
+import { AppTopBar } from '#/components/app-top-bar'
+import { MobileBottomNav } from '#/components/mobile-bottom-nav'
+import { MoreSheet } from '#/components/more-sheet'
 
 function AppMark() {
   return (
@@ -19,20 +22,15 @@ function AppMark() {
   )
 }
 
-function SidebarContent({ onNavigate }: {onNavigate?: () => void}) {
+function DesktopSidebar({
+  onLogout,
+}: {
+  onLogout: () => void
+}) {
   const repository = useAppRepository()
-  const queryClient = useQueryClient()
   const { data: session } = useQuery({
     queryKey: ['auth-session'],
     queryFn: () => repository.fetchSession(),
-  })
-
-  const logoutMutation = useMutation({
-    mutationFn: () => repository.logout(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['auth-session'] })
-      queryClient.invalidateQueries({ queryKey: ['entitlements'] })
-    },
   })
 
   const userLabel = session?.user?.displayName || session?.user?.email || 'User'
@@ -52,7 +50,6 @@ function SidebarContent({ onNavigate }: {onNavigate?: () => void}) {
               <NavLink
                 to={item.to}
                 end={item.to === '/'}
-                onClick={onNavigate}
                 className={({ isActive }) =>
                   [
                     'block rounded-2xl px-4 py-3 transition-colors',
@@ -83,7 +80,7 @@ function SidebarContent({ onNavigate }: {onNavigate?: () => void}) {
           </div>
           <button
             type="button"
-            onClick={() => logoutMutation.mutate()}
+            onClick={onLogout}
             className="mt-4 w-full rounded-xl border border-[var(--app-line-strong)] px-3 py-2 text-sm font-medium text-[var(--app-text-soft)] hover:border-[var(--app-accent)] hover:bg-[var(--app-card)] hover:text-[var(--app-text)]"
           >
             Sign out
@@ -94,74 +91,64 @@ function SidebarContent({ onNavigate }: {onNavigate?: () => void}) {
   )
 }
 
-export function Layout({children}: {children?: ReactNode}) {
+export function Layout({ children }: { children?: ReactNode }) {
   const location = useLocation()
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const repository = useAppRepository()
+  const queryClient = useQueryClient()
+  const [moreOpen, setMoreOpen] = useState(false)
+
+  const { data: session } = useQuery({
+    queryKey: ['auth-session'],
+    queryFn: () => repository.fetchSession(),
+  })
+
+  const logoutMutation = useMutation({
+    mutationFn: () => repository.logout(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['auth-session'] })
+      queryClient.invalidateQueries({ queryKey: ['entitlements'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    },
+  })
+
+  const title = pageTitleForPath(location.pathname)
 
   return (
-    <div className="min-h-screen bg-[var(--app-bg)] text-[var(--app-text)]">
-      <div className="flex min-h-screen">
+    <div className="bg-[var(--app-bg)] text-[var(--app-text)]" style={{ minHeight: '100dvh' }}>
+      <div className="flex min-h-[100dvh]">
         <aside className="hidden w-80 shrink-0 border-r border-[var(--app-line)] bg-[var(--app-panel)] md:block">
-          <SidebarContent />
+          <DesktopSidebar onLogout={() => logoutMutation.mutate()} />
         </aside>
 
-        <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 border-b border-[var(--app-line)] bg-[color:var(--app-header)] backdrop-blur">
-            <div className="flex items-center justify-between gap-4 px-4 py-4 md:px-8">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setMobileOpen(true)}
-                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] text-[var(--app-text-soft)] md:hidden"
-                  aria-label="Open navigation"
-                >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 7h16M4 12h16M4 17h16" />
-                  </svg>
-                </button>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-[var(--app-muted)]">Workspace</p>
-                  <h1 className="text-2xl font-semibold tracking-tight">{pageTitleForPath(location.pathname)}</h1>
-                </div>
-              </div>
-
+        <div className="flex min-h-[100dvh] min-w-0 flex-1 flex-col">
+          <AppTopBar
+            title={title}
+            trailing={
               <div className="flex items-center gap-3">
                 <ThemeToggle compact />
                 <Link
                   to="/notes/add"
-                  className="inline-flex items-center rounded-2xl bg-[var(--app-accent)] px-4 py-2.5 text-sm font-medium text-[var(--app-accent-ink)] shadow-sm transition hover:brightness-105"
+                  className="hidden items-center rounded-2xl bg-[var(--app-accent)] px-4 py-2.5 text-sm font-medium text-[var(--app-accent-ink)] shadow-sm transition hover:brightness-105 md:inline-flex"
                 >
                   Add note
                 </Link>
               </div>
-            </div>
-          </header>
+            }
+          />
 
-          <main className="flex-1 px-4 py-6 md:px-8 md:py-8">{children ?? <Outlet />}</main>
+          <main className="app-shell-main flex-1 px-4 py-5 md:px-8 md:py-8">
+            {children ?? <Outlet />}
+          </main>
         </div>
       </div>
 
-      {mobileOpen && (
-        <div className="fixed inset-0 z-50 md:hidden">
-          <button type="button" onClick={() => setMobileOpen(false)} className="absolute inset-0 bg-black/55" aria-label="Close navigation" />
-          <div className="absolute inset-y-0 left-0 w-[88vw] max-w-sm bg-[var(--app-panel)] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--app-line)] px-5 py-4">
-              <AppMark />
-              <button
-                type="button"
-                onClick={() => setMobileOpen(false)}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] text-[var(--app-text-soft)]"
-                aria-label="Close navigation"
-              >
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M6 6l12 12M18 6L6 18" />
-                </svg>
-              </button>
-            </div>
-            <SidebarContent onNavigate={() => setMobileOpen(false)} />
-          </div>
-        </div>
-      )}
+      <MobileBottomNav onOpenMore={() => setMoreOpen(true)} />
+      <MoreSheet
+        open={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        session={session}
+        onLogout={() => logoutMutation.mutate()}
+      />
     </div>
   )
 }

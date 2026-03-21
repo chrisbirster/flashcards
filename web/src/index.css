@@ -80,6 +80,16 @@ body::selection {
   min-height: 100vh;
 }
 
+.app-shell-main {
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 768px) {
+  .app-shell-main {
+    padding-bottom: 2rem;
+  }
+}
+
 a {
   color: inherit;
   text-decoration: none;

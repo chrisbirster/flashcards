@@ -59,10 +59,26 @@ type CreateDeckRequest struct {
 }
 
 type DeckResponse struct {
-	ID       int64   `json:"id"`
-	Name     string  `json:"name"`
-	ParentID *int64  `json:"parentId,omitempty"`
-	CardIDs  []int64 `json:"cardIds"`
+	ID                int64   `json:"id"`
+	Name              string  `json:"name"`
+	ParentID          *int64  `json:"parentId,omitempty"`
+	CardIDs           []int64 `json:"cardIds"`
+	DueToday          int     `json:"dueToday"`
+	NoteCount         int     `json:"noteCount"`
+	CardCount         int     `json:"cardCount"`
+	CanDelete         bool    `json:"canDelete"`
+	DeleteBlockedReason string `json:"deleteBlockedReason,omitempty"`
+}
+
+type DashboardResponse struct {
+	TotalDecks  int                    `json:"totalDecks"`
+	TotalNotes  int                    `json:"totalNotes"`
+	DueToday    int                    `json:"dueToday"`
+	Plan        Plan                   `json:"plan"`
+	Usage       EntitlementUsage       `json:"usage"`
+	Limits      PlanLimits             `json:"limits"`
+	Features    EntitlementFeatures    `json:"features"`
+	RecentNotes []NoteListItemResponse `json:"recentNotes"`
 }
 
 type CreateNoteRequest struct {
@@ -143,12 +159,7 @@ func (h *APIHandler) ListDecks(w http.ResponseWriter, r *http.Request) {
 	// Convert to response format
 	var response []DeckResponse
 	for _, d := range decks {
-		response = append(response, DeckResponse{
-			ID:       d.ID,
-			Name:     d.Name,
-			ParentID: d.ParentID,
-			CardIDs:  d.Cards,
-		})
+		response = append(response, h.deckResponse(d))
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -186,12 +197,7 @@ func (h *APIHandler) CreateDeck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusCreated, DeckResponse{
-		ID:       deck.ID,
-		Name:     deck.Name,
-		ParentID: deck.ParentID,
-		CardIDs:  deck.Cards,
-	})
+	respondJSON(w, http.StatusCreated, h.deckResponse(deck))
 }
 
 func (h *APIHandler) GetDeck(w http.ResponseWriter, r *http.Request) {
@@ -215,14 +221,114 @@ func (h *APIHandler) GetDeck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"deck": DeckResponse{
-			ID:       deck.ID,
-			Name:     deck.Name,
-			ParentID: deck.ParentID,
-			CardIDs:  deck.Cards,
-		},
+		"deck":  h.deckResponse(deck),
 		"stats": stats,
 	})
+}
+
+func (h *APIHandler) buildNoteCardIndex() map[int64][]Card {
+	index := make(map[int64][]Card, len(h.collection.Notes))
+	for _, card := range h.collection.Cards {
+		index[card.NoteID] = append(index[card.NoteID], *card)
+	}
+	return index
+}
+
+func (h *APIHandler) deckDeleteBlockedReason(deck *Deck, cardCount int) string {
+	if cardCount > 0 {
+		return "Only empty decks can be deleted right now. Move or delete the cards in this deck first."
+	}
+	for _, candidate := range h.collection.Decks {
+		if candidate.ParentID != nil && *candidate.ParentID == deck.ID {
+			return "This deck has child decks. Move or delete those child decks first."
+		}
+	}
+	return ""
+}
+
+func (h *APIHandler) deckResponse(deck *Deck) DeckResponse {
+	now := time.Now()
+	dueToday := 0
+	noteIDs := make(map[int64]struct{})
+	cardCount := 0
+
+	for _, cardID := range deck.Cards {
+		card, ok := h.collection.Cards[cardID]
+		if !ok {
+			continue
+		}
+		cardCount++
+		noteIDs[card.NoteID] = struct{}{}
+		if !card.Suspended && !card.SRS.Due.IsZero() && !card.SRS.Due.After(now) {
+			dueToday++
+		}
+	}
+
+	deleteBlockedReason := h.deckDeleteBlockedReason(deck, cardCount)
+
+	return DeckResponse{
+		ID:                 deck.ID,
+		Name:               deck.Name,
+		ParentID:           deck.ParentID,
+		CardIDs:            deck.Cards,
+		DueToday:           dueToday,
+		NoteCount:          len(noteIDs),
+		CardCount:          cardCount,
+		CanDelete:          deleteBlockedReason == "",
+		DeleteBlockedReason: deleteBlockedReason,
+	}
+}
+
+func (h *APIHandler) buildDashboardResponse(r *http.Request) DashboardResponse {
+	sessionResponse := h.buildSessionResponse(r)
+	noteCards := h.buildNoteCardIndex()
+	recentNotes := make([]NoteListItemResponse, 0, len(h.collection.Notes))
+	dueToday := 0
+	now := time.Now()
+
+	for _, card := range h.collection.Cards {
+		if !card.Suspended && !card.SRS.Due.IsZero() && !card.SRS.Due.After(now) {
+			dueToday++
+		}
+	}
+
+	for _, note := range h.collection.Notes {
+		cards := noteCards[note.ID]
+		primaryDeckID, primaryDeckName := h.primaryDeckDetails(cards)
+		recentNotes = append(recentNotes, NoteListItemResponse{
+			ID:           note.ID,
+			TypeID:       string(note.Type),
+			FieldVals:    note.FieldMap,
+			FieldPreview: h.noteFieldPreview(note),
+			Tags:         note.Tags,
+			CreatedAt:    note.CreatedAt,
+			ModifiedAt:   note.ModifiedAt,
+			DeckID:       primaryDeckID,
+			DeckName:     primaryDeckName,
+			CardCount:    len(cards),
+		})
+	}
+
+	sort.Slice(recentNotes, func(i, j int) bool {
+		if recentNotes[i].ModifiedAt.Equal(recentNotes[j].ModifiedAt) {
+			return recentNotes[i].ID > recentNotes[j].ID
+		}
+		return recentNotes[i].ModifiedAt.After(recentNotes[j].ModifiedAt)
+	})
+	if len(recentNotes) > 5 {
+		recentNotes = recentNotes[:5]
+	}
+
+	return DashboardResponse{
+		TotalDecks:  len(h.collection.Decks),
+		TotalNotes:  len(h.collection.Notes),
+		DueToday:    dueToday,
+		Plan:        sessionResponse.Entitlements.Plan,
+		Usage:       sessionResponse.Entitlements.Usage,
+		Limits:      sessionResponse.Entitlements.Limits,
+		Features:    sessionResponse.Entitlements.Features,
+		RecentNotes: recentNotes,
+	}
 }
 
 func (h *APIHandler) GetDeckStats(w http.ResponseWriter, r *http.Request) {

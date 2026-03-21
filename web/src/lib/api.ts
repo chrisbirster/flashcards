@@ -43,6 +43,11 @@ export interface Deck {
   name: string
   parentId?: number
   cardIds: number[]
+  dueToday: number
+  noteCount: number
+  cardCount: number
+  canDelete: boolean
+  deleteBlockedReason?: string
 }
 
 export interface DeckStats {
@@ -257,6 +262,17 @@ export interface Entitlements {
   features: EntitlementFeatures
 }
 
+export interface DashboardResponse {
+  totalDecks: number
+  totalNotes: number
+  dueToday: number
+  plan: Entitlements['plan']
+  usage: EntitlementUsage
+  limits: PlanLimits
+  features: EntitlementFeatures
+  recentNotes: NoteListItem[]
+}
+
 export interface AccountUser {
   id: string
   email: string
@@ -291,6 +307,10 @@ export interface OTPRequestResponse {
 // Deck endpoints
 export async function fetchDecks(): Promise<Deck[]> {
   return requestJSON(`${API_BASE}/decks`)
+}
+
+export async function fetchDashboard(): Promise<DashboardResponse> {
+  return requestJSON(`${API_BASE}/dashboard`)
 }
 
 export async function createDeck(req: CreateDeckRequest): Promise<Deck> {

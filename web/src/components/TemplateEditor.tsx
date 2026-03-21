@@ -244,16 +244,16 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-50 p-2 sm:p-0">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-0 sm:mx-4 h-[95vh] sm:h-auto max-h-[95vh] sm:max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-2 sm:items-center sm:p-0">
+      <div className="flex h-[100dvh] max-h-[100dvh] w-full max-w-4xl flex-col rounded-t-[1.75rem] border border-[var(--app-line)] bg-[var(--app-panel)] shadow-xl sm:mx-4 sm:h-auto sm:max-h-[90vh] sm:rounded-[1.75rem]">
         {/* Header */}
-        <div className="flex items-start sm:items-center justify-between gap-3 p-3 sm:p-4 border-b">
-          <h2 className="text-base sm:text-lg font-semibold text-gray-900">
+        <div className="flex items-start justify-between gap-3 border-b border-[var(--app-line)] bg-[color:var(--app-header)]/95 p-3 backdrop-blur sm:items-center sm:p-4">
+          <h2 className="text-base font-semibold text-[var(--app-text)] sm:text-lg">
             Edit Templates: {noteType.name}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 shrink-0"
+            className="shrink-0 rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] p-2 text-[var(--app-text-soft)]"
             data-testid="close-template-editor"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -294,13 +294,13 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
 
           <div className="mb-4 space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="mb-1 block text-sm font-medium text-[var(--app-text)]">
                 Template
               </label>
               <select
                 value={selectedTemplate?.name}
                 onChange={(e) => handleTemplateChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-3 py-2 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
                 data-testid="template-selector"
               >
                 {noteType.templates.map((t) => (
@@ -316,7 +316,7 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
                 type="button"
                 onClick={handleCreateTemplate}
                 disabled={createTemplateMutation.isPending}
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                className="rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-3 py-2 text-sm font-medium text-[var(--app-text)] disabled:opacity-60"
               >
                 New template
               </button>
@@ -324,7 +324,7 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
                 type="button"
                 onClick={handleDuplicateTemplate}
                 disabled={createTemplateMutation.isPending}
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                className="rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-3 py-2 text-sm font-medium text-[var(--app-text)] disabled:opacity-60"
               >
                 Duplicate
               </button>
@@ -332,7 +332,7 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
                 type="button"
                 onClick={handleRenameTemplate}
                 disabled={renameTemplateMutation.isPending}
-                className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+                className="rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-3 py-2 text-sm font-medium text-[var(--app-text)] disabled:opacity-60"
               >
                 Rename
               </button>
@@ -340,7 +340,7 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
                 type="button"
                 onClick={handleDeleteTemplate}
                 disabled={noteType.templates.length <= 1 || deleteTemplateMutation.isPending}
-                className="rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
+                className="rounded-2xl border border-[var(--app-danger-line)] bg-[var(--app-danger-surface)] px-3 py-2 text-sm font-medium text-[var(--app-danger-text)] disabled:opacity-60"
               >
                 Delete
               </button>
@@ -349,19 +349,19 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
 
           {/* Conditional generation */}
           {!selectedTemplate?.isCloze && (
-            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+            <div className="mb-4 rounded-[1.5rem] border border-[var(--app-line)] bg-[var(--app-card-strong)] p-4">
+              <label className="mb-2 block text-sm font-medium text-[var(--app-text)]">
                 Conditional Generation
               </label>
               <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                <span className="text-sm text-gray-600">Only generate card if</span>
+                <span className="text-sm text-[var(--app-text-soft)]">Only generate card if</span>
                 <select
                   value={ifFieldNonEmpty}
                   onChange={(e) => {
                     setIfFieldNonEmpty(e.target.value)
                     setHasChanges(true)
                   }}
-                  className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-3 py-2 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
                   data-testid="if-field-non-empty"
                 >
                   <option value="">(always generate)</option>
@@ -371,17 +371,17 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
                     </option>
                   ))}
                 </select>
-                <span className="text-sm text-gray-600">is not empty</span>
+                <span className="text-sm text-[var(--app-text-soft)]">is not empty</span>
               </div>
-              <p className="mt-2 text-xs text-gray-500">
+              <p className="mt-2 text-xs text-[var(--app-text-soft)]">
                 If set, this template will only create a card when the selected field has content.
               </p>
             </div>
           )}
 
           {/* Deck override */}
-          <div className="mb-4 p-3 bg-purple-50 border border-purple-200 rounded-md">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="mb-4 rounded-[1.5rem] border border-[var(--app-line)] bg-[var(--app-card-strong)] p-4">
+            <label className="mb-2 block text-sm font-medium text-[var(--app-text)]">
               Deck Override
             </label>
             <select
@@ -390,7 +390,7 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
                 setDeckOverride(e.target.value)
                 setHasChanges(true)
               }}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-3 py-2 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
               data-testid="deck-override"
             >
               <option value="">(use note's deck)</option>
@@ -400,7 +400,7 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
                 </option>
               ))}
             </select>
-            <p className="mt-2 text-xs text-gray-500">
+            <p className="mt-2 text-xs text-[var(--app-text-soft)]">
               If set, cards from this template will be placed in the specified deck instead of the note's deck.
             </p>
           </div>
@@ -409,15 +409,15 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
             {/* Left side: Editor */}
             <div>
               {/* Tabs */}
-              <div className="flex border-b mb-4 overflow-x-auto">
+              <div className="mb-4 flex overflow-x-auto border-b border-[var(--app-line)]">
                 {(['front', 'back', 'styling'] as TabType[]).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`px-3 sm:px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${
+                    className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium sm:px-4 ${
                       activeTab === tab
-                        ? 'border-blue-500 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                        ? 'border-[var(--app-accent)] text-[var(--app-accent)]'
+                        : 'border-transparent text-[var(--app-text-soft)] hover:text-[var(--app-text)]'
                     }`}
                     data-testid={`tab-${tab}`}
                   >
@@ -436,11 +436,11 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
                     : `Enter ${activeTab} template HTML...`
                 }
                 rows={10}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y font-mono text-sm"
+                className="w-full resize-y rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-3 py-3 font-mono text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
                 data-testid={`editor-${activeTab}`}
               />
 
-              <p className="mt-2 text-xs text-gray-500">
+              <p className="mt-2 text-xs text-[var(--app-text-soft)]">
                 {activeTab === 'styling' ? (
                   <>CSS styling applied to both front and back of cards.</>
                 ) : selectedTemplate?.isCloze && activeTab === 'front' ? (
@@ -458,22 +458,22 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
 
             {/* Right side: Preview */}
             <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Live Preview</h3>
+              <h3 className="mb-2 text-sm font-medium text-[var(--app-text)]">Live Preview</h3>
 
               {/* Sample field inputs */}
-              <div className="mb-4 p-3 bg-gray-50 rounded-md">
-                <h4 className="text-xs font-medium text-gray-600 mb-2">Sample Values</h4>
+              <div className="mb-4 rounded-[1.5rem] border border-[var(--app-line)] bg-[var(--app-card-strong)] p-3">
+                <h4 className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-[var(--app-muted)]">Sample Values</h4>
                 <div className="space-y-2">
                   {noteType.fields.map((field) => (
                     <div key={field} className="flex items-center gap-2">
-                      <label className="text-xs text-gray-500 w-16 sm:w-20 truncate" title={field}>
+                      <label className="w-16 truncate text-xs text-[var(--app-text-soft)] sm:w-20" title={field}>
                         {field}:
                       </label>
                       <input
                         type="text"
                         value={sampleFieldVals[field] || ''}
                         onChange={(e) => handleSampleFieldChange(field, e.target.value)}
-                        className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="flex-1 rounded-xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-2 py-1.5 text-xs text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
                         data-testid={`sample-${field}`}
                       />
                     </div>
@@ -482,25 +482,25 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
               </div>
 
               {/* Preview pane */}
-              <div className="border rounded-md overflow-hidden">
-                <div className="bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 border-b">
+              <div className="overflow-hidden rounded-[1.5rem] border border-[var(--app-line)]">
+                <div className="border-b border-[var(--app-line)] bg-[var(--app-card-strong)] px-3 py-2 text-xs font-medium uppercase tracking-[0.18em] text-[var(--app-muted)]">
                   {activeTab === 'front' ? 'Front Preview' : activeTab === 'back' ? 'Back Preview' : 'Styling Preview'}
                 </div>
-                <div className="p-4 min-h-[200px] bg-white">
+                <div className="min-h-[200px] bg-[var(--app-card)] p-4">
                   {styling && (
                     <style>{styling}</style>
                   )}
                   {activeTab === 'styling' ? (
                     <div className="space-y-4" data-testid="styling-preview">
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-[var(--app-text-soft)]">
                         Previewing the current front and back card output with this CSS applied.
                       </p>
                       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                        <div className="overflow-hidden rounded-md border border-gray-200">
-                          <div className="border-b bg-gray-50 px-3 py-2 text-xs font-medium uppercase tracking-[0.2em] text-gray-500">
+                        <div className="overflow-hidden rounded-[1.25rem] border border-[var(--app-line)]">
+                          <div className="border-b border-[var(--app-line)] bg-[var(--app-card-strong)] px-3 py-2 text-xs font-medium uppercase tracking-[0.2em] text-[var(--app-muted)]">
                             Front card
                           </div>
-                          <div className="bg-slate-50 p-4">
+                          <div className="bg-[var(--app-card)] p-4">
                             <div
                               className="card"
                               dangerouslySetInnerHTML={{ __html: frontPreviewHtml }}
@@ -508,11 +508,11 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
                             />
                           </div>
                         </div>
-                        <div className="overflow-hidden rounded-md border border-gray-200">
-                          <div className="border-b bg-gray-50 px-3 py-2 text-xs font-medium uppercase tracking-[0.2em] text-gray-500">
+                        <div className="overflow-hidden rounded-[1.25rem] border border-[var(--app-line)]">
+                          <div className="border-b border-[var(--app-line)] bg-[var(--app-card-strong)] px-3 py-2 text-xs font-medium uppercase tracking-[0.2em] text-[var(--app-muted)]">
                             Back card
                           </div>
-                          <div className="bg-slate-50 p-4">
+                          <div className="bg-[var(--app-card)] p-4">
                             <div
                               className="card"
                               dangerouslySetInnerHTML={{ __html: backPreviewHtml }}
@@ -522,7 +522,7 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
                         </div>
                       </div>
                       {!styling.trim() && (
-                        <p className="text-xs text-gray-500">(No custom styling yet. Add CSS on the left to change the card preview.)</p>
+                        <p className="text-xs text-[var(--app-text-soft)]">(No custom styling yet. Add CSS on the left to change the card preview.)</p>
                       )}
                     </div>
                   ) : (
@@ -541,21 +541,21 @@ export function TemplateEditor({ noteType, onClose }: TemplateEditorProps) {
         </div>
 
         {/* Footer */}
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 p-3 sm:p-4 border-t bg-gray-50">
-          <div className="text-sm text-gray-500 min-h-5">
-            {hasChanges && <span className="text-amber-600">Unsaved changes</span>}
+        <div className="flex flex-col gap-3 border-t border-[var(--app-line)] bg-[color:var(--app-header)]/95 p-3 backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:p-4">
+          <div className="min-h-5 text-sm text-[var(--app-text-soft)]">
+            {hasChanges && <span className="text-[var(--app-warning-text)]">Unsaved changes</span>}
           </div>
           <div className="flex w-full sm:w-auto flex-col-reverse sm:flex-row gap-2">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 w-full sm:w-auto"
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
             >
               Close
             </button>
             <button
               onClick={handleSave}
               disabled={!hasChanges || updateTemplateMutation.isPending || !!clozeValidationError}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed w-full sm:w-auto"
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)] disabled:cursor-not-allowed disabled:opacity-60"
               data-testid="save-template"
             >
               {updateTemplateMutation.isPending ? 'Saving...' : 'Save Changes'}

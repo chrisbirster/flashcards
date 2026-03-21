@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useAppRepository } from '#/lib/app-repository'
 
 function StatCard({
@@ -22,32 +22,19 @@ function StatCard({
 
 export function HomePage() {
   const repository = useAppRepository()
-  const entitlementsQuery = useQuery({
-    queryKey: ['entitlements'],
-    queryFn: () => repository.fetchEntitlements(),
-  })
-  const decksQuery = useQuery({
-    queryKey: ['decks'],
-    queryFn: () => repository.fetchDecks(),
-  })
-  const recentNotesQuery = useQuery({
-    queryKey: ['notes', 'home-recent'],
-    queryFn: () => repository.fetchNotes({ limit: 5 }),
+  const dashboardQuery = useQuery({
+    queryKey: ['dashboard'],
+    queryFn: () => repository.fetchDashboard(),
   })
 
-  const deckStatsQueries = useQueries({
-    queries: (decksQuery.data ?? []).map((deck) => ({
-      queryKey: ['deck-stats', deck.id],
-      queryFn: () => repository.fetchDeckStats(deck.id),
-    })),
-  })
-
-  const dueToday = deckStatsQueries.reduce((sum, query) => sum + (query.data?.dueToday ?? 0), 0)
-  const plan = entitlementsQuery.data?.plan?.toUpperCase() ?? 'FREE'
-  const noteUsage = entitlementsQuery.data?.usage.notes ?? 0
-  const noteLimit = entitlementsQuery.data?.limits.maxNotes ?? 0
-  const cardUsage = entitlementsQuery.data?.usage.cardsTotal ?? 0
-  const cardLimit = entitlementsQuery.data?.limits.maxCardsTotal ?? 0
+  const plan = dashboardQuery.data?.plan?.toUpperCase() ?? 'FREE'
+  const noteUsage = dashboardQuery.data?.usage.notes ?? 0
+  const noteLimit = dashboardQuery.data?.limits.maxNotes ?? 0
+  const cardUsage = dashboardQuery.data?.usage.cardsTotal ?? 0
+  const cardLimit = dashboardQuery.data?.limits.maxCardsTotal ?? 0
+  const totalDecks = dashboardQuery.data?.totalDecks ?? 0
+  const totalNotes = dashboardQuery.data?.totalNotes ?? 0
+  const dueToday = dashboardQuery.data?.dueToday ?? 0
 
   return (
     <div className="space-y-6">
@@ -123,12 +110,12 @@ export function HomePage() {
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Total Decks"
-          value={entitlementsQuery.data?.usage.decks ?? decksQuery.data?.length ?? 0}
+          value={totalDecks}
           detail="Active decks in this workspace."
         />
         <StatCard
           label="Total Notes"
-          value={noteUsage}
+          value={totalNotes}
           detail="Structured notes powering all generated cards."
         />
         <StatCard
@@ -155,13 +142,13 @@ export function HomePage() {
             </Link>
           </div>
 
-          {recentNotesQuery.isLoading && <p className="mt-6 text-sm text-[var(--app-text-soft)]">Loading recent notes...</p>}
-          {!recentNotesQuery.isLoading && (recentNotesQuery.data?.notes.length ?? 0) === 0 && (
+          {dashboardQuery.isLoading && <p className="mt-6 text-sm text-[var(--app-text-soft)]">Loading recent notes...</p>}
+          {!dashboardQuery.isLoading && (dashboardQuery.data?.recentNotes.length ?? 0) === 0 && (
             <p className="mt-6 text-sm text-[var(--app-text-soft)]">No notes yet. Start with your first note and the dashboard will reflect it here.</p>
           )}
-          {(recentNotesQuery.data?.notes?.length ?? 0) > 0 && (
+          {(dashboardQuery.data?.recentNotes?.length ?? 0) > 0 && (
             <ul className="mt-6 space-y-3">
-              {recentNotesQuery.data?.notes.map((note) => (
+              {dashboardQuery.data?.recentNotes.map((note) => (
                 <li key={note.id} className="rounded-2xl border border-[var(--app-line)] bg-[var(--app-muted-surface)] p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">

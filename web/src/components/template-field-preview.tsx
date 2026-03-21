@@ -1,10 +1,10 @@
 export function TemplateFieldPreview({ previewContent, label }: { previewContent: string, label: string }) {
-    return (
-        <div>
-            <div className="text-xs text-gray-400 mb-1">{label}</div>
-            <div className="p-2 bg-gray-50 rounded text-sm whitespace-pre-wrap">
-                {previewContent}
-            </div>
-        </div>
-    )
+  return (
+    <div className="space-y-2">
+      <div className="text-xs uppercase tracking-[0.18em] text-[var(--app-muted)]">{label}</div>
+      <div className="rounded-2xl border border-[var(--app-line)] bg-[var(--app-card-strong)] p-3 text-sm whitespace-pre-wrap text-[var(--app-text)]">
+        {previewContent}
+      </div>
+    </div>
+  )
 }

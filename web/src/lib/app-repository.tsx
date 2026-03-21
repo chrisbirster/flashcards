@@ -4,6 +4,7 @@ import {
   answerCard,
   checkDuplicate,
   createBackup,
+  fetchDashboard,
   createDeck,
   createTemplate,
   createNote,
@@ -46,6 +47,7 @@ import {
   type CreateTemplateRequest,
   type CreateDeckRequest,
   type CreateNoteRequest,
+  type DashboardResponse,
   type Deck,
   type DeckNotesResponse,
   type DeckStats,
@@ -74,6 +76,7 @@ import {
 } from '#/lib/api'
 
 export interface AppRepository {
+  fetchDashboard(): Promise<DashboardResponse>
   fetchDecks(): Promise<Deck[]>
   createDeck(req: CreateDeckRequest): Promise<Deck>
   fetchDeck(id: number): Promise<{deck: Deck; stats: DeckStats}>
@@ -116,6 +119,7 @@ export interface AppRepository {
 }
 
 export const remoteRepository: AppRepository = {
+  fetchDashboard,
   fetchDecks,
   createDeck,
   fetchDeck,
@@ -163,6 +167,7 @@ function notImplemented<T>(method: string): Promise<T> {
 
 export function createLocalRepository(): AppRepository {
   return {
+    fetchDashboard: () => notImplemented('fetchDashboard'),
     fetchDecks: () => notImplemented('fetchDecks'),
     createDeck: () => notImplemented('createDeck'),
     fetchDeck: () => notImplemented('fetchDeck'),

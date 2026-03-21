@@ -75,3 +75,313 @@ Status legend:
 - The marketing site can evolve independently, but the app roadmap above is the current implementation priority.
 - Every new feature should be specified mobile-first before desktop expansion.
 - When a phase is started or completed, update both the table and the detailed section in this file.
+
+## Detailed Phase Definitions
+
+### Phase 0: Mobile-First App Foundation
+
+Status: `done`
+
+Objective:
+- Make the main app usable and consistent on phones before expanding product scope.
+- Establish the Vutadex dark/light theme system as the base UI language for all future work.
+
+Primary scope:
+- Rebuild the app shell mobile-first.
+- Add mobile navigation patterns and sheet primitives.
+- Remove the old desktop-first layout assumptions from the core routes.
+- Add a single dashboard payload for the home view.
+
+Screens in scope:
+- `/`
+- `/login`
+- `/notes/add`
+- `/notes/view`
+- `/decks`
+- `/templates`
+- `/study-groups`
+- `/study/:deckId`
+
+Core deliverables:
+- Mobile top bar and bottom navigation.
+- `More` sheet for secondary routes and account actions.
+- Sticky action bars for dense forms and study actions.
+- Fullscreen mobile sheets for editing-heavy views.
+- Vutadex dark/light semantic theme tokens.
+- Mobile-safe layout primitives shared across pages.
+- `GET /api/dashboard`.
+- Deck list payload enriched for mobile summaries.
+
+Technical outcomes:
+- No horizontal scrolling on supported app routes.
+- Primary actions remain visible and thumb-reachable on phone widths.
+- Mobile layout becomes the default implementation target for future work.
+
+Dependencies:
+- None. This is the foundational UX tranche.
+
+Exit criteria:
+- Core app flows are clean on a narrow viewport.
+- Theme system is unified.
+- Dashboard no longer requires multi-request fanout for basic home data.
+
+### Phase 1: Shared Content / Per-User Review State
+
+Status: `done`
+
+Objective:
+- Separate shared study content from personal scheduling state so collaboration and marketplace installs are possible later.
+
+Problem it solves:
+- Before this phase, answering a card mutated shared `cards` review state directly.
+- That model makes shared decks impossible because all users would share the same due queue.
+
+Primary scope:
+- Keep notes, cards, decks, and templates as shared content.
+- Move due/scheduling/review metadata to per-user storage.
+- Keep current app behavior intact for single-user flows.
+
+Data model changes:
+- Add `card_review_states`.
+- Add `user_id` to `revlog`.
+- Backfill initial per-user review states from current card state for existing users/workspace owners.
+
+Behavioral changes:
+- Authenticated due queues become user-specific.
+- Answering a card updates only the active user’s review state.
+- Flags, marked, and suspended become user-specific.
+- Deck stats and dashboard due counts become user-specific.
+- Shared card content remains shared.
+
+Core deliverables:
+- Migration for per-user review state.
+- Store methods for user-scoped card loading, due selection, stats, and revlog writes.
+- API handlers switched to user-scoped study behavior.
+- Integration coverage proving one user’s review does not affect another user’s due queue.
+
+Dependencies:
+- Phase 0 shell and app routes already in place.
+
+Exit criteria:
+- Two authenticated users can study the same shared card content and get separate due behavior.
+- Current mobile-first app routes continue working without contract regressions.
+
+### Phase 2: Study Groups
+
+Status: `planned`
+
+Objective:
+- Turn the placeholder Study Groups surface into a real collaborative feature for Team and Enterprise workspaces.
+
+User-facing goal:
+- Let teams create deck-centric study groups with membership, shared decks, activity visibility, and role-based management.
+
+Primary scope:
+- Replace the placeholder `/study-groups` page with:
+  - list view
+  - detail view
+  - create/edit flows
+  - invite/join flows
+  - member management
+  - group dashboard
+
+Core product rules:
+- Study Groups are separate from organizations/workspaces.
+- Groups are deck-centric.
+- Creation and management are Team/Enterprise only.
+- Invited users can join regardless of their own plan.
+- Roles:
+  - `owner`
+  - `admin`
+  - `member`
+
+Backend scope:
+- Add Study Group APIs for CRUD, invites, join, and membership changes.
+- Add group dashboard payloads.
+- Enforce plan gating and role permissions.
+
+Frontend scope:
+- Mobile-first Study Groups routes and sheets.
+- Member list and invite flows.
+- Group-owned/shared deck views.
+- Dashboard cards for activity, due totals, and participation.
+
+Dependencies:
+- Phase 1 per-user review state must exist first so group members can share content without sharing due queues.
+
+Exit criteria:
+- Team/Enterprise workspace can create a group.
+- Invited user can join.
+- Group membership and role management work.
+- Shared deck/group pages reflect real member-scoped study state.
+
+### Phase 3: Marketplace Foundation
+
+Status: `planned`
+
+Objective:
+- Launch the non-payment marketplace surface so decks can be listed, browsed, published, and installed.
+
+User-facing goal:
+- Make expert-made or community decks discoverable and installable, even before paid checkout exists.
+
+Primary scope:
+- Add marketplace routes:
+  - `/marketplace`
+  - `/marketplace/:slug`
+  - `/marketplace/publish`
+- Add listing metadata:
+  - title
+  - slug
+  - summary
+  - long description
+  - author / creator identity
+  - category
+  - tags
+  - cover image
+  - price mode
+  - install count
+  - status
+
+Publishing rules:
+- Free users can browse and install free listings.
+- Pro, Team, and Enterprise users can publish.
+- Team and Enterprise can publish under workspace/organization identity later as needed.
+
+Install model:
+- Installing a listing creates a workspace-local deck install linked back to the source listing.
+- Review history does not copy.
+- Installed content can receive source attribution and future update hooks.
+
+Dependencies:
+- Phase 1 per-user review state.
+
+Exit criteria:
+- Users can browse listings, open listing detail pages, publish listings, and install free decks.
+
+### Phase 4: Paid Marketplace and Creator Economy
+
+Status: `later`
+
+Objective:
+- Add real paid transactions, creator onboarding, payouts, and licensing to the marketplace.
+
+Primary scope:
+- Stripe Connect Express onboarding for creators.
+- One-time paid deck purchases.
+- Platform fee collection.
+- License grant and payout bookkeeping.
+
+Planned billing rules:
+- Initial rollout:
+  - USD only
+  - one-time purchases only
+  - default platform fee of `15%`
+
+Data model scope:
+- Creator accounts
+- Orders
+- Licenses
+- Payout records
+- Listing versioning
+
+Dependencies:
+- Phase 3 marketplace foundation must exist first.
+
+Exit criteria:
+- Creator can onboard.
+- Buyer can purchase a listing.
+- License is granted exactly once.
+- Platform fee and payout records are correct and webhook-safe.
+
+### Phase 5: AI Generation, Analytics, and Study Protocols
+
+Status: `later`
+
+Objective:
+- Add AI-assisted note-to-card generation and richer learning/retention analytics without removing user control.
+
+Primary scope:
+- AI-assisted generation from notes using structured model outputs.
+- Review/accept flow before generated cards are saved.
+- Analytics for:
+  - streaks
+  - due trends
+  - weak-topic detection
+  - retention behavior
+  - study-session metrics
+- Study protocol support:
+  - Pomodoro
+  - focus sessions
+  - gap-based session structure
+
+Planned product rules:
+- AI generation is assistive, not auto-publishing.
+- User approval is required before cards are persisted.
+- Likely gated to Pro and above, with Enterprise overrides later.
+
+Dependencies:
+- Marketplace and Study Groups do not strictly block this phase.
+- It benefits from Phase 1 because analytics should be tied to per-user study state.
+
+Exit criteria:
+- Users can generate structured card suggestions from notes.
+- Study dashboards exist at user/deck/group levels.
+- Focus sessions and analytics events are persisted and queryable.
+
+### Phase 6: Real-Time Collaborative Editing
+
+Status: `later`
+
+Objective:
+- Add live multi-user editing for shared/team-owned learning content.
+
+Primary scope:
+- Real-time editing for:
+  - note fields
+  - deck descriptions
+  - template text
+- Presence and live cursor/member visibility.
+- Conflict-safe syncing using CRDT-based collaboration.
+- Version history and rollback support.
+
+Planned architecture:
+- Separate collaboration service.
+- Hocuspocus/Yjs for real-time document syncing.
+- Team and Enterprise shared content first.
+
+Important constraint:
+- This phase is intentionally late because real-time collaboration raises the bar on permissions, rollback, and content ownership. The shared-content/per-user-review split from Phase 1 is the prerequisite that makes this tractable.
+
+Dependencies:
+- Phase 1 is mandatory.
+- Phase 2 likely provides the first meaningful collaborative surface.
+
+Exit criteria:
+- Two authorized users can edit the same supported document type live.
+- Changes converge correctly.
+- Unauthorized users are blocked.
+- Version history and rollback exist for collaborative surfaces.
+
+## Sequence Rationale
+
+Why this order:
+- Phase 0 fixes the app foundation first.
+- Phase 1 fixes the data model needed for any multi-user product.
+- Phase 2 and Phase 3 expose the first collaborative and distribution surfaces.
+- Phase 4 monetizes Marketplace once the catalog/publish flow is stable.
+- Phase 5 adds intelligence and deeper analytics after the core product model is solid.
+- Phase 6 adds real-time collaboration last because it has the highest implementation and correctness complexity.
+
+## Update Rules
+
+When this document should be updated:
+- when a phase changes status
+- when a phase gains or loses scope
+- when dependencies change
+- when a new delivery rule, plan gate, or sequencing decision is made
+
+Preferred update style:
+- keep the phase table short
+- keep the detailed phase sections as the source of truth
+- record shipped work under the matching phase rather than creating ad hoc notes elsewhere

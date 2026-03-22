@@ -1,6 +1,6 @@
 # Vutadex Phases
 
-Last updated: 2026-03-21
+Last updated: 2026-03-22
 
 This file tracks delivery status for the current app roadmap. Update it whenever a phase meaningfully changes state.
 
@@ -16,7 +16,7 @@ Status legend:
 | --- | --- | --- |
 | Phase 0 | `done` | Mobile-first app foundation, Vutadex dark/light theme system, mobile shell, dashboard aggregation, and responsive rewrites for core app routes. |
 | Phase 1 | `done` | Shared-content / per-user-review-state split for authenticated study, due queues, deck stats, and revlog ownership. |
-| Phase 2 | `in_progress` | Study Groups foundation: canonical source deck, published versions, invites, personal installs, and fork/update state. |
+| Phase 2 | `done` | Study Groups foundation: canonical source deck, published versions, invites, personal installs, fork/update state, and cross-collection installs. |
 | Phase 3 | `planned` | Marketplace foundation: listings, publish flow, versioned source installs, and listing detail pages. |
 | Phase 4 | `later` | Paid marketplace and creator payouts via Stripe Connect Express. |
 | Phase 5 | `later` | AI note-to-card generation, analytics, and study protocols. |
@@ -58,15 +58,32 @@ Status legend:
   - dashboard due counts
 - Added integration coverage proving one user answering a shared card does not change another user’s due queue.
 
+### Phase 2
+- Added Study Groups foundation flows:
+  - group CRUD
+  - invite and join flow
+  - role management
+  - explicit source version publishing
+  - personal installs
+  - fresh-copy install updates
+  - install removal
+  - fork detection
+  - lightweight dashboard
+- Implemented true cross-collection installs for personal Study Group copies.
+- Scoped note type identities by collection and rewired request handlers so deck, note, template, and study flows resolve the active workspace collection correctly.
+- Added regression coverage for cross-collection Study Group installs and preserved per-user review isolation after install.
+
 ## Next Up
 
-### Phase 2
-- Finish the remaining Phase 2 hardening work around Study Groups.
-- Remaining work:
-  - broaden the deck copy/install pipeline beyond same-collection installs
-  - polish Study Groups mobile UX and empty/error states
-  - expand automated coverage around install removal, dashboard behavior, and fork-state edge cases
-  - keep live shared study, auto-sync, schedule migration, and real-time collaboration out of scope
+### Phase 3
+- Start Marketplace foundation work.
+- Initial scope:
+  - listing CRUD
+  - publish flow
+  - listing detail pages
+  - workspace-local installs with source attribution and version metadata
+  - reuse the source-version and personal-install model from Phase 2
+- Keep payments, creator payouts, and Stripe Connect out of scope until Phase 4.
 
 ## Notes
 
@@ -166,7 +183,7 @@ Exit criteria:
 
 ### Phase 2: Study Groups
 
-Status: `in_progress`
+Status: `done`
 
 Objective:
 - Deliver safe group-based distribution and accountability without shared review-state side effects.
@@ -229,8 +246,7 @@ Current implementation snapshot:
   - fork detection on installed copies
   - lightweight dashboard
   - mobile-first `/study-groups`, `/study-groups/:groupId`, and join flow UI
-- Remaining limitation before Phase 2 can be marked `done`:
-  - deck copy/install currently supports only workspaces backed by the same collection; true cross-collection installs still need to be implemented
+  - true cross-collection installs between distinct workspace collections
 
 Dependencies:
 - Phase 1 is retained and required so group members can install shared content without sharing due queues.

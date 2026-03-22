@@ -32,6 +32,7 @@ func (s *SQLiteStore) migrate() error {
 		{6, "add_per_user_review_state", s.runMigration006_AddPerUserReviewState},
 		{7, "add_study_group_versions_and_installs", s.runMigration007_AddStudyGroupVersioningSchema},
 		{8, "retain_removed_study_group_installs", s.runMigration008_RetainRemovedStudyGroupInstalls},
+		{9, "scope_note_type_ids_by_collection", s.runMigration009_ScopeNoteTypeIDsByCollection},
 	}
 
 	for _, m := range migrations {
@@ -743,6 +744,156 @@ func (s *SQLiteStore) runMigration008_RetainRemovedStudyGroupInstalls() error {
 		`CREATE INDEX IF NOT EXISTS idx_study_group_installs_member ON study_group_installs(study_group_member_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_study_group_installs_workspace ON study_group_installs(destination_workspace_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_study_group_installs_deck ON study_group_installs(installed_deck_id)`,
+	}
+
+	for _, stmt := range statements {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *SQLiteStore) runMigration009_ScopeNoteTypeIDsByCollection() error {
+	statements := []string{
+		`ALTER TABLE revlog RENAME TO revlog_old`,
+		`ALTER TABLE card_review_states RENAME TO card_review_states_old`,
+		`ALTER TABLE cards RENAME TO cards_old`,
+		`ALTER TABLE notes RENAME TO notes_old`,
+		`ALTER TABLE note_types RENAME TO note_types_old`,
+		`
+		CREATE TABLE note_types (
+			id TEXT PRIMARY KEY,
+			collection_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			fields TEXT NOT NULL,
+			templates TEXT NOT NULL,
+			sort_field_index INTEGER NOT NULL DEFAULT 0,
+			field_options TEXT NOT NULL DEFAULT '{}',
+			FOREIGN KEY (collection_id) REFERENCES collections(id),
+			UNIQUE(collection_id, name)
+		)
+		`,
+		`
+		CREATE TABLE notes (
+			id INTEGER PRIMARY KEY,
+			collection_id TEXT NOT NULL,
+			type_id TEXT NOT NULL,
+			field_vals TEXT NOT NULL,
+			tags TEXT,
+			usn INTEGER DEFAULT 0,
+			created_at INTEGER,
+			modified_at INTEGER,
+			FOREIGN KEY (collection_id) REFERENCES collections(id),
+			FOREIGN KEY (type_id) REFERENCES note_types(id)
+		)
+		`,
+		`
+		CREATE TABLE cards (
+			id INTEGER PRIMARY KEY,
+			note_id INTEGER NOT NULL,
+			deck_id INTEGER NOT NULL,
+			template_name TEXT NOT NULL,
+			ordinal INTEGER DEFAULT 0,
+			front TEXT,
+			back TEXT,
+			due INTEGER,
+			state INTEGER,
+			fsrs_data TEXT,
+			flag INTEGER DEFAULT 0,
+			marked INTEGER DEFAULT 0,
+			suspended INTEGER DEFAULT 0,
+			usn INTEGER DEFAULT 0,
+			FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
+			FOREIGN KEY (deck_id) REFERENCES decks(id)
+		)
+		`,
+		`
+		CREATE TABLE revlog (
+			id INTEGER PRIMARY KEY,
+			card_id INTEGER NOT NULL,
+			rating INTEGER NOT NULL,
+			state INTEGER,
+			due INTEGER,
+			reviewed_at INTEGER,
+			time_taken_ms INTEGER DEFAULT 0,
+			user_id TEXT,
+			FOREIGN KEY (card_id) REFERENCES cards(id)
+		)
+		`,
+		`
+		CREATE TABLE card_review_states (
+			user_id TEXT NOT NULL,
+			card_id INTEGER NOT NULL,
+			due INTEGER NOT NULL,
+			state INTEGER NOT NULL,
+			fsrs_data TEXT NOT NULL,
+			flag INTEGER DEFAULT 0,
+			marked INTEGER DEFAULT 0,
+			suspended INTEGER DEFAULT 0,
+			updated_at INTEGER NOT NULL,
+			PRIMARY KEY (user_id, card_id),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+		)
+		`,
+		`
+		INSERT INTO note_types (id, collection_id, name, fields, templates, sort_field_index, field_options)
+		SELECT
+			collection_id || ':' || name,
+			collection_id,
+			name,
+			fields,
+			templates,
+			COALESCE(sort_field_index, 0),
+			COALESCE(field_options, '{}')
+		FROM note_types_old
+		`,
+		`
+		INSERT INTO notes (id, collection_id, type_id, field_vals, tags, usn, created_at, modified_at)
+		SELECT
+			id,
+			collection_id,
+			CASE
+				WHEN instr(type_id, ':') = 0 THEN collection_id || ':' || type_id
+				ELSE type_id
+			END,
+			field_vals,
+			tags,
+			usn,
+			created_at,
+			modified_at
+		FROM notes_old
+		`,
+		`
+		INSERT INTO cards (id, note_id, deck_id, template_name, ordinal, front, back, due, state, fsrs_data, flag, marked, suspended, usn)
+		SELECT id, note_id, deck_id, template_name, ordinal, front, back, due, state, fsrs_data, flag, marked, suspended, usn
+		FROM cards_old
+		`,
+		`
+		INSERT INTO revlog (id, card_id, rating, state, due, reviewed_at, time_taken_ms, user_id)
+		SELECT id, card_id, rating, state, due, reviewed_at, time_taken_ms, user_id
+		FROM revlog_old
+		`,
+		`
+		INSERT INTO card_review_states (user_id, card_id, due, state, fsrs_data, flag, marked, suspended, updated_at)
+		SELECT user_id, card_id, due, state, fsrs_data, flag, marked, suspended, updated_at
+		FROM card_review_states_old
+		`,
+		`DROP TABLE revlog_old`,
+		`DROP TABLE card_review_states_old`,
+		`DROP TABLE cards_old`,
+		`DROP TABLE notes_old`,
+		`DROP TABLE note_types_old`,
+		`CREATE INDEX IF NOT EXISTS idx_cards_due ON cards(due, deck_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_cards_note ON cards(note_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_cards_deck ON cards(deck_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_revlog_card ON revlog(card_id, reviewed_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_revlog_user_card_reviewed ON revlog(user_id, card_id, reviewed_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_card_review_states_card ON card_review_states(card_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_card_review_states_user_due ON card_review_states(user_id, due)`,
+		`CREATE INDEX IF NOT EXISTS idx_notes_collection_type ON notes(collection_id, type_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_note_types_collection_name ON note_types(collection_id, name)`,
 	}
 
 	for _, stmt := range statements {

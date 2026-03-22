@@ -88,6 +88,18 @@ type SQLiteStore struct {
 	db *sql.DB
 }
 
+func noteTypeRecordID(collectionID string, name NoteTypeName) string {
+	return fmt.Sprintf("%s:%s", strings.TrimSpace(collectionID), string(name))
+}
+
+func noteTypeNameFromRecordID(raw string) NoteTypeName {
+	trimmed := strings.TrimSpace(raw)
+	if idx := strings.Index(trimmed, ":"); idx >= 0 && idx+1 < len(trimmed) {
+		return NoteTypeName(trimmed[idx+1:])
+	}
+	return NoteTypeName(trimmed)
+}
+
 const (
 	defaultNewCardsPerDay = 20
 	defaultReviewsPerDay  = 200
@@ -172,11 +184,21 @@ func (s *SQLiteStore) RollbackTx(tx *sql.Tx) error {
 
 // Collection methods
 func (s *SQLiteStore) CreateCollection(c *Collection) error {
+	return s.CreateCollectionRecord("default", "Default Collection", c)
+}
+
+func (s *SQLiteStore) CreateCollectionRecord(collectionID, name string, c *Collection) error {
 	query := `
 		INSERT INTO collections (id, name, usn, last_sync, created_at)
 		VALUES (?, ?, ?, ?, ?)
 	`
-	_, err := s.db.Exec(query, "default", "Default Collection", c.USN, c.LastSync.Unix(), time.Now().Unix())
+	if strings.TrimSpace(collectionID) == "" {
+		collectionID = "default"
+	}
+	if strings.TrimSpace(name) == "" {
+		name = "Default Collection"
+	}
+	_, err := s.db.Exec(query, collectionID, name, c.USN, c.LastSync.Unix(), time.Now().Unix())
 	return err
 }
 
@@ -256,18 +278,32 @@ func (s *SQLiteStore) getMaxID(tableName string) int64 {
 }
 
 func (s *SQLiteStore) UpdateCollection(c *Collection) error {
+	return s.UpdateCollectionByID("default", c)
+}
+
+func (s *SQLiteStore) UpdateCollectionByID(collectionID string, c *Collection) error {
 	query := `UPDATE collections SET usn = ?, last_sync = ? WHERE id = ?`
-	_, err := s.db.Exec(query, c.USN, c.LastSync.Unix(), "default")
+	if strings.TrimSpace(collectionID) == "" {
+		collectionID = "default"
+	}
+	_, err := s.db.Exec(query, c.USN, c.LastSync.Unix(), collectionID)
 	return err
 }
 
 // Deck methods
 func (s *SQLiteStore) CreateDeck(d *Deck) error {
+	return s.CreateDeckInCollection("default", d)
+}
+
+func (s *SQLiteStore) CreateDeckInCollection(collectionID string, d *Deck) error {
 	query := `
 		INSERT INTO decks (id, collection_id, name, parent_id, options_id)
 		VALUES (?, ?, ?, ?, ?)
 	`
-	_, err := s.db.Exec(query, d.ID, "default", d.Name, d.ParentID, d.OptionsID)
+	if strings.TrimSpace(collectionID) == "" {
+		collectionID = "default"
+	}
+	_, err := s.db.Exec(query, d.ID, collectionID, d.Name, d.ParentID, d.OptionsID)
 	return err
 }
 
@@ -365,13 +401,15 @@ func (s *SQLiteStore) CreateNoteType(collectionID string, nt *NoteType) error {
 		if err != nil {
 			return err
 		}
+	} else {
+		fieldOptionsJSON = []byte("{}")
 	}
 
 	query := `
 		INSERT INTO note_types (id, collection_id, name, fields, templates, sort_field_index, field_options)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err = s.db.Exec(query, string(nt.Name), collectionID, string(nt.Name), fieldsJSON, templatesJSON, nt.SortFieldIndex, fieldOptionsJSON)
+	_, err = s.db.Exec(query, noteTypeRecordID(collectionID, nt.Name), collectionID, string(nt.Name), fieldsJSON, templatesJSON, nt.SortFieldIndex, fieldOptionsJSON)
 	return err
 }
 
@@ -429,6 +467,8 @@ func (s *SQLiteStore) UpdateNoteType(collectionID string, nt *NoteType) error {
 		if err != nil {
 			return err
 		}
+	} else {
+		fieldOptionsJSON = []byte("{}")
 	}
 
 	query := `
@@ -502,26 +542,28 @@ func (s *SQLiteStore) CreateNote(collectionID string, n *Note) error {
 		INSERT INTO notes (id, collection_id, type_id, field_vals, tags, usn, created_at, modified_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err = s.db.Exec(query, n.ID, collectionID, string(n.Type), fieldValsJSON, tagsJSON,
+	_, err = s.db.Exec(query, n.ID, collectionID, noteTypeRecordID(collectionID, n.Type), fieldValsJSON, tagsJSON,
 		n.USN, n.CreatedAt.Unix(), n.ModifiedAt.Unix())
 	return err
 }
 
 func (s *SQLiteStore) GetNote(id int64) (*Note, error) {
-	query := `SELECT id, type_id, field_vals, tags, usn, created_at, modified_at FROM notes WHERE id = ?`
+	query := `SELECT id, collection_id, type_id, field_vals, tags, usn, created_at, modified_at FROM notes WHERE id = ?`
 	row := s.db.QueryRow(query, id)
 
 	var note Note
+	var collectionID string
 	var typeID string
 	var fieldValsJSON, tagsJSON []byte
 	var createdAt, modifiedAt int64
 
-	err := row.Scan(&note.ID, &typeID, &fieldValsJSON, &tagsJSON, &note.USN, &createdAt, &modifiedAt)
+	err := row.Scan(&note.ID, &collectionID, &typeID, &fieldValsJSON, &tagsJSON, &note.USN, &createdAt, &modifiedAt)
 	if err != nil {
 		return nil, err
 	}
 
-	note.Type = NoteTypeName(typeID)
+	_ = collectionID
+	note.Type = noteTypeNameFromRecordID(typeID)
 	note.CreatedAt = time.Unix(createdAt, 0)
 	note.ModifiedAt = time.Unix(modifiedAt, 0)
 
@@ -550,7 +592,11 @@ func (s *SQLiteStore) UpdateNote(n *Note) error {
 		SET type_id = ?, field_vals = ?, tags = ?, usn = ?, modified_at = ?
 		WHERE id = ?
 	`
-	_, err = s.db.Exec(query, string(n.Type), fieldValsJSON, tagsJSON, n.USN, n.ModifiedAt.Unix(), n.ID)
+	var collectionID string
+	if err := s.db.QueryRow(`SELECT collection_id FROM notes WHERE id = ?`, n.ID).Scan(&collectionID); err != nil {
+		return err
+	}
+	_, err = s.db.Exec(query, noteTypeRecordID(collectionID, n.Type), fieldValsJSON, tagsJSON, n.USN, n.ModifiedAt.Unix(), n.ID)
 	return err
 }
 
@@ -587,10 +633,10 @@ func (s *SQLiteStore) ListNotes(collectionID string) (map[int64]Note, error) {
 
 // GetNotesByType returns all notes of a specific note type
 func (s *SQLiteStore) GetNotesByType(collectionID string, noteTypeName string) ([]Note, error) {
-	query := `SELECT id, type_id, field_vals, tags, usn, created_at, modified_at 
+	query := `SELECT id, collection_id, type_id, field_vals, tags, usn, created_at, modified_at 
 	          FROM notes 
 	          WHERE collection_id = ? AND type_id = ?`
-	rows, err := s.db.Query(query, collectionID, noteTypeName)
+	rows, err := s.db.Query(query, collectionID, noteTypeRecordID(collectionID, NoteTypeName(noteTypeName)))
 	if err != nil {
 		return nil, err
 	}
@@ -599,16 +645,18 @@ func (s *SQLiteStore) GetNotesByType(collectionID string, noteTypeName string) (
 	var notes []Note
 	for rows.Next() {
 		var note Note
+		var noteCollectionID string
 		var typeID string
 		var fieldValsJSON, tagsJSON []byte
 		var createdAt, modifiedAt int64
 
-		err := rows.Scan(&note.ID, &typeID, &fieldValsJSON, &tagsJSON, &note.USN, &createdAt, &modifiedAt)
+		err := rows.Scan(&note.ID, &noteCollectionID, &typeID, &fieldValsJSON, &tagsJSON, &note.USN, &createdAt, &modifiedAt)
 		if err != nil {
 			return nil, err
 		}
 
-		note.Type = NoteTypeName(typeID)
+		_ = noteCollectionID
+		note.Type = noteTypeNameFromRecordID(typeID)
 		note.CreatedAt = time.Unix(createdAt, 0)
 		note.ModifiedAt = time.Unix(modifiedAt, 0)
 
@@ -664,7 +712,7 @@ func (s *SQLiteStore) FindDuplicateNotes(collectionID, fieldName, value string, 
 				}
 				duplicates = append(duplicates, NoteBrief{
 					ID:       noteID,
-					TypeID:   typeID,
+					TypeID:   string(noteTypeNameFromRecordID(typeID)),
 					FieldVal: fieldVals,
 				})
 			}

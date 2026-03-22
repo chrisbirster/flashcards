@@ -250,6 +250,33 @@ func (h *APIHandler) planForRequest(r *http.Request, session *SessionRecord) Pla
 	return resolvePlanFromRequest(r, session)
 }
 
+func (h *APIHandler) workspaceForSession(session *SessionRecord) (*Workspace, error) {
+	if session == nil || strings.TrimSpace(session.WorkspaceID) == "" {
+		return nil, nil
+	}
+	return h.store.GetWorkspaceRecord(session.WorkspaceID)
+}
+
+func (h *APIHandler) collectionIDForRequest(r *http.Request) string {
+	session := h.sessionFromRequest(r)
+	if workspace, err := h.workspaceForSession(session); err == nil && workspace != nil && strings.TrimSpace(workspace.CollectionID) != "" {
+		return workspace.CollectionID
+	}
+	return h.collectionID
+}
+
+func (h *APIHandler) collectionForRequest(r *http.Request) (*Collection, string, error) {
+	collectionID := h.collectionIDForRequest(r)
+	if collectionID == h.collectionID && h.collection != nil {
+		return h.collection, collectionID, nil
+	}
+	col, err := h.store.GetCollection(collectionID)
+	if err != nil {
+		return nil, collectionID, err
+	}
+	return col, collectionID, nil
+}
+
 func (h *APIHandler) usageForSession(session *SessionRecord) EntitlementUsage {
 	usage := EntitlementUsage{
 		Decks:      len(h.collection.Decks),
@@ -258,6 +285,13 @@ func (h *APIHandler) usageForSession(session *SessionRecord) EntitlementUsage {
 	}
 	if session == nil || session.WorkspaceID == "" {
 		return usage
+	}
+	if workspace, err := h.workspaceForSession(session); err == nil && workspace != nil {
+		if col, err := h.store.GetCollection(workspace.CollectionID); err == nil {
+			usage.Decks = len(col.Decks)
+			usage.Notes = len(col.Notes)
+			usage.CardsTotal = len(col.Cards)
+		}
 	}
 
 	if count, err := h.store.CountDeckSharesForWorkspace(session.WorkspaceID); err == nil {
@@ -315,11 +349,32 @@ func (h *APIHandler) ensureDefaultWorkspaceForUser(user *User) (*Workspace, erro
 	}
 
 	now := time.Now()
+	collectionID := newID("col")
+	collectionName := fmt.Sprintf("%s Collection", firstNonEmpty(user.DisplayName, "Vutadex"))
+	collection := NewCollection()
+	if err := h.store.CreateCollectionRecord(collectionID, collectionName, collection); err != nil {
+		return nil, err
+	}
+	seedCollection, err := h.store.GetCollection(collectionID)
+	if err != nil {
+		return nil, err
+	}
+	for _, nt := range builtins() {
+		ntCopy := nt
+		if err := h.store.CreateNoteType(collectionID, &ntCopy); err != nil {
+			return nil, err
+		}
+	}
+	defaultDeck := seedCollection.NewDeck("Default")
+	if err := h.store.CreateDeckInCollection(collectionID, defaultDeck); err != nil {
+		return nil, err
+	}
+
 	workspace = &Workspace{
 		ID:           newID("ws"),
 		Name:         fmt.Sprintf("%s Workspace", firstNonEmpty(user.DisplayName, "Vutadex")),
 		Slug:         fmt.Sprintf("%s-%s", slugify(firstNonEmpty(user.DisplayName, user.Email)), slugify(user.ID[len(user.ID)-6:])),
-		CollectionID: h.collectionID,
+		CollectionID: collectionID,
 		OwnerUserID:  user.ID,
 		CreatedAt:    now,
 		UpdatedAt:    now,
@@ -363,7 +418,7 @@ func (h *APIHandler) GetDeckNotes(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	summaries, err := h.store.ListRecentDeckNotes(h.collectionID, deckID, limit, cursorCreatedAt, cursorNoteID)
+	summaries, err := h.store.ListRecentDeckNotes(h.collectionIDForRequest(r), deckID, limit, cursorCreatedAt, cursorNoteID)
 	if err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "deck_notes_failed", err.Error())
 		return

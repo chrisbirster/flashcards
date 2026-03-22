@@ -536,7 +536,7 @@ func (s *SQLiteStore) MarkStudyGroupInstallsForkedByNoteType(collectionID string
 			JOIN decks d ON d.id = c.deck_id
 			WHERE d.collection_id = ? AND n.type_id = ?
 		  )
-	`, time.Now().Unix(), collectionID, noteTypeName)
+	`, time.Now().Unix(), collectionID, noteTypeRecordID(collectionID, NoteTypeName(noteTypeName)))
 	return err
 }
 
@@ -815,9 +815,6 @@ func (s *SQLiteStore) CopyDeckToCollection(sourceDeckID int64, destinationCollec
 	if err != nil {
 		return nil, err
 	}
-	if sourceCollectionID != destinationCollectionID {
-		return nil, fmt.Errorf("copying decks across collections is not supported yet")
-	}
 
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -919,7 +916,8 @@ func (s *SQLiteStore) CopyDeckToCollection(sourceDeckID int64, destinationCollec
 			return nil, err
 		}
 
-		if !noteTypeEnsured[noteTypeID] {
+		noteTypeName := noteTypeNameFromRecordID(noteTypeID)
+		if !noteTypeEnsured[string(noteTypeName)] {
 			var (
 				typeFields     []byte
 				typeTemplates  []byte
@@ -930,17 +928,17 @@ func (s *SQLiteStore) CopyDeckToCollection(sourceDeckID int64, destinationCollec
 				SELECT fields, templates, sort_field_index, field_options
 				FROM note_types
 				WHERE collection_id = ? AND name = ?
-			`, sourceCollectionID, noteTypeID).Scan(&typeFields, &typeTemplates, &sortFieldIndex, &fieldOptions); err != nil {
+			`, sourceCollectionID, string(noteTypeName)).Scan(&typeFields, &typeTemplates, &sortFieldIndex, &fieldOptions); err != nil {
 				return nil, err
 			}
 			if _, err := tx.Exec(`
 				INSERT INTO note_types (id, collection_id, name, fields, templates, sort_field_index, field_options)
 				VALUES (?, ?, ?, ?, ?, ?, ?)
-				ON CONFLICT(id) DO NOTHING
-			`, noteTypeID, destinationCollectionID, noteTypeID, typeFields, typeTemplates, sortFieldIndex, fieldOptions); err != nil {
+				ON CONFLICT(collection_id, name) DO NOTHING
+			`, noteTypeRecordID(destinationCollectionID, noteTypeName), destinationCollectionID, string(noteTypeName), typeFields, typeTemplates, sortFieldIndex, fieldOptions); err != nil {
 				return nil, err
 			}
-			noteTypeEnsured[noteTypeID] = true
+			noteTypeEnsured[string(noteTypeName)] = true
 		}
 
 		newNoteID, ok := noteIDMap[sourceNoteID]
@@ -952,7 +950,7 @@ func (s *SQLiteStore) CopyDeckToCollection(sourceDeckID int64, destinationCollec
 			if _, err := tx.Exec(`
 				INSERT INTO notes (id, collection_id, type_id, field_vals, tags, usn, created_at, modified_at)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-			`, newNoteID, destinationCollectionID, noteTypeID, fieldValsJSON, tagsJSON, noteUSN, noteCreatedAtUnix, noteModifiedAtUnix); err != nil {
+			`, newNoteID, destinationCollectionID, noteTypeRecordID(destinationCollectionID, noteTypeName), fieldValsJSON, tagsJSON, noteUSN, noteCreatedAtUnix, noteModifiedAtUnix); err != nil {
 				return nil, err
 			}
 			noteIDMap[sourceNoteID] = newNoteID

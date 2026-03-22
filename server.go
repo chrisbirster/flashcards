@@ -140,7 +140,7 @@ type ImportNotesResponse struct {
 // Handler methods
 
 func (h *APIHandler) GetCollection(w http.ResponseWriter, r *http.Request) {
-	col, err := h.store.GetCollection(h.collectionID)
+	col, _, err := h.collectionForRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -150,7 +150,12 @@ func (h *APIHandler) GetCollection(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) ListDecks(w http.ResponseWriter, r *http.Request) {
-	decks, err := h.store.ListDecks(h.collectionID)
+	col, collectionID, err := h.collectionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	decks, err := h.store.ListDecks(collectionID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -164,13 +169,19 @@ func (h *APIHandler) ListDecks(w http.ResponseWriter, r *http.Request) {
 	// Convert to response format
 	var response []DeckResponse
 	for _, d := range decks {
-		response = append(response, h.deckResponse(userID, d))
+		response = append(response, h.deckResponse(userID, d, col))
 	}
 
 	respondJSON(w, http.StatusOK, response)
 }
 
 func (h *APIHandler) CreateDeck(w http.ResponseWriter, r *http.Request) {
+	col, collectionID, err := h.collectionForRequest(r)
+	if err != nil {
+		respondAPIError(w, http.StatusInternalServerError, "collection_load_failed", err.Error())
+		return
+	}
+
 	var req CreateDeckRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondAPIError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
@@ -194,18 +205,24 @@ func (h *APIHandler) CreateDeck(w http.ResponseWriter, r *http.Request) {
 	sanitizedName := sanitizeHTML(req.Name)
 
 	// Create deck using collection method
-	deck := h.collection.NewDeck(sanitizedName)
+	deck := col.NewDeck(sanitizedName)
 
 	// Persist to database
-	if err := h.store.CreateDeck(deck); err != nil {
+	if err := h.store.CreateDeckInCollection(collectionID, deck); err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "deck_create_failed", err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusCreated, h.deckResponse(h.userIDFromRequest(r), deck))
+	respondJSON(w, http.StatusCreated, h.deckResponse(h.userIDFromRequest(r), deck, col))
 }
 
 func (h *APIHandler) GetDeck(w http.ResponseWriter, r *http.Request) {
+	col, _, err := h.collectionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	id, err := parseIDParam(r, "id")
 	if err != nil {
 		http.Error(w, "Invalid deck ID", http.StatusBadRequest)
@@ -226,14 +243,14 @@ func (h *APIHandler) GetDeck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"deck":  h.deckResponse(h.userIDFromRequest(r), deck),
+		"deck":  h.deckResponse(h.userIDFromRequest(r), deck, col),
 		"stats": stats,
 	})
 }
 
-func (h *APIHandler) buildNoteCardIndex() map[int64][]Card {
-	index := make(map[int64][]Card, len(h.collection.Notes))
-	for _, card := range h.collection.Cards {
+func (h *APIHandler) buildNoteCardIndex(col *Collection) map[int64][]Card {
+	index := make(map[int64][]Card, len(col.Notes))
+	for _, card := range col.Cards {
 		index[card.NoteID] = append(index[card.NoteID], *card)
 	}
 	return index
@@ -247,11 +264,11 @@ func (h *APIHandler) userIDFromRequest(r *http.Request) string {
 	return strings.TrimSpace(session.UserID)
 }
 
-func (h *APIHandler) deckDeleteBlockedReason(deck *Deck, cardCount int) string {
+func (h *APIHandler) deckDeleteBlockedReason(deck *Deck, cardCount int, col *Collection) string {
 	if cardCount > 0 {
 		return "Only empty decks can be deleted right now. Move or delete the cards in this deck first."
 	}
-	for _, candidate := range h.collection.Decks {
+	for _, candidate := range col.Decks {
 		if candidate.ParentID != nil && *candidate.ParentID == deck.ID {
 			return "This deck has child decks. Move or delete those child decks first."
 		}
@@ -259,13 +276,13 @@ func (h *APIHandler) deckDeleteBlockedReason(deck *Deck, cardCount int) string {
 	return ""
 }
 
-func (h *APIHandler) deckResponse(userID string, deck *Deck) DeckResponse {
+func (h *APIHandler) deckResponse(userID string, deck *Deck, col *Collection) DeckResponse {
 	dueToday := 0
 	noteIDs := make(map[int64]struct{})
 	cardCount := 0
 
 	for _, cardID := range deck.Cards {
-		card, ok := h.collection.Cards[cardID]
+		card, ok := col.Cards[cardID]
 		if !ok {
 			continue
 		}
@@ -277,7 +294,7 @@ func (h *APIHandler) deckResponse(userID string, deck *Deck) DeckResponse {
 		dueToday = stats.DueToday
 	}
 
-	deleteBlockedReason := h.deckDeleteBlockedReason(deck, cardCount)
+	deleteBlockedReason := h.deckDeleteBlockedReason(deck, cardCount, col)
 
 	return DeckResponse{
 		ID:                  deck.ID,
@@ -293,22 +310,26 @@ func (h *APIHandler) deckResponse(userID string, deck *Deck) DeckResponse {
 }
 
 func (h *APIHandler) buildDashboardResponse(r *http.Request) DashboardResponse {
+	col, _, err := h.collectionForRequest(r)
+	if err != nil {
+		col = h.collection
+	}
 	sessionResponse := h.buildSessionResponse(r)
-	noteCards := h.buildNoteCardIndex()
-	recentNotes := make([]NoteListItemResponse, 0, len(h.collection.Notes))
+	noteCards := h.buildNoteCardIndex(col)
+	recentNotes := make([]NoteListItemResponse, 0, len(col.Notes))
 	dueToday := 0
 	if count, err := h.store.CountDueCardsForUser(h.userIDFromRequest(r)); err == nil {
 		dueToday = count
 	}
 
-	for _, note := range h.collection.Notes {
+	for _, note := range col.Notes {
 		cards := noteCards[note.ID]
-		primaryDeckID, primaryDeckName := h.primaryDeckDetails(cards)
+		primaryDeckID, primaryDeckName := h.primaryDeckDetails(cards, col)
 		recentNotes = append(recentNotes, NoteListItemResponse{
 			ID:           note.ID,
 			TypeID:       string(note.Type),
 			FieldVals:    note.FieldMap,
-			FieldPreview: h.noteFieldPreview(note),
+			FieldPreview: h.noteFieldPreview(note, col),
 			Tags:         note.Tags,
 			CreatedAt:    note.CreatedAt,
 			ModifiedAt:   note.ModifiedAt,
@@ -329,8 +350,8 @@ func (h *APIHandler) buildDashboardResponse(r *http.Request) DashboardResponse {
 	}
 
 	return DashboardResponse{
-		TotalDecks:  len(h.collection.Decks),
-		TotalNotes:  len(h.collection.Notes),
+		TotalDecks:  len(col.Decks),
+		TotalNotes:  len(col.Notes),
 		DueToday:    dueToday,
 		Plan:        sessionResponse.Entitlements.Plan,
 		Usage:       sessionResponse.Entitlements.Usage,
@@ -357,6 +378,12 @@ func (h *APIHandler) GetDeckStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
+	col, collectionID, err := h.collectionForRequest(r)
+	if err != nil {
+		respondAPIError(w, http.StatusInternalServerError, "collection_load_failed", err.Error())
+		return
+	}
+
 	var req CreateNoteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondAPIError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
@@ -379,7 +406,7 @@ func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 	sanitizedFieldVals := sanitizeFieldVals(req.FieldVals)
 	sanitizedTags := sanitizeTags(req.Tags)
 
-	noteType, ok := h.collection.NoteTypes[NoteTypeName(req.TypeID)]
+	noteType, ok := col.NoteTypes[NoteTypeName(req.TypeID)]
 	if !ok {
 		respondAPIError(w, http.StatusBadRequest, "invalid_note_type", "Note type not found")
 		return
@@ -392,7 +419,7 @@ func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:  previewAt,
 		ModifiedAt: previewAt,
 	}
-	previewCards, err := h.collection.generateCardsFromNote(noteType, previewNote, req.DeckID, previewAt)
+	previewCards, err := col.generateCardsFromNote(noteType, previewNote, req.DeckID, previewAt)
 	if err != nil {
 		respondAPIError(w, http.StatusBadRequest, "note_create_failed", err.Error())
 		return
@@ -403,7 +430,7 @@ func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Use Collection.AddNote to create note and generate cards
-	note, cards, err := h.collection.AddNote(req.DeckID, NoteTypeName(req.TypeID), sanitizedFieldVals, time.Now())
+	note, cards, err := col.AddNote(req.DeckID, NoteTypeName(req.TypeID), sanitizedFieldVals, time.Now())
 	if err != nil {
 		respondAPIError(w, http.StatusBadRequest, "note_create_failed", err.Error())
 		return
@@ -412,7 +439,7 @@ func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 	// Set tags if provided (use sanitized tags)
 	note.Tags = sanitizedTags
 	// Persist note to database
-	if err := h.store.CreateNote(h.collectionID, &note); err != nil {
+	if err := h.store.CreateNote(collectionID, &note); err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "note_persist_failed", err.Error())
 		return
 	}
@@ -453,7 +480,13 @@ func (h *APIHandler) ImportNotes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	importResult := h.applyImportedNotes(parsed.Notes, opts.DefaultDeckName)
+	col, collectionID, err := h.collectionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	importResult := h.applyImportedNotesToCollection(collectionID, col, parsed.Notes, opts.DefaultDeckName)
 	importResult.Source = parsed.Source
 	importResult.Format = parsed.Format
 
@@ -500,7 +533,7 @@ func (h *APIHandler) CheckDuplicate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check for duplicates in the collection
-	duplicates, err := h.store.FindDuplicateNotes(h.collectionID, req.FieldName, req.Value, req.DeckID)
+	duplicates, err := h.store.FindDuplicateNotes(h.collectionIDForRequest(r), req.FieldName, req.Value, req.DeckID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -554,6 +587,12 @@ func (h *APIHandler) GetCard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) AnswerCard(w http.ResponseWriter, r *http.Request) {
+	col, _, err := h.collectionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	id, err := parseIDParam(r, "id")
 	if err != nil {
 		http.Error(w, "Invalid card ID", http.StatusBadRequest)
@@ -578,7 +617,7 @@ func (h *APIHandler) AnswerCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sched := fsrs.NewFSRS(h.collection.Params).Repeat(card.SRS, time.Now())
+	sched := fsrs.NewFSRS(col.Params).Repeat(card.SRS, time.Now())
 	info, ok := sched[fsrs.Rating(req.Rating)]
 	if !ok {
 		http.Error(w, "Unable to schedule card review", http.StatusInternalServerError)
@@ -700,8 +739,14 @@ type TemplatesResponse struct {
 }
 
 func (h *APIHandler) ListNoteTypes(w http.ResponseWriter, r *http.Request) {
+	col, _, err := h.collectionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	var noteTypes []NoteTypeResponse
-	for _, nt := range h.collection.NoteTypes {
+	for _, nt := range col.NoteTypes {
 		var templates []TemplateInfo
 		for _, t := range nt.Templates {
 			templates = append(templates, TemplateInfo{
@@ -733,8 +778,14 @@ func (h *APIHandler) ListNoteTypes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) GetNoteType(w http.ResponseWriter, r *http.Request) {
+	col, _, err := h.collectionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	name := chi.URLParam(r, "name")
-	nt, ok := h.collection.NoteTypes[NoteTypeName(name)]
+	nt, ok := col.NoteTypes[NoteTypeName(name)]
 	if !ok {
 		http.Error(w, "Note type not found", http.StatusNotFound)
 		return
@@ -793,8 +844,14 @@ type ReorderFieldsRequest struct {
 }
 
 func (h *APIHandler) AddField(w http.ResponseWriter, r *http.Request) {
+	col, collectionID, err := h.collectionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	name := chi.URLParam(r, "name")
-	nt, ok := h.collection.NoteTypes[NoteTypeName(name)]
+	nt, ok := col.NoteTypes[NoteTypeName(name)]
 	if !ok {
 		http.Error(w, "Note type not found", http.StatusNotFound)
 		return
@@ -840,13 +897,13 @@ func (h *APIHandler) AddField(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update in store
-	if err := h.store.UpdateNoteType(h.collectionID, &nt); err != nil {
+	if err := h.store.UpdateNoteType(collectionID, &nt); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Update collection cache
-	h.collection.NoteTypes[NoteTypeName(name)] = nt
+	col.NoteTypes[NoteTypeName(name)] = nt
 	h.markStudyGroupInstallsForkedByNoteType(name)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -856,8 +913,14 @@ func (h *APIHandler) AddField(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) RenameField(w http.ResponseWriter, r *http.Request) {
+	col, collectionID, err := h.collectionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	name := chi.URLParam(r, "name")
-	nt, ok := h.collection.NoteTypes[NoteTypeName(name)]
+	nt, ok := col.NoteTypes[NoteTypeName(name)]
 	if !ok {
 		http.Error(w, "Note type not found", http.StatusNotFound)
 		return
@@ -927,13 +990,13 @@ func (h *APIHandler) RenameField(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update in store
-	if err := h.store.UpdateNoteType(h.collectionID, &nt); err != nil {
+	if err := h.store.UpdateNoteType(collectionID, &nt); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Update collection cache
-	h.collection.NoteTypes[NoteTypeName(name)] = nt
+	col.NoteTypes[NoteTypeName(name)] = nt
 	h.markStudyGroupInstallsForkedByNoteType(name)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -943,8 +1006,14 @@ func (h *APIHandler) RenameField(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) RemoveField(w http.ResponseWriter, r *http.Request) {
+	col, collectionID, err := h.collectionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	name := chi.URLParam(r, "name")
-	nt, ok := h.collection.NoteTypes[NoteTypeName(name)]
+	nt, ok := col.NoteTypes[NoteTypeName(name)]
 	if !ok {
 		http.Error(w, "Note type not found", http.StatusNotFound)
 		return
@@ -986,13 +1055,13 @@ func (h *APIHandler) RemoveField(w http.ResponseWriter, r *http.Request) {
 	nt.Fields = newFields
 
 	// Update in store
-	if err := h.store.UpdateNoteType(h.collectionID, &nt); err != nil {
+	if err := h.store.UpdateNoteType(collectionID, &nt); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Update collection cache
-	h.collection.NoteTypes[NoteTypeName(name)] = nt
+	col.NoteTypes[NoteTypeName(name)] = nt
 	h.markStudyGroupInstallsForkedByNoteType(name)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -1002,8 +1071,14 @@ func (h *APIHandler) RemoveField(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) ReorderFields(w http.ResponseWriter, r *http.Request) {
+	col, collectionID, err := h.collectionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	name := chi.URLParam(r, "name")
-	nt, ok := h.collection.NoteTypes[NoteTypeName(name)]
+	nt, ok := col.NoteTypes[NoteTypeName(name)]
 	if !ok {
 		http.Error(w, "Note type not found", http.StatusNotFound)
 		return
@@ -1043,13 +1118,13 @@ func (h *APIHandler) ReorderFields(w http.ResponseWriter, r *http.Request) {
 	nt.Fields = req.Fields
 
 	// Update in store
-	if err := h.store.UpdateNoteType(h.collectionID, &nt); err != nil {
+	if err := h.store.UpdateNoteType(collectionID, &nt); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Update collection cache
-	h.collection.NoteTypes[NoteTypeName(name)] = nt
+	col.NoteTypes[NoteTypeName(name)] = nt
 	h.markStudyGroupInstallsForkedByNoteType(name)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -1059,8 +1134,14 @@ func (h *APIHandler) ReorderFields(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) SetSortField(w http.ResponseWriter, r *http.Request) {
+	col, collectionID, err := h.collectionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	name := chi.URLParam(r, "name")
-	nt, ok := h.collection.NoteTypes[NoteTypeName(name)]
+	nt, ok := col.NoteTypes[NoteTypeName(name)]
 	if !ok {
 		http.Error(w, "Note type not found", http.StatusNotFound)
 		return
@@ -1081,13 +1162,13 @@ func (h *APIHandler) SetSortField(w http.ResponseWriter, r *http.Request) {
 	nt.SortFieldIndex = req.FieldIndex
 
 	// Update in store
-	if err := h.store.UpdateNoteType(h.collectionID, &nt); err != nil {
+	if err := h.store.UpdateNoteType(collectionID, &nt); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Update collection cache
-	h.collection.NoteTypes[NoteTypeName(name)] = nt
+	col.NoteTypes[NoteTypeName(name)] = nt
 	h.markStudyGroupInstallsForkedByNoteType(name)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -1098,8 +1179,14 @@ func (h *APIHandler) SetSortField(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) SetFieldOptions(w http.ResponseWriter, r *http.Request) {
+	col, collectionID, err := h.collectionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	name := chi.URLParam(r, "name")
-	nt, ok := h.collection.NoteTypes[NoteTypeName(name)]
+	nt, ok := col.NoteTypes[NoteTypeName(name)]
 	if !ok {
 		http.Error(w, "Note type not found", http.StatusNotFound)
 		return
@@ -1133,13 +1220,13 @@ func (h *APIHandler) SetFieldOptions(w http.ResponseWriter, r *http.Request) {
 	nt.FieldOptions[req.FieldName] = req.Options
 
 	// Update in store
-	if err := h.store.UpdateNoteType(h.collectionID, &nt); err != nil {
+	if err := h.store.UpdateNoteType(collectionID, &nt); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Update collection cache
-	h.collection.NoteTypes[NoteTypeName(name)] = nt
+	col.NoteTypes[NoteTypeName(name)] = nt
 	h.markStudyGroupInstallsForkedByNoteType(name)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
@@ -1149,10 +1236,16 @@ func (h *APIHandler) SetFieldOptions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
+	col, collectionID, err := h.collectionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	noteTypeName := chi.URLParam(r, "name")
 	templateName := chi.URLParam(r, "templateName")
 
-	nt, ok := h.collection.NoteTypes[NoteTypeName(noteTypeName)]
+	nt, ok := col.NoteTypes[NoteTypeName(noteTypeName)]
 	if !ok {
 		http.Error(w, "Note type not found", http.StatusNotFound)
 		return
@@ -1220,18 +1313,18 @@ func (h *APIHandler) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update in store
-	if err := h.store.UpdateNoteType(h.collectionID, &nt); err != nil {
+	if err := h.store.UpdateNoteType(collectionID, &nt); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Update collection cache
-	h.collection.NoteTypes[NoteTypeName(noteTypeName)] = nt
+	col.NoteTypes[NoteTypeName(noteTypeName)] = nt
 	h.markStudyGroupInstallsForkedByNoteType(noteTypeName)
 
 	// Regenerate cards for all notes of this type
 	// This ensures cards reflect the updated templates
-	if err := h.regenerateCardsForNoteTypeWithAliases(noteTypeName, templateAliases); err != nil {
+	if err := h.regenerateCardsForNoteTypeWithAliases(collectionID, col, noteTypeName, templateAliases); err != nil {
 		log.Printf("Warning: Failed to regenerate cards after template update: %v", err)
 		// Don't fail the request - template was updated successfully
 	}
@@ -1242,12 +1335,16 @@ func (h *APIHandler) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 // regenerateCardsForNoteType regenerates cards for all notes of a given note type.
 // This preserves existing card scheduling data (SRS state, flags, etc.) while updating content.
 func (h *APIHandler) regenerateCardsForNoteType(noteTypeName string) error {
-	return h.regenerateCardsForNoteTypeWithAliases(noteTypeName, nil)
+	return h.regenerateCardsForNoteTypeWithAliases(h.collectionID, h.collection, noteTypeName, nil)
 }
 
-func (h *APIHandler) regenerateCardsForNoteTypeWithAliases(noteTypeName string, templateAliases map[string]string) error {
+func (h *APIHandler) regenerateCardsForNoteTypeInCollection(collectionID string, col *Collection, noteTypeName string) error {
+	return h.regenerateCardsForNoteTypeWithAliases(collectionID, col, noteTypeName, nil)
+}
+
+func (h *APIHandler) regenerateCardsForNoteTypeWithAliases(collectionID string, col *Collection, noteTypeName string, templateAliases map[string]string) error {
 	// Get all notes of this type
-	notes, err := h.store.GetNotesByType(h.collectionID, noteTypeName)
+	notes, err := h.store.GetNotesByType(collectionID, noteTypeName)
 	if err != nil {
 		return fmt.Errorf("failed to get notes: %w", err)
 	}
@@ -1261,7 +1358,7 @@ func (h *APIHandler) regenerateCardsForNoteTypeWithAliases(noteTypeName string, 
 			deckID = existingCards[0].DeckID
 		}
 
-		if _, err := h.regenerateCardsForSingleNote(&note, deckID, templateAliases); err != nil {
+		if _, err := h.regenerateCardsForSingleNote(col, &note, deckID, templateAliases); err != nil {
 			log.Printf("Warning: Failed to regenerate cards for note %d: %v", note.ID, err)
 		}
 	}
@@ -1290,8 +1387,14 @@ type EmptyCardsResponse struct {
 // FindEmptyCards detects cards that have no meaningful content
 // This primarily targets cloze cards where the cloze deletion was removed
 func (h *APIHandler) FindEmptyCards(w http.ResponseWriter, r *http.Request) {
+	col, collectionID, err := h.collectionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	// Get all notes
-	notes, err := h.store.ListNotes(h.collectionID)
+	notes, err := h.store.ListNotes(collectionID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1301,7 +1404,7 @@ func (h *APIHandler) FindEmptyCards(w http.ResponseWriter, r *http.Request) {
 
 	for _, note := range notes {
 		// Get note type to check if it's cloze
-		nt, ok := h.collection.NoteTypes[note.Type]
+		nt, ok := col.NoteTypes[note.Type]
 		if !ok {
 			continue
 		}
@@ -1387,6 +1490,12 @@ type DeleteEmptyCardsResponse struct {
 
 // DeleteEmptyCards deletes specified empty cards
 func (h *APIHandler) DeleteEmptyCards(w http.ResponseWriter, r *http.Request) {
+	col, _, err := h.collectionForRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	var req DeleteEmptyCardsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -1408,7 +1517,7 @@ func (h *APIHandler) DeleteEmptyCards(w http.ResponseWriter, r *http.Request) {
 		} else {
 			deleted++
 			// Remove from collection cache
-			delete(h.collection.Cards, cardID)
+			delete(col.Cards, cardID)
 		}
 	}
 
@@ -1466,11 +1575,15 @@ func parseImportRequest(r *http.Request) ([]byte, importParseOptions, error) {
 }
 
 func (h *APIHandler) applyImportedNotes(notes []importNormalizedNote, defaultDeckName string) ImportNotesResponse {
+	return h.applyImportedNotesToCollection(h.collectionID, h.collection, notes, defaultDeckName)
+}
+
+func (h *APIHandler) applyImportedNotesToCollection(collectionID string, col *Collection, notes []importNormalizedNote, defaultDeckName string) ImportNotesResponse {
 	result := ImportNotesResponse{}
 	deckCache := make(map[string]int64)
 	createdDecks := make(map[string]struct{})
 
-	for id, deck := range h.collection.Decks {
+	for id, deck := range col.Decks {
 		deckCache[strings.ToLower(deck.Name)] = id
 	}
 
@@ -1480,7 +1593,7 @@ func (h *APIHandler) applyImportedNotes(notes []importNormalizedNote, defaultDec
 			noteTypeName = "Basic"
 		}
 
-		noteType, ok := h.collection.NoteTypes[noteTypeName]
+		noteType, ok := col.NoteTypes[noteTypeName]
 		if !ok {
 			result.Skipped++
 			result.Errors = append(result.Errors, fmt.Sprintf("row %d: unknown note type %q", i+1, noteTypeName))
@@ -1488,7 +1601,7 @@ func (h *APIHandler) applyImportedNotes(notes []importNormalizedNote, defaultDec
 		}
 
 		deckName := firstNonEmpty(importedNote.DeckName, defaultDeckName, "Default")
-		deckID, err := h.ensureDeckByName(deckName, deckCache, createdDecks)
+		deckID, err := h.ensureDeckByName(collectionID, col, deckName, deckCache, createdDecks)
 		if err != nil {
 			result.Skipped++
 			result.Errors = append(result.Errors, fmt.Sprintf("row %d: failed to resolve deck %q: %v", i+1, deckName, err))
@@ -1512,7 +1625,7 @@ func (h *APIHandler) applyImportedNotes(notes []importNormalizedNote, defaultDec
 			continue
 		}
 
-		note, cards, err := h.collection.AddNote(deckID, noteTypeName, fieldVals, time.Now())
+		note, cards, err := col.AddNote(deckID, noteTypeName, fieldVals, time.Now())
 		if err != nil {
 			result.Skipped++
 			result.Errors = append(result.Errors, fmt.Sprintf("row %d: failed to create note: %v", i+1, err))
@@ -1524,7 +1637,7 @@ func (h *APIHandler) applyImportedNotes(notes []importNormalizedNote, defaultDec
 			note.Tags = []string{}
 		}
 
-		if err := h.store.CreateNote(h.collectionID, &note); err != nil {
+		if err := h.store.CreateNote(collectionID, &note); err != nil {
 			result.Skipped++
 			result.Errors = append(result.Errors, fmt.Sprintf("row %d: failed to persist note: %v", i+1, err))
 			continue
@@ -1550,14 +1663,14 @@ func (h *APIHandler) applyImportedNotes(notes []importNormalizedNote, defaultDec
 	return result
 }
 
-func (h *APIHandler) ensureDeckByName(deckName string, deckCache map[string]int64, createdDecks map[string]struct{}) (int64, error) {
+func (h *APIHandler) ensureDeckByName(collectionID string, col *Collection, deckName string, deckCache map[string]int64, createdDecks map[string]struct{}) (int64, error) {
 	name := firstNonEmpty(deckName, "Default")
 	key := strings.ToLower(name)
 	if id, ok := deckCache[key]; ok {
 		return id, nil
 	}
 
-	for id, deck := range h.collection.Decks {
+	for id, deck := range col.Decks {
 		if strings.EqualFold(deck.Name, name) {
 			deckCache[key] = id
 			return id, nil
@@ -1569,8 +1682,8 @@ func (h *APIHandler) ensureDeckByName(deckName string, deckCache map[string]int6
 		sanitized = "Imported"
 	}
 
-	newDeck := h.collection.NewDeck(sanitized)
-	if err := h.store.CreateDeck(newDeck); err != nil {
+	newDeck := col.NewDeck(sanitized)
+	if err := h.store.CreateDeckInCollection(collectionID, newDeck); err != nil {
 		return 0, err
 	}
 
@@ -1608,7 +1721,7 @@ func stripHTML(html string) string {
 // Backup endpoints
 
 func (h *APIHandler) CreateBackup(w http.ResponseWriter, r *http.Request) {
-	backupPath, err := h.backupManager.CreateBackup(h.collectionID)
+	backupPath, err := h.backupManager.CreateBackup(h.collectionIDForRequest(r))
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to create backup: %v", err), http.StatusInternalServerError)
 		return

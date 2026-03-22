@@ -209,6 +209,64 @@ func createAuthenticatedTestClient(t *testing.T, env *apiTestEnv, email, display
 	}
 }
 
+func createAuthenticatedIsolatedTestClient(t *testing.T, env *apiTestEnv, email, displayName string) authenticatedTestClient {
+	t.Helper()
+
+	now := time.Now()
+	user := &User{
+		ID:          newID("usr"),
+		Email:       email,
+		DisplayName: displayName,
+		LastLoginAt: now,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := env.store.CreateUser(user); err != nil {
+		t.Fatalf("failed to create isolated test user %s: %v", email, err)
+	}
+
+	collectionID := newID("col")
+	collection := NewCollection()
+	if err := env.store.CreateCollectionRecord(collectionID, displayName+" Collection", collection); err != nil {
+		t.Fatalf("failed to create isolated collection for %s: %v", email, err)
+	}
+
+	workspace := &Workspace{
+		ID:           newID("ws"),
+		Name:         displayName + " Workspace",
+		Slug:         strings.ToLower(strings.ReplaceAll(displayName, " ", "-")) + "-isolated",
+		CollectionID: collectionID,
+		OwnerUserID:  user.ID,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := env.store.CreateWorkspaceRecord(workspace); err != nil {
+		t.Fatalf("failed to create isolated workspace for %s: %v", email, err)
+	}
+
+	session := &SessionRecord{
+		ID:          newID("sess"),
+		UserID:      user.ID,
+		WorkspaceID: workspace.ID,
+		Plan:        PlanFree,
+		ExpiresAt:   now.Add(24 * time.Hour),
+		LastSeenAt:  now,
+		CreatedAt:   now,
+	}
+	if err := env.store.CreateSessionRecord(session); err != nil {
+		t.Fatalf("failed to create isolated session for %s: %v", email, err)
+	}
+
+	authCookie := fmt.Sprintf("%s=%s", sessionCookieName, session.ID)
+	return authenticatedTestClient{
+		router:     newTestAPIRouter(env.handler, authCookie),
+		authCookie: authCookie,
+		user:       user,
+		workspace:  workspace,
+		session:    session,
+	}
+}
+
 func doJSONRequest(t *testing.T, router http.Handler, method, path string, payload interface{}) *httptest.ResponseRecorder {
 	t.Helper()
 	return doJSONRequestWithHeaders(t, router, method, path, payload, nil)
@@ -1079,6 +1137,108 @@ func TestAPI_StudyGroupsUsePublishedVersionsAndPersonalInstalls(t *testing.T) {
 	}
 	if _, err := env.store.GetDeck(memberInstallV2.InstalledDeckID); err == nil {
 		t.Fatalf("expected removing an install to delete its copied deck %d", memberInstallV2.InstalledDeckID)
+	}
+}
+
+func TestAPI_StudyGroupsInstallAcrossDifferentCollections(t *testing.T) {
+	env := setupAPITestEnv(t)
+	memberClient := createAuthenticatedIsolatedTestClient(t, env, "isolated-member@example.com", "Isolated Member")
+	teamHeaders := map[string]string{"X-Vutadex-Plan": "team"}
+
+	createNoteForTest(t, env, CreateNoteRequest{
+		TypeID: "Basic",
+		DeckID: 1,
+		FieldVals: map[string]string{
+			"Front": "Cross collection source card",
+			"Back":  "Cross collection answer",
+		},
+	}, nil)
+
+	createGroup := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/study-groups", CreateStudyGroupRequest{
+		Name:          "Cross Collection Cohort",
+		Description:   "Ensure installs work across real workspace collections",
+		PrimaryDeckID: 1,
+		Visibility:    "private",
+		JoinPolicy:    "invite",
+	}, teamHeaders)
+	if createGroup.Code != http.StatusCreated {
+		t.Fatalf("expected create study group 201, got %d (%s)", createGroup.Code, createGroup.Body.String())
+	}
+	groupDetail := decodeJSON[StudyGroupDetail](t, createGroup)
+	groupID := groupDetail.Group.ID
+
+	publishV1 := doJSONRequestWithHeaders(t, env.router, http.MethodPost, fmt.Sprintf("/api/study-groups/%s/versions", groupID), PublishStudyGroupVersionRequest{
+		ChangeSummary: "Initial cross-collection release",
+	}, teamHeaders)
+	if publishV1.Code != http.StatusCreated {
+		t.Fatalf("expected publish version 1 to return 201, got %d (%s)", publishV1.Code, publishV1.Body.String())
+	}
+
+	inviteMember := doJSONRequestWithHeaders(t, env.router, http.MethodPost, fmt.Sprintf("/api/study-groups/%s/members", groupID), InviteStudyGroupMemberRequest{
+		Email: memberClient.user.Email,
+		Role:  "member",
+	}, teamHeaders)
+	if inviteMember.Code != http.StatusCreated {
+		t.Fatalf("expected member invite to return 201, got %d (%s)", inviteMember.Code, inviteMember.Body.String())
+	}
+	invite := decodeJSON[StudyGroupMember](t, inviteMember)
+
+	joinGroup := doJSONRequest(t, memberClient.router, http.MethodPost, "/api/study-groups/join", JoinStudyGroupRequest{
+		Token:                  invite.InviteToken,
+		DestinationWorkspaceID: memberClient.workspace.ID,
+		InstallLatest:          false,
+	})
+	if joinGroup.Code != http.StatusOK {
+		t.Fatalf("expected join group 200, got %d (%s)", joinGroup.Code, joinGroup.Body.String())
+	}
+
+	memberInstallRR := doJSONRequest(t, memberClient.router, http.MethodPost, fmt.Sprintf("/api/study-groups/%s/installs", groupID), InstallStudyGroupDeckRequest{
+		DestinationWorkspaceID: memberClient.workspace.ID,
+	})
+	if memberInstallRR.Code != http.StatusCreated {
+		t.Fatalf("expected isolated member install 201, got %d (%s)", memberInstallRR.Code, memberInstallRR.Body.String())
+	}
+	memberInstall := decodeJSON[StudyGroupInstall](t, memberInstallRR)
+
+	var destinationCollectionID string
+	if err := env.store.db.QueryRow(`SELECT collection_id FROM decks WHERE id = ?`, memberInstall.InstalledDeckID).Scan(&destinationCollectionID); err != nil {
+		t.Fatalf("failed to load installed deck collection: %v", err)
+	}
+	if destinationCollectionID != memberClient.workspace.CollectionID {
+		t.Fatalf("expected installed deck to land in destination workspace collection %q, got %q", memberClient.workspace.CollectionID, destinationCollectionID)
+	}
+
+	var sourceCollectionID string
+	if err := env.store.db.QueryRow(`SELECT collection_id FROM decks WHERE id = 1`).Scan(&sourceCollectionID); err != nil {
+		t.Fatalf("failed to load source deck collection: %v", err)
+	}
+	if sourceCollectionID == destinationCollectionID {
+		t.Fatalf("expected source and destination collections to differ, both were %q", sourceCollectionID)
+	}
+
+	memberDueBefore := doRawRequest(memberClient.router, http.MethodGet, fmt.Sprintf("/api/decks/%d/due?limit=10", memberInstall.InstalledDeckID), "")
+	if memberDueBefore.Code != http.StatusOK {
+		t.Fatalf("expected isolated member due queue 200, got %d (%s)", memberDueBefore.Code, memberDueBefore.Body.String())
+	}
+	memberCards := decodeJSON[[]Card](t, memberDueBefore)
+	if len(memberCards) != 1 {
+		t.Fatalf("expected isolated member due count to start at 1, got %d", len(memberCards))
+	}
+
+	memberAnswer := doJSONRequest(t, memberClient.router, http.MethodPost, fmt.Sprintf("/api/cards/%d/answer", memberCards[0].ID), AnswerCardRequest{
+		Rating:      3,
+		TimeTakenMs: 600,
+	})
+	if memberAnswer.Code != http.StatusOK {
+		t.Fatalf("expected isolated member answer 200, got %d (%s)", memberAnswer.Code, memberAnswer.Body.String())
+	}
+
+	ownerDue := doRawRequest(env.router, http.MethodGet, "/api/decks/1/due?limit=10", "")
+	if ownerDue.Code != http.StatusOK {
+		t.Fatalf("expected owner source deck due queue 200, got %d (%s)", ownerDue.Code, ownerDue.Body.String())
+	}
+	if cards := decodeJSON[[]Card](t, ownerDue); len(cards) != 1 {
+		t.Fatalf("expected source deck due queue to remain unchanged after isolated member studies installed copy, got %d", len(cards))
 	}
 }
 

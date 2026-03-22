@@ -498,6 +498,7 @@ func (h *APIHandler) UpdateNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.syncCollectionNote(note)
+	h.markStudyGroupInstallsForkedByDeckIDs(req.DeckID)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"note":  h.noteToResponse(note, updatedCards),
@@ -522,7 +523,9 @@ func (h *APIHandler) DeleteNote(w http.ResponseWriter, r *http.Request) {
 		respondAPIError(w, http.StatusInternalServerError, "note_cards_failed", err.Error())
 		return
 	}
+	deckIDs := make([]int64, 0, len(cards))
 	for _, card := range cards {
+		deckIDs = append(deckIDs, card.DeckID)
 		if err := h.store.DeleteCard(card.ID); err != nil {
 			respondAPIError(w, http.StatusInternalServerError, "card_delete_failed", err.Error())
 			return
@@ -535,6 +538,7 @@ func (h *APIHandler) DeleteNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	delete(h.collection.Notes, id)
+	h.markStudyGroupInstallsForkedByDeckIDs(deckIDs...)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -569,6 +573,7 @@ func (h *APIHandler) UpdateDeck(w http.ResponseWriter, r *http.Request) {
 	if existing, ok := h.collection.Decks[id]; ok {
 		existing.Name = deck.Name
 	}
+	h.markStudyGroupInstallsForkedByDeckIDs(id)
 
 	respondJSON(w, http.StatusOK, h.deckResponse(h.userIDFromRequest(r), deck))
 }
@@ -697,6 +702,7 @@ func (h *APIHandler) CreateTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.collection.NoteTypes[NoteTypeName(noteTypeName)] = nt
+	h.markStudyGroupInstallsForkedByNoteType(noteTypeName)
 	if err := h.regenerateCardsForNoteType(noteTypeName); err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "card_regeneration_failed", err.Error())
 		return
@@ -736,6 +742,7 @@ func (h *APIHandler) DeleteTemplate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.collection.NoteTypes[NoteTypeName(noteTypeName)] = nt
+	h.markStudyGroupInstallsForkedByNoteType(noteTypeName)
 	if err := h.regenerateCardsForNoteType(noteTypeName); err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "card_regeneration_failed", err.Error())
 		return

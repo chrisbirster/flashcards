@@ -304,6 +304,159 @@ export interface OTPRequestResponse {
   devCode?: string
 }
 
+export interface StudyGroupMember {
+  id: string
+  studyGroupId: string
+  userId?: string
+  email: string
+  role: 'owner' | 'admin' | 'member'
+  status: 'invited' | 'active' | 'removed' | 'declined' | 'expired'
+  inviteToken?: string
+  inviteExpiresAt?: string
+  joinedAt?: string
+  removedAt?: string
+  createdAt: string
+}
+
+export interface StudyGroupVersion {
+  id: string
+  studyGroupId: string
+  versionNumber: number
+  sourceDeckId: number
+  publishedByUserId: string
+  changeSummary: string
+  noteCount: number
+  cardCount: number
+  createdAt: string
+}
+
+export interface StudyGroupInstall {
+  id: string
+  studyGroupId: string
+  studyGroupMemberId: string
+  destinationWorkspaceId: string
+  installedDeckId: number
+  installedDeckName?: string
+  sourceVersionNumber: number
+  status: 'active' | 'superseded' | 'removed'
+  syncState: 'clean' | 'forked'
+  supersededByInstallId?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface StudyGroupLeaderboardEntry {
+  userId?: string
+  email: string
+  displayName?: string
+  reviews7d: number
+}
+
+export interface StudyGroupDashboard {
+  memberCount: number
+  activeMembers7d: number
+  reviews7d: number
+  latestVersionNumber: number
+  latestVersionAdoption: number
+  leaderboard: StudyGroupLeaderboardEntry[]
+}
+
+export interface StudyGroupEvent {
+  id: string
+  studyGroupId: string
+  actorUserId?: string
+  eventType: string
+  payload: string
+  createdAt: string
+}
+
+export interface StudyGroupSummary {
+  id: string
+  name: string
+  description: string
+  sourceDeckId: number
+  sourceDeckName: string
+  role: string
+  membershipStatus: string
+  latestVersionNumber: number
+  memberCount: number
+  activeMembers7d: number
+  updateAvailable: boolean
+  currentUserInstall?: StudyGroupInstall
+}
+
+export interface StudyGroupDetail {
+  group: {
+    id: string
+    workspaceId: string
+    primaryDeckId: number
+    name: string
+    description: string
+    visibility: string
+    joinPolicy: string
+    createdByUserId: string
+    createdAt: string
+    updatedAt: string
+  }
+  role: string
+  membershipStatus: string
+  sourceDeckName: string
+  latestVersion?: StudyGroupVersion
+  versions: StudyGroupVersion[]
+  members: StudyGroupMember[]
+  currentUserInstall?: StudyGroupInstall
+  updateAvailable: boolean
+  canEdit: boolean
+  canInvite: boolean
+  canPublishVersion: boolean
+  dashboard: StudyGroupDashboard
+  recentEvents: StudyGroupEvent[]
+  availableWorkspaces: WorkspaceSession[]
+}
+
+export interface CreateStudyGroupRequest {
+  name: string
+  description?: string
+  primaryDeckId: number
+  visibility?: string
+  joinPolicy?: string
+}
+
+export interface UpdateStudyGroupRequest {
+  name?: string
+  description?: string
+  visibility?: string
+  joinPolicy?: string
+}
+
+export interface InviteStudyGroupMemberRequest {
+  email: string
+  role: 'admin' | 'member'
+}
+
+export interface UpdateStudyGroupMemberRequest {
+  role?: 'admin' | 'member'
+  status?: 'invited' | 'active' | 'removed' | 'declined' | 'expired'
+}
+
+export interface JoinStudyGroupRequest {
+  token: string
+  destinationWorkspaceId: string
+  installLatest: boolean
+}
+
+export interface PublishStudyGroupVersionRequest {
+  changeSummary?: string
+}
+
+export interface InstallStudyGroupDeckRequest {
+  destinationWorkspaceId: string
+}
+
+export interface UpdateStudyGroupInstallRequest {
+  destinationWorkspaceId?: string
+}
+
 // Deck endpoints
 export async function fetchDecks(): Promise<Deck[]> {
   return requestJSON(`${API_BASE}/decks`)
@@ -621,6 +774,98 @@ export async function deleteEmptyCards(req: DeleteEmptyCardsRequest): Promise<De
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(req),
   })
+}
+
+export async function fetchStudyGroups(): Promise<StudyGroupSummary[]> {
+  return requestJSON(`${API_BASE}/study-groups`)
+}
+
+export async function createStudyGroup(req: CreateStudyGroupRequest): Promise<StudyGroupDetail> {
+  return requestJSON(`${API_BASE}/study-groups`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+}
+
+export async function fetchStudyGroup(id: string): Promise<StudyGroupDetail> {
+  return requestJSON(`${API_BASE}/study-groups/${id}`)
+}
+
+export async function updateStudyGroup(id: string, req: UpdateStudyGroupRequest): Promise<StudyGroupDetail> {
+  return requestJSON(`${API_BASE}/study-groups/${id}`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+}
+
+export async function inviteStudyGroupMember(id: string, req: InviteStudyGroupMemberRequest): Promise<StudyGroupMember> {
+  return requestJSON(`${API_BASE}/study-groups/${id}/members`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+}
+
+export async function updateStudyGroupMember(id: string, memberId: string, req: UpdateStudyGroupMemberRequest): Promise<StudyGroupMember> {
+  return requestJSON(`${API_BASE}/study-groups/${id}/members/${memberId}`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+}
+
+export async function deleteStudyGroupMember(id: string, memberId: string): Promise<void> {
+  return requestJSON(`${API_BASE}/study-groups/${id}/members/${memberId}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function joinStudyGroup(req: JoinStudyGroupRequest): Promise<StudyGroupDetail> {
+  return requestJSON(`${API_BASE}/study-groups/join`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+}
+
+export async function fetchStudyGroupVersions(id: string): Promise<StudyGroupVersion[]> {
+  return requestJSON(`${API_BASE}/study-groups/${id}/versions`)
+}
+
+export async function publishStudyGroupVersion(id: string, req: PublishStudyGroupVersionRequest): Promise<StudyGroupVersion> {
+  return requestJSON(`${API_BASE}/study-groups/${id}/versions`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+}
+
+export async function installStudyGroupDeck(id: string, req: InstallStudyGroupDeckRequest): Promise<StudyGroupInstall> {
+  return requestJSON(`${API_BASE}/study-groups/${id}/installs`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+}
+
+export async function updateStudyGroupInstall(id: string, installId: string, req: UpdateStudyGroupInstallRequest = {}): Promise<StudyGroupInstall> {
+  return requestJSON(`${API_BASE}/study-groups/${id}/installs/${installId}/update`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+}
+
+export async function removeStudyGroupInstall(id: string, installId: string): Promise<void> {
+  return requestJSON(`${API_BASE}/study-groups/${id}/installs/${installId}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function fetchStudyGroupDashboard(id: string): Promise<StudyGroupDashboard> {
+  return requestJSON(`${API_BASE}/study-groups/${id}/dashboard`)
 }
 
 // Backup endpoints

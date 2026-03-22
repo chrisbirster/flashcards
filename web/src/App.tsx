@@ -6,7 +6,7 @@ import { HomePage } from '#/pages/HomePage'
 import { NotesPage } from '#/pages/NotesPage'
 import { StudyPage } from '#/pages/StudyPage'
 import { AddNotePage } from '#/pages/AddNotePage'
-import { StudyGroupsPage } from '#/pages/StudyGroupsPage'
+import { StudyGroupDetailPage, StudyGroupJoinPage, StudyGroupsPage } from '#/pages/StudyGroupsPage'
 import { TemplatesPage } from '#/pages/TemplatesPage'
 import { EmptyCardsPage } from '#/pages/EmptyCardsPage'
 import { LoginPage } from '#/pages/LoginPage'
@@ -54,6 +54,8 @@ export default function App() {
           <Route path="notes/view" element={<NotesPage />} />
           <Route path="decks" element={<DecksPage />} />
           <Route path="study-groups" element={<StudyGroupsPage />} />
+          <Route path="study-groups/join" element={<StudyGroupJoinPage />} />
+          <Route path="study-groups/:groupId" element={<StudyGroupDetailPage />} />
           <Route path="study/:deckId" element={<StudyPage />} />
           <Route path="notes/add" element={<AddNotePage />}>
             <Route path="note-types/:noteTypeName/fields" element={<AddNoteFieldEditorRoutePage />} />

@@ -9,7 +9,7 @@ export const appNavigation: AppNavigationItem[] = [
   { to: '/notes/view', label: 'Notes', description: 'Browse and edit notes' },
   { to: '/templates', label: 'Templates', description: 'Manage card templates' },
   { to: '/decks', label: 'Decks', description: 'Organize study decks' },
-  { to: '/study-groups', label: 'Study Groups', description: 'Shared learning spaces' },
+  { to: '/study-groups', label: 'Study Groups', description: 'Source decks and member installs' },
 ]
 
 export function pageTitleForPath(pathname: string): string {

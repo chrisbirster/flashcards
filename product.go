@@ -5,10 +5,10 @@ import "time"
 type Plan string
 
 const (
-	PlanGuest Plan = "guest"
-	PlanFree  Plan = "free"
-	PlanPro   Plan = "pro"
-	PlanTeam  Plan = "team"
+	PlanGuest      Plan = "guest"
+	PlanFree       Plan = "free"
+	PlanPro        Plan = "pro"
+	PlanTeam       Plan = "team"
 	PlanEnterprise Plan = "enterprise"
 )
 
@@ -31,14 +31,14 @@ type EntitlementUsage struct {
 }
 
 type EntitlementFeatures struct {
-	GoogleLogin   bool `json:"googleLogin"`
-	AccountBacked bool `json:"accountBacked"`
-	Sync          bool `json:"sync"`
-	ShareDecks    bool `json:"shareDecks"`
-	Organizations bool `json:"organizations"`
-	StudyGroups   bool `json:"studyGroups"`
+	GoogleLogin        bool `json:"googleLogin"`
+	AccountBacked      bool `json:"accountBacked"`
+	Sync               bool `json:"sync"`
+	ShareDecks         bool `json:"shareDecks"`
+	Organizations      bool `json:"organizations"`
+	StudyGroups        bool `json:"studyGroups"`
 	MarketplacePublish bool `json:"marketplacePublish"`
-	Enterprise    bool `json:"enterprise"`
+	Enterprise         bool `json:"enterprise"`
 }
 
 type Entitlements struct {
@@ -155,12 +155,12 @@ type DeckShare struct {
 }
 
 type AuthSessionResponse struct {
-	Authenticated         bool          `json:"authenticated"`
-	GoogleAuthConfigured  bool          `json:"googleAuthConfigured"`
-	OTPAuthEnabled        bool          `json:"otpAuthEnabled"`
-	User                  *User         `json:"user,omitempty"`
-	Workspace             *Workspace    `json:"workspace,omitempty"`
-	Entitlements          Entitlements  `json:"entitlements"`
+	Authenticated        bool         `json:"authenticated"`
+	GoogleAuthConfigured bool         `json:"googleAuthConfigured"`
+	OTPAuthEnabled       bool         `json:"otpAuthEnabled"`
+	User                 *User        `json:"user,omitempty"`
+	Workspace            *Workspace   `json:"workspace,omitempty"`
+	Entitlements         Entitlements `json:"entitlements"`
 }
 
 type RecentDeckNoteSummary struct {
@@ -205,29 +205,161 @@ type StudyGroup struct {
 }
 
 type StudyGroupMember struct {
+	ID              string    `json:"id"`
+	StudyGroupID    string    `json:"studyGroupId"`
+	UserID          string    `json:"userId,omitempty"`
+	Email           string    `json:"email"`
+	Role            string    `json:"role"`
+	Status          string    `json:"status"`
+	InviteToken     string    `json:"inviteToken,omitempty"`
+	InviteExpiresAt time.Time `json:"inviteExpiresAt,omitempty"`
+	JoinedAt        time.Time `json:"joinedAt,omitempty"`
+	RemovedAt       time.Time `json:"removedAt,omitempty"`
+	CreatedAt       time.Time `json:"createdAt"`
+}
+
+type StudyGroupVersion struct {
+	ID                string    `json:"id"`
+	StudyGroupID      string    `json:"studyGroupId"`
+	VersionNumber     int       `json:"versionNumber"`
+	SourceDeckID      int64     `json:"sourceDeckId"`
+	PublishedByUserID string    `json:"publishedByUserId"`
+	ChangeSummary     string    `json:"changeSummary"`
+	NoteCount         int       `json:"noteCount"`
+	CardCount         int       `json:"cardCount"`
+	CreatedAt         time.Time `json:"createdAt"`
+}
+
+type StudyGroupInstall struct {
+	ID                     string    `json:"id"`
+	StudyGroupID           string    `json:"studyGroupId"`
+	StudyGroupMemberID     string    `json:"studyGroupMemberId"`
+	DestinationWorkspaceID string    `json:"destinationWorkspaceId"`
+	InstalledDeckID        int64     `json:"installedDeckId"`
+	InstalledDeckName      string    `json:"installedDeckName,omitempty"`
+	SourceVersionNumber    int       `json:"sourceVersionNumber"`
+	Status                 string    `json:"status"`
+	SyncState              string    `json:"syncState"`
+	SupersededByInstallID  string    `json:"supersededByInstallId,omitempty"`
+	CreatedAt              time.Time `json:"createdAt"`
+	UpdatedAt              time.Time `json:"updatedAt"`
+}
+
+type StudyGroupEvent struct {
 	ID           string    `json:"id"`
 	StudyGroupID string    `json:"studyGroupId"`
-	UserID       string    `json:"userId,omitempty"`
-	Email        string    `json:"email"`
-	Role         string    `json:"role"`
-	Status       string    `json:"status"`
+	ActorUserID  string    `json:"actorUserId,omitempty"`
+	EventType    string    `json:"eventType"`
+	Payload      string    `json:"payload"`
 	CreatedAt    time.Time `json:"createdAt"`
 }
 
+type StudyGroupLeaderboardEntry struct {
+	UserID      string `json:"userId,omitempty"`
+	Email       string `json:"email"`
+	DisplayName string `json:"displayName,omitempty"`
+	Reviews7D   int    `json:"reviews7d"`
+}
+
+type StudyGroupDashboard struct {
+	MemberCount           int                          `json:"memberCount"`
+	ActiveMembers7D       int                          `json:"activeMembers7d"`
+	Reviews7D             int                          `json:"reviews7d"`
+	LatestVersionNumber   int                          `json:"latestVersionNumber"`
+	LatestVersionAdoption int                          `json:"latestVersionAdoption"`
+	Leaderboard           []StudyGroupLeaderboardEntry `json:"leaderboard"`
+}
+
+type StudyGroupSummary struct {
+	ID                  string             `json:"id"`
+	Name                string             `json:"name"`
+	Description         string             `json:"description"`
+	SourceDeckID        int64              `json:"sourceDeckId"`
+	SourceDeckName      string             `json:"sourceDeckName"`
+	Role                string             `json:"role"`
+	MembershipStatus    string             `json:"membershipStatus"`
+	LatestVersionNumber int                `json:"latestVersionNumber"`
+	MemberCount         int                `json:"memberCount"`
+	ActiveMembers7D     int                `json:"activeMembers7d"`
+	UpdateAvailable     bool               `json:"updateAvailable"`
+	CurrentUserInstall  *StudyGroupInstall `json:"currentUserInstall,omitempty"`
+}
+
+type StudyGroupDetail struct {
+	Group               StudyGroup          `json:"group"`
+	Role                string              `json:"role"`
+	MembershipStatus    string              `json:"membershipStatus"`
+	SourceDeckName      string              `json:"sourceDeckName"`
+	LatestVersion       *StudyGroupVersion  `json:"latestVersion,omitempty"`
+	Versions            []StudyGroupVersion `json:"versions"`
+	Members             []StudyGroupMember  `json:"members"`
+	CurrentUserInstall  *StudyGroupInstall  `json:"currentUserInstall,omitempty"`
+	UpdateAvailable     bool                `json:"updateAvailable"`
+	CanEdit             bool                `json:"canEdit"`
+	CanInvite           bool                `json:"canInvite"`
+	CanPublishVersion   bool                `json:"canPublishVersion"`
+	Dashboard           StudyGroupDashboard `json:"dashboard"`
+	RecentEvents        []StudyGroupEvent   `json:"recentEvents"`
+	AvailableWorkspaces []Workspace         `json:"availableWorkspaces"`
+}
+
+type CreateStudyGroupRequest struct {
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	PrimaryDeckID int64  `json:"primaryDeckId"`
+	Visibility    string `json:"visibility,omitempty"`
+	JoinPolicy    string `json:"joinPolicy,omitempty"`
+}
+
+type UpdateStudyGroupRequest struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Visibility  string `json:"visibility,omitempty"`
+	JoinPolicy  string `json:"joinPolicy,omitempty"`
+}
+
+type InviteStudyGroupMemberRequest struct {
+	Email string `json:"email"`
+	Role  string `json:"role"`
+}
+
+type UpdateStudyGroupMemberRequest struct {
+	Role   string `json:"role,omitempty"`
+	Status string `json:"status,omitempty"`
+}
+
+type JoinStudyGroupRequest struct {
+	Token                  string `json:"token"`
+	DestinationWorkspaceID string `json:"destinationWorkspaceId"`
+	InstallLatest          bool   `json:"installLatest"`
+}
+
+type PublishStudyGroupVersionRequest struct {
+	ChangeSummary string `json:"changeSummary"`
+}
+
+type InstallStudyGroupDeckRequest struct {
+	DestinationWorkspaceID string `json:"destinationWorkspaceId"`
+}
+
+type UpdateStudyGroupInstallRequest struct {
+	DestinationWorkspaceID string `json:"destinationWorkspaceId,omitempty"`
+}
+
 type MarketplaceListing struct {
-	ID              string    `json:"id"`
-	WorkspaceID     string    `json:"workspaceId"`
-	DeckID          int64     `json:"deckId"`
-	Slug            string    `json:"slug"`
-	Title           string    `json:"title"`
-	Summary         string    `json:"summary"`
-	Description     string    `json:"description"`
-	CreatorUserID   string    `json:"creatorUserId"`
-	PriceMode       string    `json:"priceMode"`
-	PriceCents      int       `json:"priceCents"`
-	Currency        string    `json:"currency"`
-	Status          string    `json:"status"`
-	InstallCount    int       `json:"installCount,omitempty"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	ID            string    `json:"id"`
+	WorkspaceID   string    `json:"workspaceId"`
+	DeckID        int64     `json:"deckId"`
+	Slug          string    `json:"slug"`
+	Title         string    `json:"title"`
+	Summary       string    `json:"summary"`
+	Description   string    `json:"description"`
+	CreatorUserID string    `json:"creatorUserId"`
+	PriceMode     string    `json:"priceMode"`
+	PriceCents    int       `json:"priceCents"`
+	Currency      string    `json:"currency"`
+	Status        string    `json:"status"`
+	InstallCount  int       `json:"installCount,omitempty"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }

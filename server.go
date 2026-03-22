@@ -429,6 +429,7 @@ func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 	for _, card := range cards {
 		responseCards = append(responseCards, *card)
 	}
+	h.markStudyGroupInstallsForkedByDeckIDs(req.DeckID)
 
 	respondJSON(w, http.StatusCreated, map[string]interface{}{
 		"note":  h.noteToResponse(&note, responseCards),
@@ -846,6 +847,7 @@ func (h *APIHandler) AddField(w http.ResponseWriter, r *http.Request) {
 
 	// Update collection cache
 	h.collection.NoteTypes[NoteTypeName(name)] = nt
+	h.markStudyGroupInstallsForkedByNoteType(name)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"message": "Field added successfully",
@@ -932,6 +934,7 @@ func (h *APIHandler) RenameField(w http.ResponseWriter, r *http.Request) {
 
 	// Update collection cache
 	h.collection.NoteTypes[NoteTypeName(name)] = nt
+	h.markStudyGroupInstallsForkedByNoteType(name)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"message": "Field renamed successfully",
@@ -990,6 +993,7 @@ func (h *APIHandler) RemoveField(w http.ResponseWriter, r *http.Request) {
 
 	// Update collection cache
 	h.collection.NoteTypes[NoteTypeName(name)] = nt
+	h.markStudyGroupInstallsForkedByNoteType(name)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"message": "Field removed successfully",
@@ -1046,6 +1050,7 @@ func (h *APIHandler) ReorderFields(w http.ResponseWriter, r *http.Request) {
 
 	// Update collection cache
 	h.collection.NoteTypes[NoteTypeName(name)] = nt
+	h.markStudyGroupInstallsForkedByNoteType(name)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"message": "Fields reordered successfully",
@@ -1083,6 +1088,7 @@ func (h *APIHandler) SetSortField(w http.ResponseWriter, r *http.Request) {
 
 	// Update collection cache
 	h.collection.NoteTypes[NoteTypeName(name)] = nt
+	h.markStudyGroupInstallsForkedByNoteType(name)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"message":        "Sort field updated successfully",
@@ -1134,6 +1140,7 @@ func (h *APIHandler) SetFieldOptions(w http.ResponseWriter, r *http.Request) {
 
 	// Update collection cache
 	h.collection.NoteTypes[NoteTypeName(name)] = nt
+	h.markStudyGroupInstallsForkedByNoteType(name)
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"message":      "Field options updated successfully",
@@ -1220,6 +1227,7 @@ func (h *APIHandler) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
 
 	// Update collection cache
 	h.collection.NoteTypes[NoteTypeName(noteTypeName)] = nt
+	h.markStudyGroupInstallsForkedByNoteType(noteTypeName)
 
 	// Regenerate cards for all notes of this type
 	// This ensures cards reflect the updated templates

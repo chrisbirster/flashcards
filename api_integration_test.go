@@ -792,6 +792,296 @@ func TestAPI_GuestPlanLimitsDecksAndNotes(t *testing.T) {
 	}
 }
 
+func TestAPI_StudyGroupCreationRequiresTeamOrEnterprise(t *testing.T) {
+	env := setupAPITestEnv(t)
+
+	createFree := doJSONRequest(t, env.router, http.MethodPost, "/api/study-groups", CreateStudyGroupRequest{
+		Name:          "Free plan group",
+		PrimaryDeckID: 1,
+	})
+	if createFree.Code != http.StatusForbidden {
+		t.Fatalf("expected free plan study group create to return 403, got %d (%s)", createFree.Code, createFree.Body.String())
+	}
+	freeErr := decodeJSON[APIErrorResponse](t, createFree)
+	if freeErr.Code != "study_groups_not_available" {
+		t.Fatalf("expected study_groups_not_available code, got %+v", freeErr)
+	}
+
+	createPro := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/study-groups", CreateStudyGroupRequest{
+		Name:          "Pro plan group",
+		PrimaryDeckID: 1,
+	}, map[string]string{"X-Vutadex-Plan": "pro"})
+	if createPro.Code != http.StatusForbidden {
+		t.Fatalf("expected pro plan study group create to return 403, got %d (%s)", createPro.Code, createPro.Body.String())
+	}
+
+	createTeam := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/study-groups", CreateStudyGroupRequest{
+		Name:          "Team plan group",
+		PrimaryDeckID: 1,
+	}, map[string]string{"X-Vutadex-Plan": "team"})
+	if createTeam.Code != http.StatusCreated {
+		t.Fatalf("expected team plan study group create to return 201, got %d (%s)", createTeam.Code, createTeam.Body.String())
+	}
+}
+
+func TestAPI_StudyGroupsUsePublishedVersionsAndPersonalInstalls(t *testing.T) {
+	env := setupAPITestEnv(t)
+	memberClient := createAuthenticatedTestClient(t, env, "group-member@example.com", "Group Member")
+	teamHeaders := map[string]string{"X-Vutadex-Plan": "team"}
+
+	createNoteForTest(t, env, CreateNoteRequest{
+		TypeID: "Basic",
+		DeckID: 1,
+		FieldVals: map[string]string{
+			"Front": "Source deck card 1",
+			"Back":  "Answer 1",
+		},
+	}, nil)
+
+	createGroup := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/study-groups", CreateStudyGroupRequest{
+		Name:          "Anatomy Cohort",
+		Description:   "Canonical source deck + personal installs",
+		PrimaryDeckID: 1,
+		Visibility:    "private",
+		JoinPolicy:    "invite",
+	}, teamHeaders)
+	if createGroup.Code != http.StatusCreated {
+		t.Fatalf("expected create study group 201, got %d (%s)", createGroup.Code, createGroup.Body.String())
+	}
+	groupDetail := decodeJSON[StudyGroupDetail](t, createGroup)
+	groupID := groupDetail.Group.ID
+	if groupDetail.Role != "owner" || groupDetail.MembershipStatus != "active" {
+		t.Fatalf("expected creator to be active owner, got role=%q status=%q", groupDetail.Role, groupDetail.MembershipStatus)
+	}
+
+	publishV1 := doJSONRequestWithHeaders(t, env.router, http.MethodPost, fmt.Sprintf("/api/study-groups/%s/versions", groupID), PublishStudyGroupVersionRequest{
+		ChangeSummary: "Initial release",
+	}, teamHeaders)
+	if publishV1.Code != http.StatusCreated {
+		t.Fatalf("expected publish version 1 to return 201, got %d (%s)", publishV1.Code, publishV1.Body.String())
+	}
+	version1 := decodeJSON[StudyGroupVersion](t, publishV1)
+	if version1.VersionNumber != 1 || version1.NoteCount != 1 || version1.CardCount != 1 {
+		t.Fatalf("expected initial version metadata to reflect source deck, got %+v", version1)
+	}
+
+	inviteMember := doJSONRequestWithHeaders(t, env.router, http.MethodPost, fmt.Sprintf("/api/study-groups/%s/members", groupID), InviteStudyGroupMemberRequest{
+		Email: memberClient.user.Email,
+		Role:  "member",
+	}, teamHeaders)
+	if inviteMember.Code != http.StatusCreated {
+		t.Fatalf("expected member invite to return 201, got %d (%s)", inviteMember.Code, inviteMember.Body.String())
+	}
+	invite := decodeJSON[StudyGroupMember](t, inviteMember)
+	if invite.InviteToken == "" {
+		t.Fatalf("expected invite token to be returned, got %+v", invite)
+	}
+
+	joinGroup := doJSONRequest(t, memberClient.router, http.MethodPost, "/api/study-groups/join", JoinStudyGroupRequest{
+		Token:                  invite.InviteToken,
+		DestinationWorkspaceID: memberClient.workspace.ID,
+		InstallLatest:          false,
+	})
+	if joinGroup.Code != http.StatusOK {
+		t.Fatalf("expected join group 200, got %d (%s)", joinGroup.Code, joinGroup.Body.String())
+	}
+	memberDetailAfterJoin := decodeJSON[StudyGroupDetail](t, joinGroup)
+	if memberDetailAfterJoin.Role != "member" || memberDetailAfterJoin.MembershipStatus != "active" {
+		t.Fatalf("expected joined member to be active member, got role=%q status=%q", memberDetailAfterJoin.Role, memberDetailAfterJoin.MembershipStatus)
+	}
+	if memberDetailAfterJoin.CurrentUserInstall != nil {
+		t.Fatalf("expected join without installLatest to leave current install nil, got %+v", memberDetailAfterJoin.CurrentUserInstall)
+	}
+
+	ownerInstallRR := doJSONRequest(t, env.router, http.MethodPost, fmt.Sprintf("/api/study-groups/%s/installs", groupID), InstallStudyGroupDeckRequest{})
+	if ownerInstallRR.Code != http.StatusCreated {
+		t.Fatalf("expected owner install 201, got %d (%s)", ownerInstallRR.Code, ownerInstallRR.Body.String())
+	}
+	ownerInstall := decodeJSON[StudyGroupInstall](t, ownerInstallRR)
+
+	memberInstallRR := doJSONRequest(t, memberClient.router, http.MethodPost, fmt.Sprintf("/api/study-groups/%s/installs", groupID), InstallStudyGroupDeckRequest{
+		DestinationWorkspaceID: memberClient.workspace.ID,
+	})
+	if memberInstallRR.Code != http.StatusCreated {
+		t.Fatalf("expected member install 201, got %d (%s)", memberInstallRR.Code, memberInstallRR.Body.String())
+	}
+	memberInstall := decodeJSON[StudyGroupInstall](t, memberInstallRR)
+	if memberInstall.SourceVersionNumber != 1 || memberInstall.Status != "active" || memberInstall.SyncState != "clean" {
+		t.Fatalf("expected clean active install on version 1, got %+v", memberInstall)
+	}
+	if memberInstall.InstalledDeckID == ownerInstall.InstalledDeckID {
+		t.Fatalf("expected personal installs to create separate deck copies, got same deck id %d", memberInstall.InstalledDeckID)
+	}
+
+	var ownerCardID int64
+	if err := env.store.db.QueryRow(`SELECT id FROM cards WHERE deck_id = ? ORDER BY id ASC LIMIT 1`, ownerInstall.InstalledDeckID).Scan(&ownerCardID); err != nil {
+		t.Fatalf("failed to load owner installed deck card: %v", err)
+	}
+	var memberCardID int64
+	if err := env.store.db.QueryRow(`SELECT id FROM cards WHERE deck_id = ? ORDER BY id ASC LIMIT 1`, memberInstall.InstalledDeckID).Scan(&memberCardID); err != nil {
+		t.Fatalf("failed to load member installed deck card: %v", err)
+	}
+
+	ownerDueBefore := doRawRequest(env.router, http.MethodGet, fmt.Sprintf("/api/decks/%d/due?limit=10", ownerInstall.InstalledDeckID), "")
+	if ownerDueBefore.Code != http.StatusOK {
+		t.Fatalf("expected owner due queue 200, got %d (%s)", ownerDueBefore.Code, ownerDueBefore.Body.String())
+	}
+	if cards := decodeJSON[[]Card](t, ownerDueBefore); len(cards) != 1 {
+		t.Fatalf("expected owner installed deck due count to start at 1, got %d", len(cards))
+	}
+
+	memberDueBefore := doRawRequest(memberClient.router, http.MethodGet, fmt.Sprintf("/api/decks/%d/due?limit=10", memberInstall.InstalledDeckID), "")
+	if memberDueBefore.Code != http.StatusOK {
+		t.Fatalf("expected member due queue 200, got %d (%s)", memberDueBefore.Code, memberDueBefore.Body.String())
+	}
+	if cards := decodeJSON[[]Card](t, memberDueBefore); len(cards) != 1 {
+		t.Fatalf("expected member installed deck due count to start at 1, got %d", len(cards))
+	}
+
+	memberAnswer := doJSONRequest(t, memberClient.router, http.MethodPost, fmt.Sprintf("/api/cards/%d/answer", memberCardID), AnswerCardRequest{
+		Rating:      3,
+		TimeTakenMs: 850,
+	})
+	if memberAnswer.Code != http.StatusOK {
+		t.Fatalf("expected member answer 200, got %d (%s)", memberAnswer.Code, memberAnswer.Body.String())
+	}
+
+	ownerDueAfterMemberAnswer := doRawRequest(env.router, http.MethodGet, fmt.Sprintf("/api/decks/%d/due?limit=10", ownerInstall.InstalledDeckID), "")
+	if ownerDueAfterMemberAnswer.Code != http.StatusOK {
+		t.Fatalf("expected owner due queue after member answer 200, got %d (%s)", ownerDueAfterMemberAnswer.Code, ownerDueAfterMemberAnswer.Body.String())
+	}
+	if cards := decodeJSON[[]Card](t, ownerDueAfterMemberAnswer); len(cards) != 1 {
+		t.Fatalf("expected owner due queue to stay unchanged after member studies personal copy, got %d", len(cards))
+	}
+
+	ownerAnswer := doJSONRequest(t, env.router, http.MethodPost, fmt.Sprintf("/api/cards/%d/answer", ownerCardID), AnswerCardRequest{
+		Rating:      3,
+		TimeTakenMs: 900,
+	})
+	if ownerAnswer.Code != http.StatusOK {
+		t.Fatalf("expected owner answer 200, got %d (%s)", ownerAnswer.Code, ownerAnswer.Body.String())
+	}
+
+	createNoteForTest(t, env, CreateNoteRequest{
+		TypeID: "Basic",
+		DeckID: 1,
+		FieldVals: map[string]string{
+			"Front": "Source deck card 2",
+			"Back":  "Answer 2",
+		},
+	}, nil)
+
+	publishV2 := doJSONRequestWithHeaders(t, env.router, http.MethodPost, fmt.Sprintf("/api/study-groups/%s/versions", groupID), PublishStudyGroupVersionRequest{
+		ChangeSummary: "Added a second source card",
+	}, teamHeaders)
+	if publishV2.Code != http.StatusCreated {
+		t.Fatalf("expected publish version 2 to return 201, got %d (%s)", publishV2.Code, publishV2.Body.String())
+	}
+	version2 := decodeJSON[StudyGroupVersion](t, publishV2)
+	if version2.VersionNumber != 2 || version2.NoteCount != 2 || version2.CardCount != 2 {
+		t.Fatalf("expected version 2 metadata to reflect updated source deck, got %+v", version2)
+	}
+
+	memberDetailBeforeUpdateRR := doRawRequest(memberClient.router, http.MethodGet, fmt.Sprintf("/api/study-groups/%s", groupID), "")
+	if memberDetailBeforeUpdateRR.Code != http.StatusOK {
+		t.Fatalf("expected member detail before update 200, got %d (%s)", memberDetailBeforeUpdateRR.Code, memberDetailBeforeUpdateRR.Body.String())
+	}
+	memberDetailBeforeUpdate := decodeJSON[StudyGroupDetail](t, memberDetailBeforeUpdateRR)
+	if !memberDetailBeforeUpdate.UpdateAvailable {
+		t.Fatalf("expected updateAvailable=true after publishing a newer source version")
+	}
+	if memberDetailBeforeUpdate.CurrentUserInstall == nil || memberDetailBeforeUpdate.CurrentUserInstall.SourceVersionNumber != 1 {
+		t.Fatalf("expected member current install to still point at version 1 before update, got %+v", memberDetailBeforeUpdate.CurrentUserInstall)
+	}
+
+	updateInstallRR := doJSONRequest(t, memberClient.router, http.MethodPost, fmt.Sprintf("/api/study-groups/%s/installs/%s/update", groupID, memberInstall.ID), UpdateStudyGroupInstallRequest{})
+	if updateInstallRR.Code != http.StatusOK {
+		t.Fatalf("expected install update 200, got %d (%s)", updateInstallRR.Code, updateInstallRR.Body.String())
+	}
+	memberInstallV2 := decodeJSON[StudyGroupInstall](t, updateInstallRR)
+	if memberInstallV2.ID == memberInstall.ID {
+		t.Fatalf("expected install update to create a fresh install record")
+	}
+	if memberInstallV2.SourceVersionNumber != 2 || memberInstallV2.Status != "active" || memberInstallV2.SyncState != "clean" {
+		t.Fatalf("expected active clean version 2 install after update, got %+v", memberInstallV2)
+	}
+
+	oldInstall, err := env.store.GetStudyGroupInstall(memberInstall.ID)
+	if err != nil {
+		t.Fatalf("failed to reload superseded install: %v", err)
+	}
+	if oldInstall.Status != "superseded" || oldInstall.SupersededByInstallID != memberInstallV2.ID {
+		t.Fatalf("expected original install to be superseded by the new install, got %+v", oldInstall)
+	}
+
+	oldNotes, oldCards, err := env.store.GetDeckContentSummary(memberInstall.InstalledDeckID)
+	if err != nil {
+		t.Fatalf("failed to read original install summary: %v", err)
+	}
+	if oldNotes != 1 || oldCards != 1 {
+		t.Fatalf("expected original install copy to remain intact on version 1, got notes=%d cards=%d", oldNotes, oldCards)
+	}
+	newNotes, newCards, err := env.store.GetDeckContentSummary(memberInstallV2.InstalledDeckID)
+	if err != nil {
+		t.Fatalf("failed to read updated install summary: %v", err)
+	}
+	if newNotes != 2 || newCards != 2 {
+		t.Fatalf("expected updated install copy to reflect version 2 content, got notes=%d cards=%d", newNotes, newCards)
+	}
+
+	renameInstallDeck := doJSONRequest(t, memberClient.router, http.MethodPatch, fmt.Sprintf("/api/decks/%d", memberInstallV2.InstalledDeckID), UpdateDeckRequest{
+		Name: "Forked Personal Copy",
+	})
+	if renameInstallDeck.Code != http.StatusOK {
+		t.Fatalf("expected renaming installed deck to succeed, got %d (%s)", renameInstallDeck.Code, renameInstallDeck.Body.String())
+	}
+
+	memberDetailAfterForkRR := doRawRequest(memberClient.router, http.MethodGet, fmt.Sprintf("/api/study-groups/%s", groupID), "")
+	if memberDetailAfterForkRR.Code != http.StatusOK {
+		t.Fatalf("expected member detail after fork 200, got %d (%s)", memberDetailAfterForkRR.Code, memberDetailAfterForkRR.Body.String())
+	}
+	memberDetailAfterFork := decodeJSON[StudyGroupDetail](t, memberDetailAfterForkRR)
+	if memberDetailAfterFork.CurrentUserInstall == nil || memberDetailAfterFork.CurrentUserInstall.SyncState != "forked" {
+		t.Fatalf("expected renamed installed copy to be marked forked, got %+v", memberDetailAfterFork.CurrentUserInstall)
+	}
+
+	dashboardRR := doRawRequest(env.router, http.MethodGet, fmt.Sprintf("/api/study-groups/%s/dashboard", groupID), "")
+	if dashboardRR.Code != http.StatusOK {
+		t.Fatalf("expected study group dashboard 200, got %d (%s)", dashboardRR.Code, dashboardRR.Body.String())
+	}
+	dashboard := decodeJSON[StudyGroupDashboard](t, dashboardRR)
+	if dashboard.MemberCount != 2 {
+		t.Fatalf("expected dashboard memberCount=2, got %d", dashboard.MemberCount)
+	}
+	if dashboard.ActiveMembers7D != 2 {
+		t.Fatalf("expected dashboard activeMembers7d=2 after both members studied, got %d", dashboard.ActiveMembers7D)
+	}
+	if dashboard.Reviews7D != 2 {
+		t.Fatalf("expected dashboard reviews7d=2 after two answers, got %d", dashboard.Reviews7D)
+	}
+	if dashboard.LatestVersionNumber != 2 {
+		t.Fatalf("expected dashboard latestVersionNumber=2, got %d", dashboard.LatestVersionNumber)
+	}
+	if dashboard.LatestVersionAdoption != 1 {
+		t.Fatalf("expected dashboard latestVersionAdoption=1 with one active v2 install, got %d", dashboard.LatestVersionAdoption)
+	}
+
+	removeInstallRR := doJSONRequest(t, memberClient.router, http.MethodDelete, fmt.Sprintf("/api/study-groups/%s/installs/%s", groupID, memberInstallV2.ID), struct{}{})
+	if removeInstallRR.Code != http.StatusNoContent {
+		t.Fatalf("expected remove install 204, got %d (%s)", removeInstallRR.Code, removeInstallRR.Body.String())
+	}
+	removedInstall, err := env.store.GetStudyGroupInstall(memberInstallV2.ID)
+	if err != nil {
+		t.Fatalf("failed to reload removed install: %v", err)
+	}
+	if removedInstall.Status != "removed" {
+		t.Fatalf("expected removed install status=removed, got %+v", removedInstall)
+	}
+	if _, err := env.store.GetDeck(memberInstallV2.InstalledDeckID); err == nil {
+		t.Fatalf("expected removing an install to delete its copied deck %d", memberInstallV2.InstalledDeckID)
+	}
+}
+
 func TestAPI_NoteTypeFieldTemplateEmptyAndBackupEndpoints(t *testing.T) {
 	env := setupAPITestEnv(t)
 

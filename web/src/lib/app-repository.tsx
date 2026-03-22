@@ -5,9 +5,11 @@ import {
   checkDuplicate,
   createBackup,
   fetchDashboard,
+  createStudyGroup,
   createDeck,
   createTemplate,
   createNote,
+  deleteStudyGroupMember,
   deleteDeck,
   deleteNote,
   deleteTemplate,
@@ -24,6 +26,13 @@ import {
   fetchNoteType,
   fetchNoteTypes,
   fetchSession,
+  fetchStudyGroup,
+  fetchStudyGroupDashboard,
+  fetchStudyGroups,
+  fetchStudyGroupVersions,
+  installStudyGroupDeck,
+  inviteStudyGroupMember,
+  joinStudyGroup,
   requestOTP,
   verifyOTP,
   findEmptyCards,
@@ -31,11 +40,16 @@ import {
   importNotesFile,
   listBackups,
   logout,
+  publishStudyGroupVersion,
   removeField,
+  removeStudyGroupInstall,
   renameField,
   reorderFields,
   setFieldOptions,
   setSortField,
+  updateStudyGroup,
+  updateStudyGroupInstall,
+  updateStudyGroupMember,
   updateDeck,
   updateNote,
   updateCard,
@@ -60,16 +74,30 @@ import {
   type FieldsResponse,
   type ImportFileRequest,
   type ImportNotesResponse,
+  type InstallStudyGroupDeckRequest,
+  type InviteStudyGroupMemberRequest,
+  type JoinStudyGroupRequest,
   type ListNotesParams,
   type ListNotesResponse,
   type Note,
   type NoteType,
+  type CreateStudyGroupRequest,
+  type PublishStudyGroupVersionRequest,
   type RenameFieldRequest,
   type ReorderFieldsRequest,
+  type StudyGroupDashboard,
+  type StudyGroupDetail,
+  type StudyGroupInstall,
+  type StudyGroupMember,
+  type StudyGroupSummary,
+  type StudyGroupVersion,
   type TemplatesResponse,
   type UpdateCardRequest,
   type UpdateDeckRequest,
   type UpdateNoteRequest,
+  type UpdateStudyGroupInstallRequest,
+  type UpdateStudyGroupMemberRequest,
+  type UpdateStudyGroupRequest,
   type UpdateTemplateRequest,
   type AuthSessionResponse,
   type OTPRequestResponse,
@@ -115,6 +143,20 @@ export interface AppRepository {
   requestOTP(email: string): Promise<OTPRequestResponse>
   verifyOTP(email: string, code: string): Promise<AuthSessionResponse>
   fetchEntitlements(): Promise<Entitlements>
+  fetchStudyGroups(): Promise<StudyGroupSummary[]>
+  createStudyGroup(req: CreateStudyGroupRequest): Promise<StudyGroupDetail>
+  fetchStudyGroup(id: string): Promise<StudyGroupDetail>
+  updateStudyGroup(id: string, req: UpdateStudyGroupRequest): Promise<StudyGroupDetail>
+  inviteStudyGroupMember(id: string, req: InviteStudyGroupMemberRequest): Promise<StudyGroupMember>
+  updateStudyGroupMember(id: string, memberId: string, req: UpdateStudyGroupMemberRequest): Promise<StudyGroupMember>
+  deleteStudyGroupMember(id: string, memberId: string): Promise<void>
+  joinStudyGroup(req: JoinStudyGroupRequest): Promise<StudyGroupDetail>
+  fetchStudyGroupVersions(id: string): Promise<StudyGroupVersion[]>
+  publishStudyGroupVersion(id: string, req: PublishStudyGroupVersionRequest): Promise<StudyGroupVersion>
+  installStudyGroupDeck(id: string, req: InstallStudyGroupDeckRequest): Promise<StudyGroupInstall>
+  updateStudyGroupInstall(id: string, installId: string, req?: UpdateStudyGroupInstallRequest): Promise<StudyGroupInstall>
+  removeStudyGroupInstall(id: string, installId: string): Promise<void>
+  fetchStudyGroupDashboard(id: string): Promise<StudyGroupDashboard>
   logout(): Promise<{ok: boolean}>
 }
 
@@ -158,6 +200,20 @@ export const remoteRepository: AppRepository = {
   requestOTP,
   verifyOTP,
   fetchEntitlements,
+  fetchStudyGroups,
+  createStudyGroup,
+  fetchStudyGroup,
+  updateStudyGroup,
+  inviteStudyGroupMember,
+  updateStudyGroupMember,
+  deleteStudyGroupMember,
+  joinStudyGroup,
+  fetchStudyGroupVersions,
+  publishStudyGroupVersion,
+  installStudyGroupDeck,
+  updateStudyGroupInstall,
+  removeStudyGroupInstall,
+  fetchStudyGroupDashboard,
   logout,
 }
 
@@ -269,6 +325,20 @@ export function createLocalRepository(): AppRepository {
           enterprise: false,
         },
       }),
+    fetchStudyGroups: () => notImplemented('fetchStudyGroups'),
+    createStudyGroup: () => notImplemented('createStudyGroup'),
+    fetchStudyGroup: () => notImplemented('fetchStudyGroup'),
+    updateStudyGroup: () => notImplemented('updateStudyGroup'),
+    inviteStudyGroupMember: () => notImplemented('inviteStudyGroupMember'),
+    updateStudyGroupMember: () => notImplemented('updateStudyGroupMember'),
+    deleteStudyGroupMember: () => notImplemented('deleteStudyGroupMember'),
+    joinStudyGroup: () => notImplemented('joinStudyGroup'),
+    fetchStudyGroupVersions: () => notImplemented('fetchStudyGroupVersions'),
+    publishStudyGroupVersion: () => notImplemented('publishStudyGroupVersion'),
+    installStudyGroupDeck: () => notImplemented('installStudyGroupDeck'),
+    updateStudyGroupInstall: () => notImplemented('updateStudyGroupInstall'),
+    removeStudyGroupInstall: () => notImplemented('removeStudyGroupInstall'),
+    fetchStudyGroupDashboard: () => notImplemented('fetchStudyGroupDashboard'),
     logout: () => Promise.resolve({ok: true}),
   }
 }

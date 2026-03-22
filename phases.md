@@ -16,8 +16,8 @@ Status legend:
 | --- | --- | --- |
 | Phase 0 | `done` | Mobile-first app foundation, Vutadex dark/light theme system, mobile shell, dashboard aggregation, and responsive rewrites for core app routes. |
 | Phase 1 | `done` | Shared-content / per-user-review-state split for authenticated study, due queues, deck stats, and revlog ownership. |
-| Phase 2 | `planned` | Real Study Groups CRUD, membership, invites, dashboards, and Team/Enterprise gating. |
-| Phase 3 | `planned` | Marketplace foundation: listings, publish flow, install flow, and listing detail pages. |
+| Phase 2 | `in_progress` | Study Groups foundation: canonical source deck, published versions, invites, personal installs, and fork/update state. |
+| Phase 3 | `planned` | Marketplace foundation: listings, publish flow, versioned source installs, and listing detail pages. |
 | Phase 4 | `later` | Paid marketplace and creator payouts via Stripe Connect Express. |
 | Phase 5 | `later` | AI note-to-card generation, analytics, and study protocols. |
 | Phase 6 | `later` | Real-time collaborative editing using Hocuspocus/Yjs. |
@@ -61,14 +61,12 @@ Status legend:
 ## Next Up
 
 ### Phase 2
-- Replace the Study Groups placeholder with real routes and APIs.
-- Add:
-  - group list/detail/create/edit
-  - invites and join flow
-  - member management
-  - roles: `owner`, `admin`, `member`
-  - group dashboard with shared decks, activity, and due-card totals
-- Gate creation and management to Team and Enterprise.
+- Finish the remaining Phase 2 hardening work around Study Groups.
+- Remaining work:
+  - broaden the deck copy/install pipeline beyond same-collection installs
+  - polish Study Groups mobile UX and empty/error states
+  - expand automated coverage around install removal, dashboard behavior, and fork-state edge cases
+  - keep live shared study, auto-sync, schedule migration, and real-time collaboration out of scope
 
 ## Notes
 
@@ -168,13 +166,13 @@ Exit criteria:
 
 ### Phase 2: Study Groups
 
-Status: `planned`
+Status: `in_progress`
 
 Objective:
-- Turn the placeholder Study Groups surface into a real collaborative feature for Team and Enterprise workspaces.
+- Deliver safe group-based distribution and accountability without shared review-state side effects.
 
 User-facing goal:
-- Let teams create deck-centric study groups with membership, shared decks, activity visibility, and role-based management.
+- Let teams publish source-deck updates and invite members to install personal study copies without affecting each other’s review cycles.
 
 Primary scope:
 - Replace the placeholder `/study-groups` page with:
@@ -183,12 +181,19 @@ Primary scope:
   - create/edit flows
   - invite/join flows
   - member management
+  - install/update flows
   - group dashboard
 
 Core product rules:
-- Study Groups are separate from organizations/workspaces.
-- Groups are deck-centric.
-- Creation and management are Team/Enterprise only.
+- Study Groups are owned by Team or Enterprise workspaces.
+- Study Groups are invite-only in this phase.
+- Groups are source-deck centric.
+- Owners and admins maintain a canonical source deck in the owning workspace.
+- Members study their own installed copies, not the source deck directly.
+- Updates are opt-in.
+- Updating installs a fresh new local copy and keeps the old copy intact.
+- Member edits to an installed copy mark that install as `forked`.
+- No review-history preservation across source-version updates in this phase.
 - Invited users can join regardless of their own plan.
 - Roles:
   - `owner`
@@ -196,24 +201,49 @@ Core product rules:
   - `member`
 
 Backend scope:
-- Add Study Group APIs for CRUD, invites, join, and membership changes.
-- Add group dashboard payloads.
+- Add Study Group APIs for CRUD, invites, join, membership changes, version publishing, installs, and install updates.
+- Add Study Group data model support for:
+  - published source versions
+  - member installs
+  - fork state
+  - audit events
+- Add group dashboard payloads focused on lightweight activity and version adoption.
 - Enforce plan gating and role permissions.
 
 Frontend scope:
 - Mobile-first Study Groups routes and sheets.
 - Member list and invite flows.
-- Group-owned/shared deck views.
-- Dashboard cards for activity, due totals, and participation.
+- Source version and install status cards.
+- Join flow with workspace selection.
+- Dashboard cards for activity, latest version, and adoption.
+
+Current implementation snapshot:
+- Implemented:
+  - group CRUD
+  - invite and join flow
+  - role management
+  - explicit source version publishing
+  - personal installs
+  - fresh-copy install updates
+  - install removal
+  - fork detection on installed copies
+  - lightweight dashboard
+  - mobile-first `/study-groups`, `/study-groups/:groupId`, and join flow UI
+- Remaining limitation before Phase 2 can be marked `done`:
+  - deck copy/install currently supports only workspaces backed by the same collection; true cross-collection installs still need to be implemented
 
 Dependencies:
-- Phase 1 per-user review state must exist first so group members can share content without sharing due queues.
+- Phase 1 is retained and required so group members can install shared content without sharing due queues.
 
 Exit criteria:
 - Team/Enterprise workspace can create a group.
 - Invited user can join.
 - Group membership and role management work.
-- Shared deck/group pages reflect real member-scoped study state.
+- Owner/admin can publish a source version.
+- Member can install the latest version into a workspace.
+- Member can update to a newer version as a fresh copy.
+- One member studying an installed group deck does not affect another member’s due queue.
+- Editing an installed member copy marks that install as `forked`.
 
 ### Phase 3: Marketplace Foundation
 
@@ -251,7 +281,8 @@ Publishing rules:
 Install model:
 - Installing a listing creates a workspace-local deck install linked back to the source listing.
 - Review history does not copy.
-- Installed content can receive source attribution and future update hooks.
+- Installed content keeps source attribution and version metadata.
+- Marketplace should reuse the source-version and personal-install model introduced in Phase 2 where possible.
 
 Dependencies:
 - Phase 1 per-user review state.

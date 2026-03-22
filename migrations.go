@@ -30,6 +30,8 @@ func (s *SQLiteStore) migrate() error {
 		{4, "add_otp_auth_schema", s.runMigration004_AddOTPAuthSchema},
 		{5, "add_phase1_foundation_schema", s.runMigration005_AddPhase1FoundationSchema},
 		{6, "add_per_user_review_state", s.runMigration006_AddPerUserReviewState},
+		{7, "add_study_group_versions_and_installs", s.runMigration007_AddStudyGroupVersioningSchema},
+		{8, "retain_removed_study_group_installs", s.runMigration008_RetainRemovedStudyGroupInstalls},
 	}
 
 	for _, m := range migrations {
@@ -624,5 +626,129 @@ func (s *SQLiteStore) runMigration006_AddPerUserReviewState() error {
 		}
 	}
 
+	return nil
+}
+
+func (s *SQLiteStore) runMigration007_AddStudyGroupVersioningSchema() error {
+	statements := []string{
+		`ALTER TABLE study_group_members ADD COLUMN invite_token TEXT`,
+		`ALTER TABLE study_group_members ADD COLUMN invite_expires_at INTEGER`,
+		`ALTER TABLE study_group_members ADD COLUMN joined_at INTEGER`,
+		`ALTER TABLE study_group_members ADD COLUMN removed_at INTEGER`,
+		`
+		CREATE TABLE IF NOT EXISTS study_group_versions (
+			id TEXT PRIMARY KEY,
+			study_group_id TEXT NOT NULL,
+			version_number INTEGER NOT NULL,
+			source_deck_id INTEGER NOT NULL,
+			published_by_user_id TEXT NOT NULL,
+			change_summary TEXT NOT NULL DEFAULT '',
+			note_count INTEGER NOT NULL DEFAULT 0,
+			card_count INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL,
+			UNIQUE(study_group_id, version_number),
+			FOREIGN KEY (study_group_id) REFERENCES study_groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (source_deck_id) REFERENCES decks(id) ON DELETE CASCADE,
+			FOREIGN KEY (published_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+		`,
+		`
+		CREATE TABLE IF NOT EXISTS study_group_installs (
+			id TEXT PRIMARY KEY,
+			study_group_id TEXT NOT NULL,
+			study_group_member_id TEXT NOT NULL,
+			destination_workspace_id TEXT NOT NULL,
+			installed_deck_id INTEGER NOT NULL,
+			source_version_number INTEGER NOT NULL,
+			status TEXT NOT NULL,
+			sync_state TEXT NOT NULL,
+			superseded_by_install_id TEXT,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			FOREIGN KEY (study_group_id) REFERENCES study_groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (study_group_member_id) REFERENCES study_group_members(id) ON DELETE CASCADE,
+			FOREIGN KEY (destination_workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+			FOREIGN KEY (installed_deck_id) REFERENCES decks(id) ON DELETE CASCADE,
+			FOREIGN KEY (superseded_by_install_id) REFERENCES study_group_installs(id) ON DELETE SET NULL
+		)
+		`,
+		`
+		CREATE TABLE IF NOT EXISTS study_group_events (
+			id TEXT PRIMARY KEY,
+			study_group_id TEXT NOT NULL,
+			actor_user_id TEXT,
+			event_type TEXT NOT NULL,
+			payload TEXT NOT NULL DEFAULT '',
+			created_at INTEGER NOT NULL,
+			FOREIGN KEY (study_group_id) REFERENCES study_groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (actor_user_id) REFERENCES users(id) ON DELETE SET NULL
+		)
+		`,
+		`CREATE INDEX IF NOT EXISTS idx_study_group_members_user ON study_group_members(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_study_group_members_token ON study_group_members(invite_token)`,
+		`CREATE INDEX IF NOT EXISTS idx_study_group_versions_group ON study_group_versions(study_group_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_study_group_installs_group ON study_group_installs(study_group_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_study_group_installs_member ON study_group_installs(study_group_member_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_study_group_installs_workspace ON study_group_installs(destination_workspace_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_study_group_installs_deck ON study_group_installs(installed_deck_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_study_group_events_group ON study_group_events(study_group_id)`,
+	}
+
+	for _, statement := range statements {
+		if _, err := s.db.Exec(statement); err != nil && !isIgnorableMigrationError(err) {
+			return fmt.Errorf("failed to apply study group versioning migration statement: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) runMigration008_RetainRemovedStudyGroupInstalls() error {
+	statements := []string{
+		`ALTER TABLE study_group_installs RENAME TO study_group_installs_old`,
+		`
+		CREATE TABLE study_group_installs (
+			id TEXT PRIMARY KEY,
+			study_group_id TEXT NOT NULL,
+			study_group_member_id TEXT NOT NULL,
+			destination_workspace_id TEXT NOT NULL,
+			installed_deck_id INTEGER,
+			source_version_number INTEGER NOT NULL,
+			status TEXT NOT NULL,
+			sync_state TEXT NOT NULL,
+			superseded_by_install_id TEXT,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			FOREIGN KEY (study_group_id) REFERENCES study_groups(id) ON DELETE CASCADE,
+			FOREIGN KEY (study_group_member_id) REFERENCES study_group_members(id) ON DELETE CASCADE,
+			FOREIGN KEY (destination_workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+			FOREIGN KEY (installed_deck_id) REFERENCES decks(id) ON DELETE SET NULL,
+			FOREIGN KEY (superseded_by_install_id) REFERENCES study_group_installs(id) ON DELETE SET NULL
+		)
+		`,
+		`
+		INSERT INTO study_group_installs (
+			id, study_group_id, study_group_member_id, destination_workspace_id,
+			installed_deck_id, source_version_number, status, sync_state,
+			superseded_by_install_id, created_at, updated_at
+		)
+		SELECT
+			id, study_group_id, study_group_member_id, destination_workspace_id,
+			installed_deck_id, source_version_number, status, sync_state,
+			superseded_by_install_id, created_at, updated_at
+		FROM study_group_installs_old
+		`,
+		`DROP TABLE study_group_installs_old`,
+		`CREATE INDEX IF NOT EXISTS idx_study_group_installs_group ON study_group_installs(study_group_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_study_group_installs_member ON study_group_installs(study_group_member_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_study_group_installs_workspace ON study_group_installs(destination_workspace_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_study_group_installs_deck ON study_group_installs(installed_deck_id)`,
+	}
+
+	for _, stmt := range statements {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return err
+		}
+	}
 	return nil
 }

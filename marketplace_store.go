@@ -138,10 +138,10 @@ func (s *SQLiteStore) GetMarketplaceListingBySlug(slug string) (*MarketplaceList
 
 func scanMarketplaceListing(scanner interface{ Scan(dest ...any) error }) (*MarketplaceListing, error) {
 	var (
-		listing             MarketplaceListing
-		tagsJSON            string
-		createdAtUnix       int64
-		updatedAtUnix       int64
+		listing       MarketplaceListing
+		tagsJSON      string
+		createdAtUnix int64
+		updatedAtUnix int64
 	)
 	if err := scanner.Scan(
 		&listing.ID,
@@ -293,12 +293,12 @@ func (s *SQLiteStore) GetCurrentMarketplaceInstall(listingID, userID string) (*M
 
 func scanMarketplaceInstall(scanner interface{ Scan(dest ...any) error }) (*MarketplaceInstall, error) {
 	var (
-		install          MarketplaceInstall
-		installedDeckID  sql.NullInt64
-		deckName         sql.NullString
-		supersededByID   sql.NullString
-		createdAtUnix    int64
-		updatedAtUnix    int64
+		install         MarketplaceInstall
+		installedDeckID sql.NullInt64
+		deckName        sql.NullString
+		supersededByID  sql.NullString
+		createdAtUnix   int64
+		updatedAtUnix   int64
 	)
 	if err := scanner.Scan(
 		&install.ID,
@@ -413,6 +413,9 @@ func (s *SQLiteStore) BuildMarketplaceListingSummary(listing *MarketplaceListing
 		summary.LatestVersionNumber = latestVersion.VersionNumber
 	}
 	if userID != "" {
+		if license, err := s.GetMarketplaceLicense(listing.ID, userID); err == nil && license.Status == "active" {
+			summary.CurrentUserLicense = license
+		}
 		if install, err := s.GetCurrentMarketplaceInstall(listing.ID, userID); err == nil {
 			summary.CurrentUserInstall = install
 			if summary.LatestVersionNumber > 0 && install.SourceVersionNumber < summary.LatestVersionNumber {
@@ -476,11 +479,12 @@ func (s *SQLiteStore) BuildMarketplaceListingDetail(ref, userID, workspaceID str
 	}
 
 	detail := &MarketplaceListingDetail{
-		Listing:         summary,
+		Listing:            summary,
+		CurrentUserLicense: summary.CurrentUserLicense,
 		CurrentUserInstall: summary.CurrentUserInstall,
-		UpdateAvailable: summary.UpdateAvailable,
-		CanEdit:         summary.CanEdit,
-		CanPublish:      summary.CanEdit,
+		UpdateAvailable:    summary.UpdateAvailable,
+		CanEdit:            summary.CanEdit,
+		CanPublish:         summary.CanEdit,
 	}
 	if latestVersion, err := s.GetLatestMarketplaceListingVersion(listing.ID); err == nil {
 		detail.LatestVersion = latestVersion

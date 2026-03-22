@@ -83,7 +83,7 @@ fly deploy
 
 ## Stripe billing env (app backend)
 
-Set these Fly secrets for Stripe checkout + webhook handling:
+Set these Fly secrets for Stripe subscription checkout + webhook handling:
 
 ```bash
 fly secrets set \
@@ -93,6 +93,32 @@ fly secrets set \
   VUTADEX_STRIPE_CHECKOUT_SUCCESS_URL="https://app.vutadex.com/team/settings?billing=success" \
   VUTADEX_STRIPE_CHECKOUT_CANCEL_URL="https://app.vutadex.com/team/settings?billing=canceled"
 ```
+
+Then redeploy app:
+
+```bash
+fly deploy
+```
+
+## Marketplace commerce env (app backend)
+
+Set these Fly secrets to enable live marketplace creator onboarding and premium deck checkout:
+
+```bash
+fly secrets set \
+  VUTADEX_STRIPE_SECRET_KEY="sk_live_..." \
+  VUTADEX_STRIPE_WEBHOOK_SECRET="whsec_..." \
+  VUTADEX_STRIPE_CONNECT_COUNTRY="US" \
+  VUTADEX_STRIPE_CONNECT_REFRESH_URL="https://app.vutadex.com/marketplace/publish?creator=refresh" \
+  VUTADEX_STRIPE_CONNECT_RETURN_URL="https://app.vutadex.com/marketplace/publish?creator=return" \
+  VUTADEX_MARKETPLACE_CHECKOUT_SUCCESS_URL="https://app.vutadex.com/marketplace?checkout=success" \
+  VUTADEX_MARKETPLACE_CHECKOUT_CANCEL_URL="https://app.vutadex.com/marketplace?checkout=cancelled" \
+  VUTADEX_MARKETPLACE_PLATFORM_FEE_BPS="1500"
+```
+
+Recommended Stripe webhook targets:
+- `POST /api/marketplace/webhook` for marketplace checkout/account events
+- `POST /api/billing/webhook` for subscription billing events
 
 Then redeploy app:
 

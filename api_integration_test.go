@@ -289,8 +289,15 @@ func doJSONRequestWithHeaders(t *testing.T, router http.Handler, method, path st
 }
 
 func doRawRequest(router http.Handler, method, path string, body string) *httptest.ResponseRecorder {
+	return doRawRequestWithHeaders(router, method, path, body, nil)
+}
+
+func doRawRequestWithHeaders(router http.Handler, method, path string, body string, headers map[string]string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 	return rr
@@ -1289,7 +1296,7 @@ func TestAPI_MarketplacePublishingRequiresProOrHigher(t *testing.T) {
 	}
 }
 
-func TestAPI_MarketplacePremiumListingsRequirePhase4Checkout(t *testing.T) {
+func TestAPI_MarketplacePremiumListingsRequireCreatorSetupAndCheckout(t *testing.T) {
 	env := setupAPITestEnv(t)
 	memberClient := createAuthenticatedIsolatedTestClient(t, env, "marketplace-buyer@example.com", "Marketplace Buyer")
 	proHeaders := map[string]string{"X-Vutadex-Plan": "pro"}
@@ -1318,6 +1325,24 @@ func TestAPI_MarketplacePremiumListingsRequirePhase4Checkout(t *testing.T) {
 	}
 	detail := decodeJSON[MarketplaceListingDetail](t, createListing)
 
+	creatorStatus := doRawRequestWithHeaders(env.router, http.MethodGet, "/api/marketplace/creator-account/status", "", proHeaders)
+	if creatorStatus.Code != http.StatusOK {
+		t.Fatalf("expected creator status 200, got %d (%s)", creatorStatus.Code, creatorStatus.Body.String())
+	}
+	initialStatus := decodeJSON[MarketplaceCreatorAccountStatusResponse](t, creatorStatus)
+	if initialStatus.CanSellPremium || initialStatus.Account != nil {
+		t.Fatalf("expected creator premium selling to be unavailable before onboarding, got %+v", initialStatus)
+	}
+
+	startCreator := doRawRequestWithHeaders(env.router, http.MethodPost, "/api/marketplace/creator-account/start", "", proHeaders)
+	if startCreator.Code != http.StatusOK {
+		t.Fatalf("expected creator account start 200, got %d (%s)", startCreator.Code, startCreator.Body.String())
+	}
+	creatorAccount := decodeJSON[MarketplaceCreatorAccountStatusResponse](t, startCreator)
+	if !creatorAccount.CanSellPremium || creatorAccount.Account == nil || !creatorAccount.Account.ChargesEnabled || !creatorAccount.Account.PayoutsEnabled {
+		t.Fatalf("expected creator account to be premium-ready in development, got %+v", creatorAccount)
+	}
+
 	publish := doJSONRequestWithHeaders(t, env.router, http.MethodPost, fmt.Sprintf("/api/marketplace/listings/%s/publish", detail.Listing.ID), PublishMarketplaceListingRequest{
 		ChangeSummary: "Premium v1",
 	}, proHeaders)
@@ -1334,6 +1359,26 @@ func TestAPI_MarketplacePremiumListingsRequirePhase4Checkout(t *testing.T) {
 	apiErr := decodeJSON[APIErrorResponse](t, install)
 	if apiErr.Code != "marketplace_purchase_required" {
 		t.Fatalf("expected marketplace_purchase_required code, got %+v", apiErr)
+	}
+
+	checkout := doRawRequest(memberClient.router, http.MethodPost, fmt.Sprintf("/api/marketplace/listings/%s/checkout", detail.Listing.Slug), "")
+	if checkout.Code != http.StatusOK {
+		t.Fatalf("expected premium listing checkout 200, got %d (%s)", checkout.Code, checkout.Body.String())
+	}
+	checkoutResp := decodeJSON[MarketplaceCheckoutResponse](t, checkout)
+	if !checkoutResp.Completed || checkoutResp.License == nil || checkoutResp.Order.Status != "paid" {
+		t.Fatalf("expected development checkout to complete immediately with a license, got %+v", checkoutResp)
+	}
+
+	installAfterPurchase := doJSONRequest(t, memberClient.router, http.MethodPost, fmt.Sprintf("/api/marketplace/listings/%s/installs", detail.Listing.Slug), InstallMarketplaceListingRequest{
+		DestinationWorkspaceID: memberClient.workspace.ID,
+	})
+	if installAfterPurchase.Code != http.StatusCreated {
+		t.Fatalf("expected premium listing install after purchase to return 201, got %d (%s)", installAfterPurchase.Code, installAfterPurchase.Body.String())
+	}
+	installed := decodeJSON[MarketplaceInstall](t, installAfterPurchase)
+	if installed.SourceVersionNumber != 1 {
+		t.Fatalf("expected premium install to target v1, got %+v", installed)
 	}
 }
 

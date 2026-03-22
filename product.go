@@ -393,38 +393,104 @@ type MarketplaceInstall struct {
 	UpdatedAt           time.Time `json:"updatedAt"`
 }
 
+type MarketplaceCreatorAccount struct {
+	ID                    string    `json:"id"`
+	UserID                string    `json:"userId"`
+	WorkspaceID           string    `json:"workspaceId"`
+	Provider              string    `json:"provider"`
+	ProviderAccountID     string    `json:"providerAccountId"`
+	OnboardingStatus      string    `json:"onboardingStatus"`
+	DetailsSubmitted      bool      `json:"detailsSubmitted"`
+	ChargesEnabled        bool      `json:"chargesEnabled"`
+	PayoutsEnabled        bool      `json:"payoutsEnabled"`
+	OnboardingURL         string    `json:"onboardingUrl,omitempty"`
+	DashboardURL          string    `json:"dashboardUrl,omitempty"`
+	OnboardingCompletedAt time.Time `json:"onboardingCompletedAt,omitempty"`
+	CreatedAt             time.Time `json:"createdAt"`
+	UpdatedAt             time.Time `json:"updatedAt"`
+}
+
+type MarketplaceOrder struct {
+	ID                        string    `json:"id"`
+	ListingID                 string    `json:"listingId"`
+	ListingVersionNumber      int       `json:"listingVersionNumber"`
+	BuyerUserID               string    `json:"buyerUserId"`
+	BuyerWorkspaceID          string    `json:"buyerWorkspaceId"`
+	CreatorUserID             string    `json:"creatorUserId"`
+	CreatorAccountID          string    `json:"creatorAccountId,omitempty"`
+	Provider                  string    `json:"provider"`
+	ProviderCheckoutSessionID string    `json:"providerCheckoutSessionId"`
+	ProviderPaymentIntentID   string    `json:"providerPaymentIntentId,omitempty"`
+	Status                    string    `json:"status"`
+	AmountCents               int       `json:"amountCents"`
+	Currency                  string    `json:"currency"`
+	PlatformFeeCents          int       `json:"platformFeeCents"`
+	CreatorAmountCents        int       `json:"creatorAmountCents"`
+	CompletedAt               time.Time `json:"completedAt,omitempty"`
+	CreatedAt                 time.Time `json:"createdAt"`
+	UpdatedAt                 time.Time `json:"updatedAt"`
+}
+
+type MarketplaceLicense struct {
+	ID                   string    `json:"id"`
+	ListingID            string    `json:"listingId"`
+	BuyerUserID          string    `json:"buyerUserId"`
+	OrderID              string    `json:"orderId"`
+	Status               string    `json:"status"`
+	GrantedVersionNumber int       `json:"grantedVersionNumber"`
+	CreatedAt            time.Time `json:"createdAt"`
+	UpdatedAt            time.Time `json:"updatedAt"`
+}
+
+type MarketplacePayout struct {
+	ID                 string    `json:"id"`
+	OrderID            string    `json:"orderId"`
+	CreatorUserID      string    `json:"creatorUserId"`
+	CreatorAccountID   string    `json:"creatorAccountId"`
+	Provider           string    `json:"provider"`
+	ProviderTransferID string    `json:"providerTransferId,omitempty"`
+	Status             string    `json:"status"`
+	AmountCents        int       `json:"amountCents"`
+	Currency           string    `json:"currency"`
+	PlatformFeeCents   int       `json:"platformFeeCents"`
+	CreatedAt          time.Time `json:"createdAt"`
+	UpdatedAt          time.Time `json:"updatedAt"`
+}
+
 type MarketplaceListingSummary struct {
-	ID                  string               `json:"id"`
-	Slug                string               `json:"slug"`
-	Title               string               `json:"title"`
-	Summary             string               `json:"summary"`
-	Description         string               `json:"description"`
-	Category            string               `json:"category"`
-	Tags                []string             `json:"tags"`
-	CoverImageURL       string               `json:"coverImageUrl"`
-	CreatorUserID       string               `json:"creatorUserId"`
-	CreatorDisplayName  string               `json:"creatorDisplayName,omitempty"`
-	CreatorEmail        string               `json:"creatorEmail,omitempty"`
-	WorkspaceID         string               `json:"workspaceId"`
-	SourceDeckID        int64                `json:"sourceDeckId"`
-	SourceDeckName      string               `json:"sourceDeckName"`
-	PriceMode           string               `json:"priceMode"`
-	PriceCents          int                  `json:"priceCents"`
-	Currency            string               `json:"currency"`
-	Status              string               `json:"status"`
-	InstallCount        int                  `json:"installCount"`
-	LatestVersionNumber int                  `json:"latestVersionNumber"`
-	CanEdit             bool                 `json:"canEdit"`
-	UpdateAvailable     bool                 `json:"updateAvailable"`
-	CurrentUserInstall  *MarketplaceInstall  `json:"currentUserInstall,omitempty"`
-	CreatedAt           time.Time            `json:"createdAt"`
-	UpdatedAt           time.Time            `json:"updatedAt"`
+	ID                  string              `json:"id"`
+	Slug                string              `json:"slug"`
+	Title               string              `json:"title"`
+	Summary             string              `json:"summary"`
+	Description         string              `json:"description"`
+	Category            string              `json:"category"`
+	Tags                []string            `json:"tags"`
+	CoverImageURL       string              `json:"coverImageUrl"`
+	CreatorUserID       string              `json:"creatorUserId"`
+	CreatorDisplayName  string              `json:"creatorDisplayName,omitempty"`
+	CreatorEmail        string              `json:"creatorEmail,omitempty"`
+	WorkspaceID         string              `json:"workspaceId"`
+	SourceDeckID        int64               `json:"sourceDeckId"`
+	SourceDeckName      string              `json:"sourceDeckName"`
+	PriceMode           string              `json:"priceMode"`
+	PriceCents          int                 `json:"priceCents"`
+	Currency            string              `json:"currency"`
+	Status              string              `json:"status"`
+	InstallCount        int                 `json:"installCount"`
+	LatestVersionNumber int                 `json:"latestVersionNumber"`
+	CanEdit             bool                `json:"canEdit"`
+	UpdateAvailable     bool                `json:"updateAvailable"`
+	CurrentUserLicense  *MarketplaceLicense `json:"currentUserLicense,omitempty"`
+	CurrentUserInstall  *MarketplaceInstall `json:"currentUserInstall,omitempty"`
+	CreatedAt           time.Time           `json:"createdAt"`
+	UpdatedAt           time.Time           `json:"updatedAt"`
 }
 
 type MarketplaceListingDetail struct {
 	Listing             MarketplaceListingSummary   `json:"listing"`
 	LatestVersion       *MarketplaceListingVersion  `json:"latestVersion,omitempty"`
 	Versions            []MarketplaceListingVersion `json:"versions"`
+	CurrentUserLicense  *MarketplaceLicense         `json:"currentUserLicense,omitempty"`
 	CurrentUserInstall  *MarketplaceInstall         `json:"currentUserInstall,omitempty"`
 	UpdateAvailable     bool                        `json:"updateAvailable"`
 	CanEdit             bool                        `json:"canEdit"`
@@ -470,4 +536,18 @@ type InstallMarketplaceListingRequest struct {
 
 type UpdateMarketplaceInstallRequest struct {
 	DestinationWorkspaceID string `json:"destinationWorkspaceId,omitempty"`
+}
+
+type MarketplaceCreatorAccountStatusResponse struct {
+	Account        *MarketplaceCreatorAccount `json:"account,omitempty"`
+	Provider       string                     `json:"provider"`
+	CanSellPremium bool                       `json:"canSellPremium"`
+}
+
+type MarketplaceCheckoutResponse struct {
+	Provider    string              `json:"provider"`
+	CheckoutURL string              `json:"checkoutUrl,omitempty"`
+	Completed   bool                `json:"completed"`
+	Order       MarketplaceOrder    `json:"order"`
+	License     *MarketplaceLicense `json:"license,omitempty"`
 }

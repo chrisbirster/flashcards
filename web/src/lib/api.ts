@@ -471,6 +471,55 @@ export interface MarketplaceInstall {
   updatedAt: string
 }
 
+export interface MarketplaceCreatorAccount {
+  id: string
+  userId: string
+  workspaceId: string
+  provider: string
+  providerAccountId: string
+  onboardingStatus: string
+  detailsSubmitted: boolean
+  chargesEnabled: boolean
+  payoutsEnabled: boolean
+  onboardingUrl?: string
+  dashboardUrl?: string
+  onboardingCompletedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MarketplaceOrder {
+  id: string
+  listingId: string
+  listingVersionNumber: number
+  buyerUserId: string
+  buyerWorkspaceId: string
+  creatorUserId: string
+  creatorAccountId?: string
+  provider: string
+  providerCheckoutSessionId: string
+  providerPaymentIntentId?: string
+  status: string
+  amountCents: number
+  currency: string
+  platformFeeCents: number
+  creatorAmountCents: number
+  completedAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MarketplaceLicense {
+  id: string
+  listingId: string
+  buyerUserId: string
+  orderId: string
+  status: string
+  grantedVersionNumber: number
+  createdAt: string
+  updatedAt: string
+}
+
 export interface MarketplaceListingVersion {
   id: string
   listingId: string
@@ -506,6 +555,7 @@ export interface MarketplaceListingSummary {
   latestVersionNumber: number
   canEdit: boolean
   updateAvailable: boolean
+  currentUserLicense?: MarketplaceLicense
   currentUserInstall?: MarketplaceInstall
   createdAt: string
   updatedAt: string
@@ -515,11 +565,26 @@ export interface MarketplaceListingDetail {
   listing: MarketplaceListingSummary
   latestVersion?: MarketplaceListingVersion
   versions: MarketplaceListingVersion[]
+  currentUserLicense?: MarketplaceLicense
   currentUserInstall?: MarketplaceInstall
   updateAvailable: boolean
   canEdit: boolean
   canPublish: boolean
   availableWorkspaces: WorkspaceSession[]
+}
+
+export interface MarketplaceCreatorAccountStatusResponse {
+  account?: MarketplaceCreatorAccount
+  provider: string
+  canSellPremium: boolean
+}
+
+export interface MarketplaceCheckoutResponse {
+  provider: string
+  checkoutUrl?: string
+  completed: boolean
+  order: MarketplaceOrder
+  license?: MarketplaceLicense
 }
 
 export interface CreateMarketplaceListingRequest {
@@ -980,6 +1045,16 @@ export async function fetchMarketplaceListings(scope?: 'mine'): Promise<Marketpl
   return requestJSON(`${API_BASE}/marketplace/listings${query ? `?${query}` : ''}`)
 }
 
+export async function fetchMarketplaceCreatorAccountStatus(): Promise<MarketplaceCreatorAccountStatusResponse> {
+  return requestJSON(`${API_BASE}/marketplace/creator-account/status`)
+}
+
+export async function startMarketplaceCreatorAccount(): Promise<MarketplaceCreatorAccountStatusResponse> {
+  return requestJSON(`${API_BASE}/marketplace/creator-account/start`, {
+    method: 'POST',
+  })
+}
+
 export async function createMarketplaceListing(req: CreateMarketplaceListingRequest): Promise<MarketplaceListingDetail> {
   return requestJSON(`${API_BASE}/marketplace/listings`, {
     method: 'POST',
@@ -1011,6 +1086,18 @@ export async function publishMarketplaceListing(ref: string, req: PublishMarketp
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(req),
+  })
+}
+
+export async function checkoutMarketplaceListing(ref: string): Promise<MarketplaceCheckoutResponse> {
+  return requestJSON(`${API_BASE}/marketplace/listings/${ref}/checkout`, {
+    method: 'POST',
+  })
+}
+
+export async function syncMarketplaceCheckoutSession(sessionId: string): Promise<MarketplaceCheckoutResponse> {
+  return requestJSON(`${API_BASE}/marketplace/checkout/sessions/${encodeURIComponent(sessionId)}/sync`, {
+    method: 'POST',
   })
 }
 

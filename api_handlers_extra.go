@@ -61,6 +61,7 @@ func registerAPIRoutes(r chi.Router, handler *APIHandler) {
 	r.Post("/auth/otp/request", handler.RequestOTP)
 	r.Post("/auth/otp/verify", handler.VerifyOTP)
 	r.Post("/auth/logout", handler.Logout)
+	r.Post("/marketplace/webhook", handler.MarketplaceWebhook)
 
 	r.Group(func(r chi.Router) {
 		r.Use(handler.RequireAuthenticatedUser)
@@ -134,6 +135,9 @@ func registerAPIRoutes(r chi.Router, handler *APIHandler) {
 		})
 
 		r.Route("/marketplace", func(r chi.Router) {
+			r.Get("/creator-account/status", handler.GetMarketplaceCreatorAccountStatus)
+			r.Post("/creator-account/start", handler.StartMarketplaceCreatorAccount)
+			r.Post("/checkout/sessions/{sessionId}/sync", handler.SyncMarketplaceCheckoutSession)
 			r.Get("/listings", handler.ListMarketplaceListings)
 			r.Post("/listings", handler.CreateMarketplaceListing)
 			r.Route("/listings/{ref}", func(r chi.Router) {
@@ -141,6 +145,7 @@ func registerAPIRoutes(r chi.Router, handler *APIHandler) {
 				r.Patch("/", handler.UpdateMarketplaceListing)
 				r.Delete("/", handler.DeleteMarketplaceListing)
 				r.Post("/publish", handler.PublishMarketplaceListing)
+				r.Post("/checkout", handler.CheckoutMarketplaceListing)
 				r.Post("/installs", handler.InstallMarketplaceListing)
 				r.Post("/installs/{installId}/update", handler.UpdateMarketplaceInstall)
 				r.Delete("/installs/{installId}", handler.RemoveMarketplaceInstall)

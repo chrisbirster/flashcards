@@ -130,6 +130,10 @@ function ListingCard({
             <p className="text-sm text-[var(--app-text-soft)]">
               Your install: v{listing.currentUserInstall.sourceVersionNumber}
             </p>
+          ) : listing.currentUserLicense ? (
+            <p className="text-sm text-[var(--app-text-soft)]">
+              Purchased at v{listing.currentUserLicense.grantedVersionNumber}. You can install it into any workspace you own.
+            </p>
           ) : null}
         </div>
         {action}
@@ -140,6 +144,10 @@ function ListingCard({
 
 export function MarketplacePage() {
   const repository = useAppRepository()
+  const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
+  const checkoutState = searchParams.get('checkout')
+  const checkoutSessionId = searchParams.get('checkout_session_id') ?? ''
   const publishedQuery = useQuery({
     queryKey: ['marketplace-listings', 'public'],
     queryFn: () => repository.fetchMarketplaceListings(),
@@ -148,13 +156,23 @@ export function MarketplacePage() {
     queryKey: ['entitlements'],
     queryFn: () => repository.fetchEntitlements(),
   })
+  const checkoutSyncQuery = useQuery({
+    queryKey: ['marketplace-checkout-sync', checkoutSessionId],
+    queryFn: () => repository.syncMarketplaceCheckoutSession(checkoutSessionId),
+    enabled: checkoutState === 'success' && checkoutSessionId.length > 0,
+  })
+
+  useEffect(() => {
+    if (!checkoutSyncQuery.data?.completed) return
+    queryClient.invalidateQueries({queryKey: ['marketplace-listings']})
+  }, [checkoutSyncQuery.data?.completed, queryClient])
 
   return (
     <PageContainer className="space-y-4">
       <SectionHeader
         eyebrow="Marketplace"
         title="Install expert decks without sharing your review history."
-        description="Marketplace installs reuse the Study Group model: source versions are published explicitly, installs create personal workspace copies, and later paid checkout can build on the same foundation."
+        description="Marketplace installs reuse the Study Group model: source versions are published explicitly, installs create personal workspace copies, and premium checkout now layers on top of the same install foundation."
         action={
           entitlementsQuery.data?.features.marketplacePublish ? (
             <Link
@@ -166,6 +184,30 @@ export function MarketplacePage() {
           ) : null
         }
       />
+
+      {checkoutState === 'cancelled' ? (
+        <PageSection className="border-[var(--app-line)] bg-[var(--app-card-strong)] p-5 text-sm text-[var(--app-text-soft)]">
+          Checkout was cancelled. Your marketplace install options are unchanged.
+        </PageSection>
+      ) : null}
+
+      {checkoutSyncQuery.isLoading ? (
+        <PageSection className="border-[var(--app-line)] bg-[var(--app-card-strong)] p-5 text-sm text-[var(--app-text-soft)]">
+          Finalizing your marketplace purchase...
+        </PageSection>
+      ) : null}
+
+      {checkoutSyncQuery.isSuccess && checkoutSyncQuery.data.completed ? (
+        <PageSection className="border-[var(--app-accent)] bg-[var(--app-card-strong)] p-5 text-sm text-[var(--app-text)]">
+          Purchase confirmed. Your premium marketplace license is active and the deck can now be installed into your workspaces.
+        </PageSection>
+      ) : null}
+
+      {checkoutSyncQuery.isError ? (
+        <PageSection className="border-[var(--app-danger-line)] bg-[var(--app-danger-surface)] p-5 text-sm text-[var(--app-danger-text)]">
+          {checkoutSyncQuery.error instanceof Error ? checkoutSyncQuery.error.message : 'Failed to confirm marketplace checkout.'}
+        </PageSection>
+      ) : null}
 
       <div className="grid gap-4 md:grid-cols-3">
         <SurfaceCard className="border-none bg-[var(--app-card-strong)]">
@@ -181,7 +223,7 @@ export function MarketplacePage() {
             {entitlementsQuery.data?.features.marketplacePublish ? 'Pro and above enabled' : 'Upgrade required'}
           </p>
           <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
-            This phase supports creator listings, free installs, and explicit version publishing. Paid checkout stays in Phase 4.
+            This phase supports creator listings, explicit version publishing, and premium licensing. Creator payout setup is required before premium decks can go live.
           </p>
         </SurfaceCard>
         <SurfaceCard className="border-none bg-[var(--app-card-strong)]">
@@ -190,7 +232,7 @@ export function MarketplacePage() {
             {publishedQuery.data?.length ?? 0} listing{publishedQuery.data?.length === 1 ? '' : 's'}
           </p>
           <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
-            Browse published decks now. Premium deck billing and creator payouts are intentionally deferred to the next commerce phase.
+            Browse published decks now. Free decks install directly, and premium decks unlock after checkout grants a personal license.
           </p>
         </SurfaceCard>
       </div>
@@ -221,7 +263,7 @@ export function MarketplacePage() {
       ) : (
         <EmptyState
           title="No published listings yet"
-          description="Publish the first free deck to start the marketplace catalog. Premium checkout arrives later, but the source-version and install foundation ships now."
+          description="Publish the first source deck to start the marketplace catalog. Free installs are ready now, and premium listings can sell once creator payout setup is complete."
           action={
             entitlementsQuery.data?.features.marketplacePublish ? (
               <Link
@@ -265,6 +307,16 @@ export function MarketplaceDetailPage() {
     mutationFn: () => repository.installMarketplaceListing(slug, {destinationWorkspaceId: selectedWorkspaceId}),
     onSuccess: refreshListing,
   })
+  const checkoutMutation = useMutation({
+    mutationFn: () => repository.checkoutMarketplaceListing(slug),
+    onSuccess: (response) => {
+      if (response.checkoutUrl) {
+        window.location.assign(response.checkoutUrl)
+        return
+      }
+      refreshListing()
+    },
+  })
   const updateInstallMutation = useMutation({
     mutationFn: ({installId, destinationWorkspaceId}: {installId: string; destinationWorkspaceId?: string}) =>
       repository.updateMarketplaceInstall(slug, installId, {destinationWorkspaceId}),
@@ -294,6 +346,12 @@ export function MarketplaceDetailPage() {
   }
 
   const listing = detail.listing
+  const hasPremiumAccess = listing.priceMode === 'free' || listing.canEdit || Boolean(detail.currentUserLicense)
+  const installLabel = listing.priceMode === 'premium'
+    ? detail.currentUserLicense
+      ? 'Install purchased deck'
+      : 'Install creator copy'
+    : 'Install free deck'
 
   return (
     <PageContainer className="space-y-4">
@@ -347,14 +405,7 @@ export function MarketplaceDetailPage() {
         <div className="space-y-4">
           <PageSection className="p-5 sm:p-6">
             <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-muted)]">Install</p>
-            {listing.priceMode === 'premium' ? (
-              <div className="mt-4 rounded-[1.5rem] border border-[var(--app-line)] bg-[var(--app-card-strong)] p-4">
-                <p className="text-lg font-semibold text-[var(--app-text)]">Premium checkout arrives in Phase 4</p>
-                <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
-                  This listing is marked premium, but this phase only ships free catalog installs and versioned source attribution.
-                </p>
-              </div>
-            ) : detail.currentUserInstall ? (
+            {detail.currentUserInstall ? (
               <div className="mt-4 rounded-[1.5rem] border border-[var(--app-line)] bg-[var(--app-card-strong)] p-4">
                 <p className="text-lg font-semibold text-[var(--app-text)]">
                   v{detail.currentUserInstall.sourceVersionNumber} installed
@@ -388,9 +439,28 @@ export function MarketplaceDetailPage() {
                   </button>
                 </div>
               </div>
+            ) : !hasPremiumAccess ? (
+              <div className="mt-4 rounded-[1.5rem] border border-[var(--app-line)] bg-[var(--app-card-strong)] p-4">
+                <p className="text-lg font-semibold text-[var(--app-text)]">Premium deck purchase required</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+                  Buying this deck grants a personal license first. After checkout, you can install versioned workspace copies whenever you need them.
+                </p>
+                <div className="mt-4 flex flex-col gap-3">
+                  <button
+                    type="button"
+                    onClick={() => checkoutMutation.mutate()}
+                    disabled={checkoutMutation.isPending}
+                    className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)] disabled:opacity-60"
+                  >
+                    {checkoutMutation.isPending ? 'Processing...' : `Buy now for ${formatPrice(listing.priceMode, listing.priceCents, listing.currency)}`}
+                  </button>
+                </div>
+              </div>
             ) : (
               <div className="mt-4 rounded-[1.5rem] border border-[var(--app-line)] bg-[var(--app-card-strong)] p-4">
-                <p className="text-lg font-semibold text-[var(--app-text)]">No install yet</p>
+                <p className="text-lg font-semibold text-[var(--app-text)]">
+                  {detail.currentUserLicense ? 'Purchase complete' : 'No install yet'}
+                </p>
                 <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
                   Installing creates a workspace-local copy with source attribution and published version metadata.
                 </p>
@@ -412,15 +482,15 @@ export function MarketplaceDetailPage() {
                     disabled={installMutation.isPending || !selectedWorkspaceId || !detail.latestVersion}
                     className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)] disabled:opacity-60"
                   >
-                    {installMutation.isPending ? 'Installing...' : 'Install free deck'}
+                    {installMutation.isPending ? 'Installing...' : installLabel}
                   </button>
                 </div>
               </div>
             )}
-            {(installMutation.error || updateInstallMutation.error || removeInstallMutation.error) ? (
+            {(installMutation.error || updateInstallMutation.error || removeInstallMutation.error || checkoutMutation.error) ? (
               <p className="mt-4 text-sm text-[var(--app-danger-text)]">
-                {(installMutation.error || updateInstallMutation.error || removeInstallMutation.error) instanceof Error
-                  ? ((installMutation.error || updateInstallMutation.error || removeInstallMutation.error) as Error).message
+                {(installMutation.error || updateInstallMutation.error || removeInstallMutation.error || checkoutMutation.error) instanceof Error
+                  ? ((installMutation.error || updateInstallMutation.error || removeInstallMutation.error || checkoutMutation.error) as Error).message
                   : 'Marketplace install action failed.'}
               </p>
             ) : null}
@@ -499,6 +569,10 @@ export function MarketplacePublishPage() {
     queryKey: ['entitlements'],
     queryFn: () => repository.fetchEntitlements(),
   })
+  const creatorStatusQuery = useQuery({
+    queryKey: ['marketplace-creator-account'],
+    queryFn: () => repository.fetchMarketplaceCreatorAccountStatus(),
+  })
 
   const canPublish = entitlementsQuery.data?.features.marketplacePublish ?? false
 
@@ -514,7 +588,22 @@ export function MarketplacePublishPage() {
 
   const refreshListings = () => {
     queryClient.invalidateQueries({ queryKey: ['marketplace-listings'] })
+    queryClient.invalidateQueries({ queryKey: ['marketplace-creator-account'] })
   }
+
+  const creatorOnboardingMutation = useMutation({
+    mutationFn: () => repository.startMarketplaceCreatorAccount(),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['marketplace-creator-account'] })
+      if (response.account?.onboardingUrl) {
+        window.location.assign(response.account.onboardingUrl)
+        return
+      }
+      if (response.account?.dashboardUrl) {
+        window.location.assign(response.account.dashboardUrl)
+      }
+    },
+  })
 
   const createMutation = useMutation({
     mutationFn: (payload: CreateMarketplaceListingRequest) => repository.createMarketplaceListing(payload),
@@ -603,7 +692,7 @@ export function MarketplacePublishPage() {
       <SectionHeader
         eyebrow="Publish"
         title="Publish versioned source decks to the marketplace."
-        description="Listings stay separate from installs. Publishing creates explicit source versions, and free users can install those versions as personal workspace copies."
+        description="Listings stay separate from installs. Publishing creates explicit source versions, and premium decks now depend on creator payout setup before buyers can check out."
         action={
           <button
             type="button"
@@ -618,6 +707,52 @@ export function MarketplacePublishPage() {
           </button>
         }
       />
+
+      <PageSection className="p-5 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-muted)]">Creator payouts</p>
+            <p className="mt-3 text-lg font-semibold text-[var(--app-text)]">
+              {creatorStatusQuery.data?.canSellPremium ? 'Premium checkout enabled' : 'Finish creator setup to sell premium decks'}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+              Premium marketplace listings need a creator payout account. If Stripe is configured, this button opens live Connect onboarding; local development still auto-enables the flow when Stripe is absent.
+            </p>
+            {creatorStatusQuery.data?.account ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card-strong)] px-3 py-1 text-xs text-[var(--app-text-soft)]">
+                  Provider: {creatorStatusQuery.data.account.provider}
+                </span>
+                <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card-strong)] px-3 py-1 text-xs text-[var(--app-text-soft)]">
+                  Charges {creatorStatusQuery.data.account.chargesEnabled ? 'enabled' : 'pending'}
+                </span>
+                <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card-strong)] px-3 py-1 text-xs text-[var(--app-text-soft)]">
+                  Payouts {creatorStatusQuery.data.account.payoutsEnabled ? 'enabled' : 'pending'}
+                </span>
+              </div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={() => creatorOnboardingMutation.mutate()}
+            disabled={creatorOnboardingMutation.isPending}
+            className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-5 text-sm font-semibold text-[var(--app-accent-ink)] disabled:opacity-60"
+          >
+            {creatorOnboardingMutation.isPending
+              ? 'Setting up...'
+              : creatorStatusQuery.data?.canSellPremium
+                ? 'Open creator dashboard'
+                : 'Start creator setup'}
+          </button>
+        </div>
+        {creatorStatusQuery.isError || creatorOnboardingMutation.error ? (
+          <p className="mt-4 text-sm text-[var(--app-danger-text)]">
+            {(creatorOnboardingMutation.error || creatorStatusQuery.error) instanceof Error
+              ? ((creatorOnboardingMutation.error || creatorStatusQuery.error) as Error).message
+              : 'Failed to load creator payout status.'}
+          </p>
+        ) : null}
+      </PageSection>
 
       {listingsQuery.isLoading ? (
         <PageSection className="p-5 text-sm text-[var(--app-text-soft)]">Loading your listings...</PageSection>
@@ -770,7 +905,7 @@ export function MarketplacePublishPage() {
                 className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 py-3 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
               >
                 <option value="free">Free</option>
-                <option value="premium">Premium (billing later)</option>
+                <option value="premium">Premium</option>
               </select>
             </label>
             <label className="block space-y-2">
@@ -783,6 +918,11 @@ export function MarketplacePublishPage() {
               />
             </label>
           </div>
+          {form.priceMode === 'premium' ? (
+            <p className="text-sm leading-6 text-[var(--app-text-soft)]">
+              Premium listings can be drafted anytime, but publishing them now requires creator payout setup to be complete.
+            </p>
+          ) : null}
           <label className="block space-y-2">
             <span className="text-sm font-medium text-[var(--app-text)]">Cover image URL</span>
             <input

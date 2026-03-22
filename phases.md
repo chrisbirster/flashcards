@@ -18,7 +18,7 @@ Status legend:
 | Phase 1 | `done` | Shared-content / per-user-review-state split for authenticated study, due queues, deck stats, and revlog ownership. |
 | Phase 2 | `done` | Study Groups foundation: canonical source deck, published versions, invites, personal installs, fork/update state, and cross-collection installs. |
 | Phase 3 | `done` | Marketplace foundation: listing CRUD, publish flow, listing detail pages, and free versioned installs with source attribution. |
-| Phase 4 | `later` | Paid marketplace and creator payouts via Stripe Connect Express. |
+| Phase 4 | `in_progress` | Paid marketplace commerce: creator onboarding, premium checkout, license grants, and payout bookkeeping. |
 | Phase 5 | `later` | AI note-to-card generation, analytics, and study protocols. |
 | Phase 6 | `later` | Real-time collaborative editing using Hocuspocus/Yjs. |
 
@@ -94,17 +94,21 @@ Status legend:
 ## Next Up
 
 ### Phase 4
-- Paid marketplace and creator economy is the next implementation target.
+- Phase 4 is now active.
+- Landed so far:
+  - creator account records
+  - premium publish gating
+  - order, license, and payout bookkeeping
+  - development-mode premium checkout flow
 - Current implementation target:
-  - Stripe Connect Express onboarding
-  - premium listing checkout
-  - order and license records
-  - platform fee tracking
-  - payout bookkeeping
-- Explicitly out of scope before Phase 4 starts:
-  - real payment capture for premium marketplace listings
-  - creator payouts
-  - premium install entitlement after checkout
+  - live Stripe Connect Express onboarding
+  - hosted premium checkout
+  - checkout return/session reconciliation
+  - webhook-safe order completion
+- Still remaining before Phase 4 can be considered `done`:
+  - full production Stripe payout confirmation flow
+  - hardened webhook/event coverage for all premium checkout edge cases
+  - final creator dashboard / post-checkout UX polish
 
 ## Notes
 
@@ -338,7 +342,7 @@ Exit criteria:
 
 ### Phase 4: Paid Marketplace and Creator Economy
 
-Status: `later`
+Status: `in_progress`
 
 Objective:
 - Add real paid transactions, creator onboarding, payouts, and licensing to the marketplace.
@@ -348,6 +352,8 @@ Primary scope:
 - One-time paid deck purchases.
 - Platform fee collection.
 - License grant and payout bookkeeping.
+- Hosted checkout/session reconciliation in the app.
+- Webhook-safe completion for premium orders.
 
 Planned billing rules:
 - Initial rollout:
@@ -361,6 +367,21 @@ Data model scope:
 - Licenses
 - Payout records
 - Listing versioning
+
+Current implementation snapshot:
+- Implemented:
+  - creator account persistence
+  - premium publish gating
+  - order, license, and payout tables
+  - development-mode premium checkout completion
+  - live Stripe provider scaffolding
+- In progress:
+  - live Connect onboarding handoff
+  - checkout session reconciliation
+  - webhook-safe completion and failure handling
+- Still deferred inside this phase:
+  - richer payout lifecycle tracking after checkout settles
+  - broader creator commerce reporting
 
 Dependencies:
 - Phase 3 marketplace foundation must exist first.

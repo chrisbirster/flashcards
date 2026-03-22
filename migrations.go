@@ -34,6 +34,7 @@ func (s *SQLiteStore) migrate() error {
 		{8, "retain_removed_study_group_installs", s.runMigration008_RetainRemovedStudyGroupInstalls},
 		{9, "scope_note_type_ids_by_collection", s.runMigration009_ScopeNoteTypeIDsByCollection},
 		{10, "expand_marketplace_foundation_schema", s.runMigration010_ExpandMarketplaceFoundationSchema},
+		{11, "add_marketplace_commerce_schema", s.runMigration011_AddMarketplaceCommerceSchema},
 	}
 
 	for _, m := range migrations {
@@ -971,6 +972,114 @@ func (s *SQLiteStore) runMigration010_ExpandMarketplaceFoundationSchema() error 
 	for _, statement := range statements {
 		if _, err := s.db.Exec(statement); err != nil && !isIgnorableMigrationError(err) {
 			return fmt.Errorf("failed to apply marketplace foundation migration statement: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) runMigration011_AddMarketplaceCommerceSchema() error {
+	statements := []string{
+		`
+		CREATE TABLE IF NOT EXISTS marketplace_creator_accounts (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			workspace_id TEXT NOT NULL,
+			provider TEXT NOT NULL,
+			provider_account_id TEXT NOT NULL,
+			onboarding_status TEXT NOT NULL DEFAULT 'pending',
+			details_submitted INTEGER NOT NULL DEFAULT 0,
+			charges_enabled INTEGER NOT NULL DEFAULT 0,
+			payouts_enabled INTEGER NOT NULL DEFAULT 0,
+			onboarding_url TEXT NOT NULL DEFAULT '',
+			dashboard_url TEXT NOT NULL DEFAULT '',
+			onboarding_completed_at INTEGER,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			UNIQUE(user_id),
+			UNIQUE(provider, provider_account_id),
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+		)
+		`,
+		`
+		CREATE TABLE IF NOT EXISTS marketplace_orders (
+			id TEXT PRIMARY KEY,
+			listing_id TEXT NOT NULL,
+			listing_version_number INTEGER NOT NULL,
+			buyer_user_id TEXT NOT NULL,
+			buyer_workspace_id TEXT NOT NULL,
+			creator_user_id TEXT NOT NULL,
+			creator_account_id TEXT,
+			provider TEXT NOT NULL,
+			provider_checkout_session_id TEXT NOT NULL,
+			provider_payment_intent_id TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL,
+			amount_cents INTEGER NOT NULL,
+			currency TEXT NOT NULL,
+			platform_fee_cents INTEGER NOT NULL,
+			creator_amount_cents INTEGER NOT NULL,
+			completed_at INTEGER,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			UNIQUE(provider, provider_checkout_session_id),
+			FOREIGN KEY (listing_id) REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+			FOREIGN KEY (buyer_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (buyer_workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+			FOREIGN KEY (creator_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (creator_account_id) REFERENCES marketplace_creator_accounts(id) ON DELETE SET NULL
+		)
+		`,
+		`
+		CREATE TABLE IF NOT EXISTS marketplace_licenses (
+			id TEXT PRIMARY KEY,
+			listing_id TEXT NOT NULL,
+			buyer_user_id TEXT NOT NULL,
+			order_id TEXT NOT NULL,
+			status TEXT NOT NULL,
+			granted_version_number INTEGER NOT NULL,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			UNIQUE(listing_id, buyer_user_id),
+			UNIQUE(order_id),
+			FOREIGN KEY (listing_id) REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+			FOREIGN KEY (buyer_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (order_id) REFERENCES marketplace_orders(id) ON DELETE CASCADE
+		)
+		`,
+		`
+		CREATE TABLE IF NOT EXISTS marketplace_payouts (
+			id TEXT PRIMARY KEY,
+			order_id TEXT NOT NULL,
+			creator_user_id TEXT NOT NULL,
+			creator_account_id TEXT NOT NULL,
+			provider TEXT NOT NULL,
+			provider_transfer_id TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL,
+			amount_cents INTEGER NOT NULL,
+			currency TEXT NOT NULL,
+			platform_fee_cents INTEGER NOT NULL,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			UNIQUE(order_id),
+			FOREIGN KEY (order_id) REFERENCES marketplace_orders(id) ON DELETE CASCADE,
+			FOREIGN KEY (creator_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (creator_account_id) REFERENCES marketplace_creator_accounts(id) ON DELETE CASCADE
+		)
+		`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_creator_accounts_workspace ON marketplace_creator_accounts(workspace_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_orders_listing ON marketplace_orders(listing_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_orders_buyer ON marketplace_orders(buyer_user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_orders_status ON marketplace_orders(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_licenses_listing ON marketplace_licenses(listing_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_licenses_buyer ON marketplace_licenses(buyer_user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_payouts_creator ON marketplace_payouts(creator_user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_payouts_status ON marketplace_payouts(status)`,
+	}
+
+	for _, statement := range statements {
+		if _, err := s.db.Exec(statement); err != nil && !isIgnorableMigrationError(err) {
+			return fmt.Errorf("failed to apply marketplace commerce migration statement: %w", err)
 		}
 	}
 

@@ -40,6 +40,17 @@ type EmailConfig struct {
 	AuthHeaderValue string
 }
 
+type StripeConfig struct {
+	SecretKey           string
+	WebhookSecret       string
+	ConnectCountry      string
+	ConnectRefreshURL   string
+	ConnectReturnURL    string
+	CheckoutSuccessURL  string
+	CheckoutCancelURL   string
+	PlatformFeeBasisPts int
+}
+
 type AppConfig struct {
 	Environment     string
 	Port            string
@@ -53,6 +64,7 @@ type AppConfig struct {
 	SessionTTL      time.Duration
 	SessionSecret   string
 	Email           EmailConfig
+	Stripe          StripeConfig
 	AuthSuccessPath string
 }
 
@@ -116,6 +128,16 @@ func LoadAppConfig() (AppConfig, error) {
 			AuthHeaderName:  stringEnv("VUTADEX_EMAIL_SEND_AUTH_HEADER", "Authorization"),
 			AuthHeaderValue: strings.TrimSpace(os.Getenv("VUTADEX_EMAIL_SEND_AUTH_VALUE")),
 		},
+		Stripe: StripeConfig{
+			SecretKey:           strings.TrimSpace(os.Getenv("VUTADEX_STRIPE_SECRET_KEY")),
+			WebhookSecret:       firstNonEmpty(strings.TrimSpace(os.Getenv("VUTADEX_STRIPE_WEBHOOK_SECRET")), strings.TrimSpace(os.Getenv("VUTADEX_BILLING_WEBHOOK_SECRET"))),
+			ConnectCountry:      strings.ToUpper(stringEnv("VUTADEX_STRIPE_CONNECT_COUNTRY", "US")),
+			ConnectRefreshURL:   stringEnv("VUTADEX_STRIPE_CONNECT_REFRESH_URL", strings.TrimRight(appOrigin, "/")+"/marketplace/publish?creator=refresh"),
+			ConnectReturnURL:    stringEnv("VUTADEX_STRIPE_CONNECT_RETURN_URL", strings.TrimRight(appOrigin, "/")+"/marketplace/publish?creator=return"),
+			CheckoutSuccessURL:  stringEnv("VUTADEX_MARKETPLACE_CHECKOUT_SUCCESS_URL", strings.TrimRight(appOrigin, "/")+"/marketplace?checkout=success"),
+			CheckoutCancelURL:   stringEnv("VUTADEX_MARKETPLACE_CHECKOUT_CANCEL_URL", strings.TrimRight(appOrigin, "/")+"/marketplace?checkout=cancelled"),
+			PlatformFeeBasisPts: intEnv("VUTADEX_MARKETPLACE_PLATFORM_FEE_BPS", 1500),
+		},
 		AuthSuccessPath: stringEnv("VUTADEX_AUTH_SUCCESS_URL", "/decks"),
 	}
 
@@ -155,6 +177,14 @@ func mustLocalAppConfig() AppConfig {
 		SessionSecret: "dev-session-secret-change-me",
 		Email: EmailConfig{
 			AuthHeaderName: "Authorization",
+		},
+		Stripe: StripeConfig{
+			ConnectCountry:      "US",
+			ConnectRefreshURL:   "http://localhost:3000/marketplace/publish?creator=refresh",
+			ConnectReturnURL:    "http://localhost:3000/marketplace/publish?creator=return",
+			CheckoutSuccessURL:  "http://localhost:3000/marketplace?checkout=success",
+			CheckoutCancelURL:   "http://localhost:3000/marketplace?checkout=cancelled",
+			PlatformFeeBasisPts: 1500,
 		},
 		AuthSuccessPath: "/decks",
 	}

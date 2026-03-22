@@ -362,6 +362,13 @@ func (h *APIHandler) PublishMarketplaceListing(w http.ResponseWriter, r *http.Re
 		respondAPIError(w, http.StatusForbidden, "marketplace_forbidden", "You can only publish listings in your current workspace.")
 		return
 	}
+	if listing.PriceMode == "premium" {
+		creatorAccount, err := h.ensureMarketplaceCreatorReady(r.Context(), listing)
+		if err != nil || creatorAccount == nil {
+			respondAPIError(w, http.StatusConflict, "marketplace_creator_onboarding_required", "Complete creator payout onboarding before publishing premium marketplace listings.")
+			return
+		}
+	}
 
 	var req PublishMarketplaceListingRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, http.ErrBodyNotAllowed) {
@@ -415,8 +422,11 @@ func (h *APIHandler) InstallMarketplaceListing(w http.ResponseWriter, r *http.Re
 		respondAPIError(w, http.StatusNotFound, "marketplace_listing_not_found", "Marketplace listing not found.")
 		return
 	}
-	if listing.PriceMode != "free" {
-		respondAPIError(w, http.StatusConflict, "marketplace_purchase_required", "Premium marketplace checkout arrives in Phase 4. Only free listings are installable right now.")
+	if _, allowed, err := h.canAccessPremiumMarketplaceListing(listing, user.ID); err != nil {
+		respondAPIError(w, http.StatusInternalServerError, "marketplace_license_lookup_failed", err.Error())
+		return
+	} else if !allowed {
+		respondAPIError(w, http.StatusConflict, "marketplace_purchase_required", "Purchase this premium listing before installing it into a workspace.")
 		return
 	}
 
@@ -466,6 +476,13 @@ func (h *APIHandler) UpdateMarketplaceInstall(w http.ResponseWriter, r *http.Req
 	listing, err := h.store.resolveMarketplaceListing(ref)
 	if err != nil || listing.Status != "published" {
 		respondAPIError(w, http.StatusNotFound, "marketplace_listing_not_found", "Marketplace listing not found.")
+		return
+	}
+	if _, allowed, err := h.canAccessPremiumMarketplaceListing(listing, user.ID); err != nil {
+		respondAPIError(w, http.StatusInternalServerError, "marketplace_license_lookup_failed", err.Error())
+		return
+	} else if !allowed {
+		respondAPIError(w, http.StatusConflict, "marketplace_purchase_required", "Purchase this premium listing before installing updates.")
 		return
 	}
 	currentInstall, err := h.store.GetMarketplaceInstall(installID)

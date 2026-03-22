@@ -3,6 +3,7 @@ import {
   addField,
   answerCard,
   checkDuplicate,
+  checkoutMarketplaceListing,
   createBackup,
   createMarketplaceListing,
   fetchDashboard,
@@ -23,6 +24,7 @@ import {
   fetchDeckStats,
   fetchDueCards,
   fetchEntitlements,
+  fetchMarketplaceCreatorAccountStatus,
   fetchMarketplaceListing,
   fetchMarketplaceListings,
   fetchNote,
@@ -54,6 +56,8 @@ import {
   reorderFields,
   setFieldOptions,
   setSortField,
+  syncMarketplaceCheckoutSession,
+  startMarketplaceCreatorAccount,
   updateMarketplaceInstall,
   updateMarketplaceListing,
   updateStudyGroup,
@@ -89,6 +93,8 @@ import {
   type JoinStudyGroupRequest,
   type ListNotesParams,
   type ListNotesResponse,
+  type MarketplaceCheckoutResponse,
+  type MarketplaceCreatorAccountStatusResponse,
   type MarketplaceInstall,
   type MarketplaceListingDetail,
   type MarketplaceListingSummary,
@@ -176,11 +182,15 @@ export interface AppRepository {
   removeStudyGroupInstall(id: string, installId: string): Promise<void>
   fetchStudyGroupDashboard(id: string): Promise<StudyGroupDashboard>
   fetchMarketplaceListings(scope?: 'mine'): Promise<MarketplaceListingSummary[]>
+  fetchMarketplaceCreatorAccountStatus(): Promise<MarketplaceCreatorAccountStatusResponse>
+  startMarketplaceCreatorAccount(): Promise<MarketplaceCreatorAccountStatusResponse>
   createMarketplaceListing(req: CreateMarketplaceListingRequest): Promise<MarketplaceListingDetail>
   fetchMarketplaceListing(ref: string): Promise<MarketplaceListingDetail>
   updateMarketplaceListing(ref: string, req: UpdateMarketplaceListingRequest): Promise<MarketplaceListingDetail>
   deleteMarketplaceListing(ref: string): Promise<void>
   publishMarketplaceListing(ref: string, req?: PublishMarketplaceListingRequest): Promise<MarketplaceListingVersion>
+  checkoutMarketplaceListing(ref: string): Promise<MarketplaceCheckoutResponse>
+  syncMarketplaceCheckoutSession(sessionId: string): Promise<MarketplaceCheckoutResponse>
   installMarketplaceListing(ref: string, req?: InstallMarketplaceListingRequest): Promise<MarketplaceInstall>
   updateMarketplaceInstall(ref: string, installId: string, req?: UpdateMarketplaceInstallRequest): Promise<MarketplaceInstall>
   removeMarketplaceInstall(ref: string, installId: string): Promise<void>
@@ -242,11 +252,15 @@ export const remoteRepository: AppRepository = {
   removeStudyGroupInstall,
   fetchStudyGroupDashboard,
   fetchMarketplaceListings,
+  fetchMarketplaceCreatorAccountStatus,
+  startMarketplaceCreatorAccount,
   createMarketplaceListing,
   fetchMarketplaceListing,
   updateMarketplaceListing,
   deleteMarketplaceListing,
   publishMarketplaceListing,
+  checkoutMarketplaceListing,
+  syncMarketplaceCheckoutSession,
   installMarketplaceListing,
   updateMarketplaceInstall,
   removeMarketplaceInstall,
@@ -376,11 +390,15 @@ export function createLocalRepository(): AppRepository {
     removeStudyGroupInstall: () => notImplemented('removeStudyGroupInstall'),
     fetchStudyGroupDashboard: () => notImplemented('fetchStudyGroupDashboard'),
     fetchMarketplaceListings: () => notImplemented('fetchMarketplaceListings'),
+    fetchMarketplaceCreatorAccountStatus: () => notImplemented('fetchMarketplaceCreatorAccountStatus'),
+    startMarketplaceCreatorAccount: () => notImplemented('startMarketplaceCreatorAccount'),
     createMarketplaceListing: () => notImplemented('createMarketplaceListing'),
     fetchMarketplaceListing: () => notImplemented('fetchMarketplaceListing'),
     updateMarketplaceListing: () => notImplemented('updateMarketplaceListing'),
     deleteMarketplaceListing: () => notImplemented('deleteMarketplaceListing'),
     publishMarketplaceListing: () => notImplemented('publishMarketplaceListing'),
+    checkoutMarketplaceListing: () => notImplemented('checkoutMarketplaceListing'),
+    syncMarketplaceCheckoutSession: () => notImplemented('syncMarketplaceCheckoutSession'),
     installMarketplaceListing: () => notImplemented('installMarketplaceListing'),
     updateMarketplaceInstall: () => notImplemented('updateMarketplaceInstall'),
     removeMarketplaceInstall: () => notImplemented('removeMarketplaceInstall'),

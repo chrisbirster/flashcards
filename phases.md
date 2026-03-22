@@ -118,9 +118,11 @@ Status legend:
   - note-to-card suggestion generation from notes
   - explicit review/accept flow before save
   - persisted study session lifecycle for review sessions
+  - initial Home and Deck analytics surfaces powered by study sessions
+  - dedicated Stats page with daily activity, answer mix, recent sessions, and active deck ranking
 - Follow-on work in this phase:
-  - user/deck/group analytics surfaces
   - Pomodoro/focus-session support
+  - richer group analytics surfaces
   - richer study-event persistence beyond session rollups
 
 ## Notes
@@ -484,7 +486,10 @@ Current implementation snapshot:
   - backend `POST /api/study-sessions`
   - backend `PATCH /api/study-sessions/{id}`
   - mobile study flow now creates, progresses, completes, and abandons persisted review sessions
-- User/deck/group analytics surfaces and study protocol persistence remain unfinished inside this phase.
+- Added initial analytics surfaces:
+  - dashboard-level study momentum metrics
+  - deck-level recent session and review summaries
+- Deeper user/deck/group analytics and study protocol persistence remain unfinished inside this phase.
 
 Dependencies:
 

@@ -733,6 +733,54 @@ func TestAPI_StudySessionLifecycle(t *testing.T) {
 		t.Fatalf("unexpected reloaded study session: %+v", reloaded)
 	}
 
+	dashboardRR := doRawRequest(env.router, http.MethodGet, "/api/dashboard", "")
+	if dashboardRR.Code != http.StatusOK {
+		t.Fatalf("expected dashboard 200, got %d (%s)", dashboardRR.Code, dashboardRR.Body.String())
+	}
+	dashboard := decodeJSON[DashboardResponse](t, dashboardRR)
+	if dashboard.StudyAnalytics.Sessions7D != 1 || dashboard.StudyAnalytics.CardsReviewed7D != 2 {
+		t.Fatalf("expected dashboard study analytics to reflect session progress, got %+v", dashboard.StudyAnalytics)
+	}
+	if dashboard.StudyAnalytics.CurrentStreak != 1 {
+		t.Fatalf("expected dashboard current streak to be 1 after a completed session, got %d", dashboard.StudyAnalytics.CurrentStreak)
+	}
+	if len(dashboard.StudyAnalytics.RecentSessions) != 1 {
+		t.Fatalf("expected dashboard to include one recent session, got %+v", dashboard.StudyAnalytics.RecentSessions)
+	}
+	if dashboard.StudyAnalytics.RecentSessions[0].DeckName != "Default" {
+		t.Fatalf("expected dashboard recent session to resolve deck name, got %+v", dashboard.StudyAnalytics.RecentSessions[0])
+	}
+
+	decksRR := doRawRequest(env.router, http.MethodGet, "/api/decks", "")
+	if decksRR.Code != http.StatusOK {
+		t.Fatalf("expected decks 200, got %d (%s)", decksRR.Code, decksRR.Body.String())
+	}
+	decks := decodeJSON[[]DeckResponse](t, decksRR)
+	if len(decks) == 0 {
+		t.Fatalf("expected at least one deck in response")
+	}
+	if decks[0].Analytics.Sessions7D != 1 || decks[0].Analytics.CardsReviewed7D != 2 {
+		t.Fatalf("expected deck analytics to reflect completed session, got %+v", decks[0].Analytics)
+	}
+	if decks[0].Analytics.GoodCount7D != 1 || decks[0].Analytics.AgainCount7D != 1 {
+		t.Fatalf("expected deck answer analytics to reflect session ratings, got %+v", decks[0].Analytics)
+	}
+
+	analyticsRR := doRawRequest(env.router, http.MethodGet, "/api/analytics/overview", "")
+	if analyticsRR.Code != http.StatusOK {
+		t.Fatalf("expected analytics overview 200, got %d (%s)", analyticsRR.Code, analyticsRR.Body.String())
+	}
+	analytics := decodeJSON[StudyAnalyticsOverview](t, analyticsRR)
+	if analytics.AnswerBreakdown.Again != 1 || analytics.AnswerBreakdown.Good != 1 {
+		t.Fatalf("expected analytics answer breakdown to reflect session answers, got %+v", analytics.AnswerBreakdown)
+	}
+	if len(analytics.DailyActivity) != 7 {
+		t.Fatalf("expected analytics daily activity to include 7 days, got %+v", analytics.DailyActivity)
+	}
+	if len(analytics.RecentSessions) != 1 || analytics.RecentSessions[0].CardsReviewed != 2 {
+		t.Fatalf("expected analytics recent session payload to reflect session progress, got %+v", analytics.RecentSessions)
+	}
+
 	rejectedRR := doJSONRequest(t, env.router, http.MethodPatch, fmt.Sprintf("/api/study-sessions/%s", session.ID), UpdateStudySessionRequest{
 		CardsReviewed: &cardsReviewed,
 	})

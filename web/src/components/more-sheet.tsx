@@ -1,7 +1,7 @@
-import { Link } from 'react-router'
-import type { AuthSessionResponse } from '#/lib/api'
-import { ThemeToggle } from '#/components/theme-toggle'
-import { Sheet } from '#/components/sheet'
+import { Link } from "react-router";
+import type { AuthSessionResponse } from "#/lib/api";
+import { ThemeToggle } from "#/components/theme-toggle";
+import { Sheet } from "#/components/sheet";
 
 export function MoreSheet({
   open,
@@ -9,14 +9,15 @@ export function MoreSheet({
   session,
   onLogout,
 }: {
-  open: boolean
-  onClose: () => void
-  session?: AuthSessionResponse
-  onLogout: () => void
+  open: boolean;
+  onClose: () => void;
+  session?: AuthSessionResponse;
+  onLogout: () => void;
 }) {
-  const userLabel = session?.user?.displayName || session?.user?.email || 'User'
-  const userInitial = userLabel.trim().charAt(0).toUpperCase() || 'U'
-  const plan = session?.entitlements.plan?.toUpperCase() || 'FREE'
+  const userLabel =
+    session?.user?.displayName || session?.user?.email || "User";
+  const userInitial = userLabel.trim().charAt(0).toUpperCase() || "U";
+  const plan = session?.entitlements.plan?.toUpperCase() || "FREE";
 
   return (
     <Sheet open={open} onClose={onClose} title="More">
@@ -27,13 +28,24 @@ export function MoreSheet({
               {userInitial}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-[var(--app-text)]">{userLabel}</p>
-              <p className="text-xs uppercase tracking-[0.2em] text-[var(--app-muted)]">{plan} plan</p>
+              <p className="truncate text-sm font-semibold text-[var(--app-text)]">
+                {userLabel}
+              </p>
+              <p className="text-xs uppercase tracking-[0.2em] text-[var(--app-muted)]">
+                {plan} plan
+              </p>
             </div>
           </div>
         </div>
 
         <div className="grid gap-3">
+          <Link
+            to="/stats"
+            onClick={onClose}
+            className="inline-flex min-h-11 items-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
+          >
+            Stats
+          </Link>
           <Link
             to="/marketplace"
             onClick={onClose}
@@ -62,8 +74,8 @@ export function MoreSheet({
         <button
           type="button"
           onClick={() => {
-            onLogout()
-            onClose()
+            onLogout();
+            onClose();
           }}
           className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text-soft)]"
         >
@@ -71,5 +83,5 @@ export function MoreSheet({
         </button>
       </div>
     </Sheet>
-  )
+  );
 }

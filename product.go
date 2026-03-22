@@ -243,6 +243,60 @@ type UpdateStudySessionRequest struct {
 	EndedAt       time.Time `json:"endedAt,omitempty"`
 }
 
+type StudyAnalyticsOverview struct {
+	Sessions7D       int                   `json:"sessions7d"`
+	CardsReviewed7D  int                   `json:"cardsReviewed7d"`
+	MinutesStudied7D int                   `json:"minutesStudied7d"`
+	CurrentStreak    int                   `json:"currentStreak"`
+	LastStudiedAt    time.Time             `json:"lastStudiedAt,omitempty"`
+	AnswerBreakdown  StudyAnswerBreakdown  `json:"answerBreakdown"`
+	DailyActivity    []StudyAnalyticsDay   `json:"dailyActivity"`
+	RecentSessions   []StudySessionSummary `json:"recentSessions"`
+}
+
+type DeckStudyAnalytics struct {
+	Sessions7D               int       `json:"sessions7d"`
+	CardsReviewed7D          int       `json:"cardsReviewed7d"`
+	MinutesStudied7D         int       `json:"minutesStudied7d"`
+	AverageCardsPerSession7D float64   `json:"averageCardsPerSession7d"`
+	AgainCount7D             int       `json:"againCount7d"`
+	HardCount7D              int       `json:"hardCount7d"`
+	GoodCount7D              int       `json:"goodCount7d"`
+	EasyCount7D              int       `json:"easyCount7d"`
+	LastStudiedAt            time.Time `json:"lastStudiedAt,omitempty"`
+}
+
+type StudyAnswerBreakdown struct {
+	Again int `json:"again"`
+	Hard  int `json:"hard"`
+	Good  int `json:"good"`
+	Easy  int `json:"easy"`
+}
+
+type StudyAnalyticsDay struct {
+	Date           string `json:"date"`
+	Sessions       int    `json:"sessions"`
+	CardsReviewed  int    `json:"cardsReviewed"`
+	MinutesStudied int    `json:"minutesStudied"`
+}
+
+type StudySessionSummary struct {
+	ID             string    `json:"id"`
+	DeckID         int64     `json:"deckId,omitempty"`
+	DeckName       string    `json:"deckName,omitempty"`
+	Mode           string    `json:"mode"`
+	Status         string    `json:"status"`
+	CardsReviewed  int       `json:"cardsReviewed"`
+	MinutesStudied int       `json:"minutesStudied"`
+	AgainCount     int       `json:"againCount"`
+	HardCount      int       `json:"hardCount"`
+	GoodCount      int       `json:"goodCount"`
+	EasyCount      int       `json:"easyCount"`
+	StartedAt      time.Time `json:"startedAt"`
+	EndedAt        time.Time `json:"endedAt,omitempty"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
 type StudyGroup struct {
 	ID              string    `json:"id"`
 	WorkspaceID     string    `json:"workspaceId"`

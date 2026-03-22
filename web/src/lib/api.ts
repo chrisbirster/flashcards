@@ -59,6 +59,7 @@ export interface Deck {
   cardCount: number;
   canDelete: boolean;
   deleteBlockedReason?: string;
+  analytics: DeckStudyAnalytics;
 }
 
 export interface DeckStats {
@@ -281,6 +282,7 @@ export interface DashboardResponse {
   usage: EntitlementUsage;
   limits: PlanLimits;
   features: EntitlementFeatures;
+  studyAnalytics: StudyAnalyticsOverview;
   recentNotes: NoteListItem[];
 }
 
@@ -301,6 +303,60 @@ export interface AICardSuggestionsResponse {
   suggestions: AICardSuggestion[];
   provider: string;
   model?: string;
+}
+
+export interface StudyAnalyticsOverview {
+  sessions7d: number;
+  cardsReviewed7d: number;
+  minutesStudied7d: number;
+  currentStreak: number;
+  lastStudiedAt?: string;
+  answerBreakdown: StudyAnswerBreakdown;
+  dailyActivity: StudyAnalyticsDay[];
+  recentSessions: StudySessionSummary[];
+}
+
+export interface DeckStudyAnalytics {
+  sessions7d: number;
+  cardsReviewed7d: number;
+  minutesStudied7d: number;
+  averageCardsPerSession7d: number;
+  againCount7d: number;
+  hardCount7d: number;
+  goodCount7d: number;
+  easyCount7d: number;
+  lastStudiedAt?: string;
+}
+
+export interface StudyAnswerBreakdown {
+  again: number;
+  hard: number;
+  good: number;
+  easy: number;
+}
+
+export interface StudyAnalyticsDay {
+  date: string;
+  sessions: number;
+  cardsReviewed: number;
+  minutesStudied: number;
+}
+
+export interface StudySessionSummary {
+  id: string;
+  deckId?: number;
+  deckName?: string;
+  mode: string;
+  status: "active" | "completed" | "abandoned";
+  cardsReviewed: number;
+  minutesStudied: number;
+  againCount: number;
+  hardCount: number;
+  goodCount: number;
+  easyCount: number;
+  startedAt: string;
+  endedAt?: string;
+  updatedAt: string;
 }
 
 export interface StudySession {
@@ -697,6 +753,10 @@ export async function fetchDecks(): Promise<Deck[]> {
 
 export async function fetchDashboard(): Promise<DashboardResponse> {
   return requestJSON(`${API_BASE}/dashboard`);
+}
+
+export async function fetchStudyAnalyticsOverview(): Promise<StudyAnalyticsOverview> {
+  return requestJSON(`${API_BASE}/analytics/overview`);
 }
 
 export async function createDeck(req: CreateDeckRequest): Promise<Deck> {

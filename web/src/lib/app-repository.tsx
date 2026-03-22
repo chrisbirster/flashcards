@@ -7,6 +7,7 @@ import {
   createBackup,
   createMarketplaceListing,
   fetchDashboard,
+  fetchStudyAnalyticsOverview,
   createStudyGroup,
   createDeck,
   createTemplate,
@@ -119,6 +120,7 @@ import {
   type StudyGroupMember,
   type StudyGroupSummary,
   type StudyGroupVersion,
+  type StudyAnalyticsOverview,
   type StudySession,
   type TemplatesResponse,
   type UpdateCardRequest,
@@ -137,6 +139,7 @@ import {
 
 export interface AppRepository {
   fetchDashboard(): Promise<DashboardResponse>;
+  fetchStudyAnalyticsOverview(): Promise<StudyAnalyticsOverview>;
   fetchDecks(): Promise<Deck[]>;
   createDeck(req: CreateDeckRequest): Promise<Deck>;
   fetchDeck(id: number): Promise<{ deck: Deck; stats: DeckStats }>;
@@ -295,6 +298,7 @@ export interface AppRepository {
 
 export const remoteRepository: AppRepository = {
   fetchDashboard,
+  fetchStudyAnalyticsOverview,
   fetchDecks,
   createDeck,
   fetchDeck,
@@ -375,6 +379,8 @@ function notImplemented<T>(method: string): Promise<T> {
 export function createLocalRepository(): AppRepository {
   return {
     fetchDashboard: () => notImplemented("fetchDashboard"),
+    fetchStudyAnalyticsOverview: () =>
+      notImplemented("fetchStudyAnalyticsOverview"),
     fetchDecks: () => notImplemented("fetchDecks"),
     createDeck: () => notImplemented("createDeck"),
     fetchDeck: () => notImplemented("fetchDeck"),

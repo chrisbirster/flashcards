@@ -1,48 +1,70 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router'
-import { useQuery } from '@tanstack/react-query'
-import { Layout } from '#/layouts/root-layout'
-import { DecksPage } from '#/pages/DecksPage'
-import { HomePage } from '#/pages/HomePage'
-import { NotesPage } from '#/pages/NotesPage'
-import { MarketplaceDetailPage, MarketplacePage, MarketplacePublishPage } from '#/pages/MarketplacePage'
-import { StudyPage } from '#/pages/StudyPage'
-import { AddNotePage } from '#/pages/AddNotePage'
-import { StudyGroupDetailPage, StudyGroupJoinPage, StudyGroupsPage } from '#/pages/StudyGroupsPage'
-import { TemplatesPage } from '#/pages/TemplatesPage'
-import { EmptyCardsPage } from '#/pages/EmptyCardsPage'
-import { LoginPage } from '#/pages/LoginPage'
-import { useAppRepository } from '#/lib/app-repository'
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  Outlet,
+  useLocation,
+} from "react-router";
+import { useQuery } from "@tanstack/react-query";
+import { Layout } from "#/layouts/root-layout";
+import { DecksPage } from "#/pages/DecksPage";
+import { HomePage } from "#/pages/HomePage";
+import { StatsPage } from "#/pages/StatsPage";
+import { NotesPage } from "#/pages/NotesPage";
+import {
+  MarketplaceDetailPage,
+  MarketplacePage,
+  MarketplacePublishPage,
+} from "#/pages/MarketplacePage";
+import { StudyPage } from "#/pages/StudyPage";
+import { AddNotePage } from "#/pages/AddNotePage";
+import {
+  StudyGroupDetailPage,
+  StudyGroupJoinPage,
+  StudyGroupsPage,
+} from "#/pages/StudyGroupsPage";
+import { TemplatesPage } from "#/pages/TemplatesPage";
+import { EmptyCardsPage } from "#/pages/EmptyCardsPage";
+import { LoginPage } from "#/pages/LoginPage";
+import { useAppRepository } from "#/lib/app-repository";
 import {
   AddNoteFieldEditorRoutePage,
   AddNoteTemplateEditorRoutePage,
   TemplatesTemplateEditorRoutePage,
-} from '#/pages/NoteTypeEditorRoutes'
+} from "#/pages/NoteTypeEditorRoutes";
 
 function RequireAuthLayout() {
-  const repository = useAppRepository()
-  const location = useLocation()
+  const repository = useAppRepository();
+  const location = useLocation();
   const sessionQuery = useQuery({
-    queryKey: ['auth-session'],
+    queryKey: ["auth-session"],
     queryFn: () => repository.fetchSession(),
-  })
+  });
 
   if (sessionQuery.isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[var(--app-bg)] text-sm text-[var(--app-muted)]">
         Checking session...
       </div>
-    )
+    );
   }
 
   if (!sessionQuery.data?.authenticated) {
-    return <Navigate to="/login" replace state={{from: `${location.pathname}${location.search}`}} />
+    return (
+      <Navigate
+        to="/login"
+        replace
+        state={{ from: `${location.pathname}${location.search}` }}
+      />
+    );
   }
 
   return (
     <Layout>
       <Outlet />
     </Layout>
-  )
+  );
 }
 
 export default function App() {
@@ -52,21 +74,37 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<RequireAuthLayout />}>
           <Route index element={<HomePage />} />
+          <Route path="stats" element={<StatsPage />} />
           <Route path="notes/view" element={<NotesPage />} />
           <Route path="decks" element={<DecksPage />} />
           <Route path="marketplace" element={<MarketplacePage />} />
-          <Route path="marketplace/publish" element={<MarketplacePublishPage />} />
+          <Route
+            path="marketplace/publish"
+            element={<MarketplacePublishPage />}
+          />
           <Route path="marketplace/:slug" element={<MarketplaceDetailPage />} />
           <Route path="study-groups" element={<StudyGroupsPage />} />
           <Route path="study-groups/join" element={<StudyGroupJoinPage />} />
-          <Route path="study-groups/:groupId" element={<StudyGroupDetailPage />} />
+          <Route
+            path="study-groups/:groupId"
+            element={<StudyGroupDetailPage />}
+          />
           <Route path="study/:deckId" element={<StudyPage />} />
           <Route path="notes/add" element={<AddNotePage />}>
-            <Route path="note-types/:noteTypeName/fields" element={<AddNoteFieldEditorRoutePage />} />
-            <Route path="note-types/:noteTypeName/templates" element={<AddNoteTemplateEditorRoutePage />} />
+            <Route
+              path="note-types/:noteTypeName/fields"
+              element={<AddNoteFieldEditorRoutePage />}
+            />
+            <Route
+              path="note-types/:noteTypeName/templates"
+              element={<AddNoteTemplateEditorRoutePage />}
+            />
           </Route>
           <Route path="templates" element={<TemplatesPage />}>
-            <Route path=":noteTypeName" element={<TemplatesTemplateEditorRoutePage />} />
+            <Route
+              path=":noteTypeName"
+              element={<TemplatesTemplateEditorRoutePage />}
+            />
           </Route>
           <Route path="tools/empty-cards" element={<EmptyCardsPage />} />
           {/* Future routes */}
@@ -74,11 +112,10 @@ export default function App() {
           {/* <Route path="notes/:noteId" element={<EditNotePage />} /> */}
           {/* <Route path="card/:cardId" element={<CardPage />} /> */}
           {/* <Route path="templates" element={<TemplatesPage />} /> */}
-          {/* <Route path="stats" element={<StatsPage />} /> */}
           {/* <Route path="settings" element={<SettingsPage />} /> */}
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
-  )
+  );
 }

@@ -604,7 +604,7 @@ func (h *APIHandler) UpdateDeck(w http.ResponseWriter, r *http.Request) {
 	}
 	h.markStudyGroupInstallsForkedByDeckIDs(id)
 
-	respondJSON(w, http.StatusOK, h.deckResponse(h.userIDFromRequest(r), deck, col))
+	respondJSON(w, http.StatusOK, h.deckResponse(h.userIDFromRequest(r), deck, col, nil))
 }
 
 func (h *APIHandler) DeleteDeck(w http.ResponseWriter, r *http.Request) {

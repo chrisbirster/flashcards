@@ -1,62 +1,66 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import type { Deck } from '#/lib/api'
-import { useAppRepository } from '#/lib/app-repository'
-import { ConfirmSheet, Sheet } from '#/components/sheet'
+import { useState } from "react";
+import { useNavigate } from "react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { Deck } from "#/lib/api";
+import { useAppRepository } from "#/lib/app-repository";
+import { ConfirmSheet, Sheet } from "#/components/sheet";
 
-function StatPill({
-  label,
-  value,
-}: {
-  label: string
-  value: string | number
-}) {
+function StatPill({ label, value }: { label: string; value: string | number }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-[var(--app-line)] bg-[var(--app-muted-surface)] px-3 py-1 text-xs font-medium text-[var(--app-text-soft)]">
       <span className="text-[var(--app-text)]">{value}</span>
       <span>{label}</span>
     </span>
-  )
+  );
+}
+
+function formatLastStudiedAt(value?: string) {
+  if (!value) {
+    return "Not studied yet.";
+  }
+  return `Last studied ${new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value))}.`;
 }
 
 export function DeckItem({ deck }: { deck: Deck }) {
-  const navigate = useNavigate()
-  const repository = useAppRepository()
-  const queryClient = useQueryClient()
-  const [isEditing, setIsEditing] = useState(false)
-  const [draftName, setDraftName] = useState(deck.name)
-  const [actionError, setActionError] = useState<string | null>(null)
-  const [actionsOpen, setActionsOpen] = useState(false)
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+  const navigate = useNavigate();
+  const repository = useAppRepository();
+  const queryClient = useQueryClient();
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftName, setDraftName] = useState(deck.name);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const renameMutation = useMutation({
     mutationFn: (name: string) => repository.updateDeck(deck.id, { name }),
     onSuccess: () => {
-      setIsEditing(false)
-      setActionError(null)
-      queryClient.invalidateQueries({ queryKey: ['decks'] })
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      setIsEditing(false);
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["decks"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (error: Error) => setActionError(error.message),
-  })
+  });
 
   const deleteMutation = useMutation({
     mutationFn: () => repository.deleteDeck(deck.id),
     onSuccess: () => {
-      setActionError(null)
-      queryClient.invalidateQueries({ queryKey: ['decks'] })
-      queryClient.invalidateQueries({ queryKey: ['entitlements'] })
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      setActionError(null);
+      queryClient.invalidateQueries({ queryKey: ["decks"] });
+      queryClient.invalidateQueries({ queryKey: ["entitlements"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (error: Error) => setActionError(error.message),
-  })
+  });
 
-  const canStudy = deck.dueToday > 0
+  const canStudy = deck.dueToday > 0;
 
   const runDelete = () => {
-    deleteMutation.mutate()
-  }
+    deleteMutation.mutate();
+  };
 
   return (
     <>
@@ -66,9 +70,9 @@ export function DeckItem({ deck }: { deck: Deck }) {
             {isEditing ? (
               <form
                 onSubmit={(event) => {
-                  event.preventDefault()
-                  if (!draftName.trim()) return
-                  renameMutation.mutate(draftName.trim())
+                  event.preventDefault();
+                  if (!draftName.trim()) return;
+                  renameMutation.mutate(draftName.trim());
                 }}
                 className="space-y-3"
               >
@@ -84,13 +88,13 @@ export function DeckItem({ deck }: { deck: Deck }) {
                     disabled={renameMutation.isPending || !draftName.trim()}
                     className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)] disabled:opacity-60"
                   >
-                    {renameMutation.isPending ? 'Saving...' : 'Save'}
+                    {renameMutation.isPending ? "Saving..." : "Save"}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      setIsEditing(false)
-                      setDraftName(deck.name)
+                      setIsEditing(false);
+                      setDraftName(deck.name);
                     }}
                     className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text-soft)]"
                   >
@@ -101,7 +105,9 @@ export function DeckItem({ deck }: { deck: Deck }) {
             ) : (
               <>
                 <div className="flex flex-wrap items-center gap-3">
-                  <h3 className="truncate text-lg font-semibold text-[var(--app-text)]">{deck.name}</h3>
+                  <h3 className="truncate text-lg font-semibold text-[var(--app-text)]">
+                    {deck.name}
+                  </h3>
                   {deck.dueToday > 0 ? (
                     <span className="rounded-full bg-[var(--app-success-surface)] px-2.5 py-1 text-xs font-semibold text-[var(--app-success-text)] ring-1 ring-[var(--app-success-line)]">
                       {deck.dueToday} due today
@@ -113,12 +119,24 @@ export function DeckItem({ deck }: { deck: Deck }) {
                   <StatPill label="notes" value={deck.noteCount} />
                   <StatPill label="cards" value={deck.cardCount} />
                   <StatPill label="due" value={deck.dueToday} />
+                  <StatPill
+                    label="sessions (7d)"
+                    value={deck.analytics.sessions7d}
+                  />
+                  <StatPill
+                    label="reviewed (7d)"
+                    value={deck.analytics.cardsReviewed7d}
+                  />
                 </div>
 
                 <p className="mt-3 text-sm leading-6 text-[var(--app-text-soft)]">
                   {deck.canDelete
-                    ? 'Empty decks can be deleted directly.'
-                    : deck.deleteBlockedReason || 'Delete is disabled until this deck is empty.'}
+                    ? "Empty decks can be deleted directly."
+                    : deck.deleteBlockedReason ||
+                      "Delete is disabled until this deck is empty."}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+                  {formatLastStudiedAt(deck.analytics.lastStudiedAt)}
                 </p>
 
                 {actionError ? (
@@ -137,8 +155,19 @@ export function DeckItem({ deck }: { deck: Deck }) {
               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] text-[var(--app-text-soft)] md:hidden"
               aria-label={`Open actions for ${deck.name}`}
             >
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" d="M12 6h.01M12 12h.01M12 18h.01" />
+              <svg
+                className="h-5 w-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.8"
+                  d="M12 6h.01M12 12h.01M12 18h.01"
+                />
               </svg>
             </button>
           ) : null}
@@ -162,8 +191,8 @@ export function DeckItem({ deck }: { deck: Deck }) {
             <button
               className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text-soft)]"
               onClick={() => {
-                setActionError(null)
-                setIsEditing(true)
+                setActionError(null);
+                setIsEditing(true);
               }}
             >
               Rename
@@ -172,24 +201,28 @@ export function DeckItem({ deck }: { deck: Deck }) {
               className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-danger-line)] bg-[var(--app-danger-surface)] px-4 text-sm font-medium text-[var(--app-danger-text)] disabled:cursor-not-allowed disabled:opacity-45"
               disabled={!deck.canDelete || deleteMutation.isPending}
               onClick={() => {
-                if (!window.confirm(`Delete the deck "${deck.name}"?`)) return
-                runDelete()
+                if (!window.confirm(`Delete the deck "${deck.name}"?`)) return;
+                runDelete();
               }}
             >
-              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
             </button>
           </div>
         ) : null}
       </li>
 
-      <Sheet open={actionsOpen} onClose={() => setActionsOpen(false)} title={deck.name}>
+      <Sheet
+        open={actionsOpen}
+        onClose={() => setActionsOpen(false)}
+        title={deck.name}
+      >
         <div className="space-y-3">
           <button
             type="button"
             disabled={!canStudy}
             onClick={() => {
-              navigate(`/study/${deck.id}`)
-              setActionsOpen(false)
+              navigate(`/study/${deck.id}`);
+              setActionsOpen(false);
             }}
             className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)] disabled:opacity-60"
           >
@@ -198,8 +231,8 @@ export function DeckItem({ deck }: { deck: Deck }) {
           <button
             type="button"
             onClick={() => {
-              navigate(`/notes/add?deckId=${deck.id}`)
-              setActionsOpen(false)
+              navigate(`/notes/add?deckId=${deck.id}`);
+              setActionsOpen(false);
             }}
             className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
           >
@@ -208,9 +241,9 @@ export function DeckItem({ deck }: { deck: Deck }) {
           <button
             type="button"
             onClick={() => {
-              setActionError(null)
-              setIsEditing(true)
-              setActionsOpen(false)
+              setActionError(null);
+              setIsEditing(true);
+              setActionsOpen(false);
             }}
             className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text-soft)]"
           >
@@ -220,15 +253,17 @@ export function DeckItem({ deck }: { deck: Deck }) {
             type="button"
             disabled={!deck.canDelete || deleteMutation.isPending}
             onClick={() => {
-              setActionsOpen(false)
-              setConfirmDeleteOpen(true)
+              setActionsOpen(false);
+              setConfirmDeleteOpen(true);
             }}
             className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-[var(--app-danger-line)] bg-[var(--app-danger-surface)] px-4 text-sm font-medium text-[var(--app-danger-text)] disabled:opacity-45"
           >
-            {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            {deleteMutation.isPending ? "Deleting..." : "Delete"}
           </button>
           {!deck.canDelete && deck.deleteBlockedReason ? (
-            <p className="text-sm leading-6 text-[var(--app-text-soft)]">{deck.deleteBlockedReason}</p>
+            <p className="text-sm leading-6 text-[var(--app-text-soft)]">
+              {deck.deleteBlockedReason}
+            </p>
           ) : null}
         </div>
       </Sheet>
@@ -243,5 +278,5 @@ export function DeckItem({ deck }: { deck: Deck }) {
         destructive
       />
     </>
-  )
+  );
 }

@@ -59,26 +59,28 @@ type CreateDeckRequest struct {
 }
 
 type DeckResponse struct {
-	ID                  int64   `json:"id"`
-	Name                string  `json:"name"`
-	ParentID            *int64  `json:"parentId,omitempty"`
-	CardIDs             []int64 `json:"cardIds"`
-	DueToday            int     `json:"dueToday"`
-	NoteCount           int     `json:"noteCount"`
-	CardCount           int     `json:"cardCount"`
-	CanDelete           bool    `json:"canDelete"`
-	DeleteBlockedReason string  `json:"deleteBlockedReason,omitempty"`
+	ID                  int64              `json:"id"`
+	Name                string             `json:"name"`
+	ParentID            *int64             `json:"parentId,omitempty"`
+	CardIDs             []int64            `json:"cardIds"`
+	DueToday            int                `json:"dueToday"`
+	NoteCount           int                `json:"noteCount"`
+	CardCount           int                `json:"cardCount"`
+	CanDelete           bool               `json:"canDelete"`
+	DeleteBlockedReason string             `json:"deleteBlockedReason,omitempty"`
+	Analytics           DeckStudyAnalytics `json:"analytics"`
 }
 
 type DashboardResponse struct {
-	TotalDecks  int                    `json:"totalDecks"`
-	TotalNotes  int                    `json:"totalNotes"`
-	DueToday    int                    `json:"dueToday"`
-	Plan        Plan                   `json:"plan"`
-	Usage       EntitlementUsage       `json:"usage"`
-	Limits      PlanLimits             `json:"limits"`
-	Features    EntitlementFeatures    `json:"features"`
-	RecentNotes []NoteListItemResponse `json:"recentNotes"`
+	TotalDecks     int                    `json:"totalDecks"`
+	TotalNotes     int                    `json:"totalNotes"`
+	DueToday       int                    `json:"dueToday"`
+	Plan           Plan                   `json:"plan"`
+	Usage          EntitlementUsage       `json:"usage"`
+	Limits         PlanLimits             `json:"limits"`
+	Features       EntitlementFeatures    `json:"features"`
+	StudyAnalytics StudyAnalyticsOverview `json:"studyAnalytics"`
+	RecentNotes    []NoteListItemResponse `json:"recentNotes"`
 }
 
 type CreateNoteRequest struct {
@@ -161,7 +163,17 @@ func (h *APIHandler) ListDecks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userID := h.userIDFromRequest(r)
+	session := h.sessionFromRequest(r)
 	if err := h.store.EnsureReviewStatesForUser(userID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	workspaceID := ""
+	if session != nil {
+		workspaceID = session.WorkspaceID
+	}
+	analyticsByDeck, err := h.store.GetDeckStudyAnalyticsSummary(userID, workspaceID)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -169,7 +181,7 @@ func (h *APIHandler) ListDecks(w http.ResponseWriter, r *http.Request) {
 	// Convert to response format
 	var response []DeckResponse
 	for _, d := range decks {
-		response = append(response, h.deckResponse(userID, d, col))
+		response = append(response, h.deckResponse(userID, d, col, analyticsByDeck))
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -213,7 +225,7 @@ func (h *APIHandler) CreateDeck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusCreated, h.deckResponse(h.userIDFromRequest(r), deck, col))
+	respondJSON(w, http.StatusCreated, h.deckResponse(h.userIDFromRequest(r), deck, col, nil))
 }
 
 func (h *APIHandler) GetDeck(w http.ResponseWriter, r *http.Request) {
@@ -235,6 +247,17 @@ func (h *APIHandler) GetDeck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	session := h.sessionFromRequest(r)
+	workspaceID := ""
+	if session != nil {
+		workspaceID = session.WorkspaceID
+	}
+	analyticsByDeck, err := h.store.GetDeckStudyAnalyticsSummary(h.userIDFromRequest(r), workspaceID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	// Get deck stats
 	stats, err := h.store.GetDeckStatsForUser(h.userIDFromRequest(r), id)
 	if err != nil {
@@ -243,7 +266,7 @@ func (h *APIHandler) GetDeck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
-		"deck":  h.deckResponse(h.userIDFromRequest(r), deck, col),
+		"deck":  h.deckResponse(h.userIDFromRequest(r), deck, col, analyticsByDeck),
 		"stats": stats,
 	})
 }
@@ -276,7 +299,7 @@ func (h *APIHandler) deckDeleteBlockedReason(deck *Deck, cardCount int, col *Col
 	return ""
 }
 
-func (h *APIHandler) deckResponse(userID string, deck *Deck, col *Collection) DeckResponse {
+func (h *APIHandler) deckResponse(userID string, deck *Deck, col *Collection, analyticsByDeck map[int64]DeckStudyAnalytics) DeckResponse {
 	dueToday := 0
 	noteIDs := make(map[int64]struct{})
 	cardCount := 0
@@ -295,6 +318,10 @@ func (h *APIHandler) deckResponse(userID string, deck *Deck, col *Collection) De
 	}
 
 	deleteBlockedReason := h.deckDeleteBlockedReason(deck, cardCount, col)
+	analytics := DeckStudyAnalytics{}
+	if analyticsByDeck != nil {
+		analytics = analyticsByDeck[deck.ID]
+	}
 
 	return DeckResponse{
 		ID:                  deck.ID,
@@ -306,6 +333,7 @@ func (h *APIHandler) deckResponse(userID string, deck *Deck, col *Collection) De
 		CardCount:           cardCount,
 		CanDelete:           deleteBlockedReason == "",
 		DeleteBlockedReason: deleteBlockedReason,
+		Analytics:           analytics,
 	}
 }
 
@@ -313,6 +341,12 @@ func (h *APIHandler) buildDashboardResponse(r *http.Request) DashboardResponse {
 	col, _, err := h.collectionForRequest(r)
 	if err != nil {
 		col = h.collection
+	}
+	studyAnalytics := StudyAnalyticsOverview{}
+	if session := h.sessionFromRequest(r); session != nil {
+		if analytics, err := h.store.GetStudyAnalyticsOverview(session.UserID, session.WorkspaceID); err == nil {
+			studyAnalytics = analytics
+		}
 	}
 	sessionResponse := h.buildSessionResponse(r)
 	noteCards := h.buildNoteCardIndex(col)
@@ -349,15 +383,26 @@ func (h *APIHandler) buildDashboardResponse(r *http.Request) DashboardResponse {
 		recentNotes = recentNotes[:5]
 	}
 
+	for i := range studyAnalytics.RecentSessions {
+		deckID := studyAnalytics.RecentSessions[i].DeckID
+		if deckID == 0 {
+			continue
+		}
+		if deck, ok := col.Decks[deckID]; ok {
+			studyAnalytics.RecentSessions[i].DeckName = deck.Name
+		}
+	}
+
 	return DashboardResponse{
-		TotalDecks:  len(col.Decks),
-		TotalNotes:  len(col.Notes),
-		DueToday:    dueToday,
-		Plan:        sessionResponse.Entitlements.Plan,
-		Usage:       sessionResponse.Entitlements.Usage,
-		Limits:      sessionResponse.Entitlements.Limits,
-		Features:    sessionResponse.Entitlements.Features,
-		RecentNotes: recentNotes,
+		TotalDecks:     len(col.Decks),
+		TotalNotes:     len(col.Notes),
+		DueToday:       dueToday,
+		Plan:           sessionResponse.Entitlements.Plan,
+		Usage:          sessionResponse.Entitlements.Usage,
+		Limits:         sessionResponse.Entitlements.Limits,
+		Features:       sessionResponse.Entitlements.Features,
+		StudyAnalytics: studyAnalytics,
+		RecentNotes:    recentNotes,
 	}
 }
 

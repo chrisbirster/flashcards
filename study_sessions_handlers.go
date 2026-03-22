@@ -163,3 +163,32 @@ func (h *APIHandler) UpdateStudySession(w http.ResponseWriter, r *http.Request) 
 
 	respondJSON(w, http.StatusOK, reloaded)
 }
+
+func (h *APIHandler) GetStudyAnalyticsOverview(w http.ResponseWriter, r *http.Request) {
+	session := h.sessionFromRequest(r)
+	if session == nil || strings.TrimSpace(session.UserID) == "" {
+		respondAPIError(w, http.StatusUnauthorized, "study_analytics_unauthorized", "Authentication is required.")
+		return
+	}
+
+	analytics, err := h.store.GetStudyAnalyticsOverview(session.UserID, session.WorkspaceID)
+	if err != nil {
+		respondAPIError(w, http.StatusInternalServerError, "study_analytics_load_failed", err.Error())
+		return
+	}
+
+	col, _, err := h.collectionForRequest(r)
+	if err == nil && col != nil {
+		for i := range analytics.RecentSessions {
+			deckID := analytics.RecentSessions[i].DeckID
+			if deckID == 0 {
+				continue
+			}
+			if deck, ok := col.Decks[deckID]; ok {
+				analytics.RecentSessions[i].DeckName = deck.Name
+			}
+		}
+	}
+
+	respondJSON(w, http.StatusOK, analytics)
+}

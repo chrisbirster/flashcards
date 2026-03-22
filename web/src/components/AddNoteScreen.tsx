@@ -10,10 +10,13 @@ import { ErrorMessage, SuccessMessage } from './message'
 import { EditFieldIcon } from './edit-field-icon'
 import { ShowTemplateIcon } from './show-template-icon'
 import { RecentDeckNotesPanel } from './recent-deck-notes-panel'
+import { AICardSuggestionPanel } from './ai-suggestion-panel'
 import { useAppRepository } from '#/lib/app-repository'
 import { ActionBar, FormActions } from '#/components/action-bar'
 import { FieldRow } from '#/components/field-row'
 import { EmptyState, PageContainer, PageSection, SurfaceCard } from '#/components/page-layout'
+import { Sheet } from '#/components/sheet'
+import { useMediaQuery } from '#/lib/use-media-query'
 
 
 // Helper to find the next cloze number in text
@@ -54,6 +57,17 @@ interface AddNoteScreenProps {
   deckId?: number
   onClose: () => void
   onSuccess?: () => void
+}
+
+function buildAISourceText(fieldNames: string[], values: Record<string, string>) {
+  return fieldNames
+    .map((field) => {
+      const value = values[field]?.trim()
+      if (!value) return ''
+      return `${field}: ${value}`
+    })
+    .filter(Boolean)
+    .join('\n')
 }
 
 function buildFieldEditorStyle(options?: FieldOptions): CSSProperties {
@@ -104,6 +118,8 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
   const [duplicates, setDuplicates] = useState<NoteBrief[]>([])
   const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false)
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
+  const isDesktopAI = useMediaQuery('(min-width: 768px)')
 
   // Check if current note type is Cloze
   const isClozeType = selectedNoteType === 'Cloze'
@@ -165,6 +181,7 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
 
   // Get current note type
   const currentNoteType = noteTypes?.find(nt => nt.name === selectedNoteType)
+  const aiInitialSource = currentNoteType ? buildAISourceText(currentNoteType.fields, fieldValues) : ''
 
   // Reset field values when note type changes
   useEffect(() => {
@@ -318,6 +335,19 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
     return currentNoteType.fields.some(field => fieldValues[field]?.trim())
   }
 
+  const applyAISuggestion = (suggestion: {fieldVals: Record<string, string>}) => {
+    if (!currentNoteType) return
+    const nextFieldValues: Record<string, string> = {}
+    currentNoteType.fields.forEach((field) => {
+      nextFieldValues[field] = suggestion.fieldVals[field] || ''
+    })
+    setFieldValues(nextFieldValues)
+    setActiveField(currentNoteType.fields[0] || '')
+    setShowDuplicateWarning(false)
+    setDuplicates([])
+    setAiOpen(false)
+  }
+
   if (loadingNoteTypes || loadingDecks) {
     return (
       <PageContainer>
@@ -384,6 +414,13 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
                     Edit templates
                   </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setAiOpen((current) => !current)}
+                  className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
+                >
+                  AI suggestions
+                </button>
               </div>
             </FieldRow>
 
@@ -402,6 +439,18 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
             </FieldRow>
           </div>
         </PageSection>
+
+        {aiOpen && isDesktopAI ? (
+          <PageSection className="p-4 sm:p-5">
+            <AICardSuggestionPanel
+              open={aiOpen}
+              noteType={currentNoteType}
+              initialSourceText={aiInitialSource}
+              existingFieldVals={fieldValues}
+              onApplySuggestion={applyAISuggestion}
+            />
+          </PageSection>
+        ) : null}
 
         <PageSection className="p-4 sm:p-5">
           <div className="flex flex-col gap-3 border-b border-[var(--app-line)] pb-4">
@@ -632,6 +681,16 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
           </div>
         </PageSection>
       )}
+
+      <Sheet open={aiOpen && !isDesktopAI} onClose={() => setAiOpen(false)} title="AI card suggestions">
+        <AICardSuggestionPanel
+          open={aiOpen && !isDesktopAI}
+          noteType={currentNoteType}
+          initialSourceText={aiInitialSource}
+          existingFieldVals={fieldValues}
+          onApplySuggestion={applyAISuggestion}
+        />
+      </Sheet>
 
       <RecentDeckNotesPanel deckId={selectedDeckId} />
     </PageContainer>

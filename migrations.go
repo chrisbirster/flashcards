@@ -35,6 +35,7 @@ func (s *SQLiteStore) migrate() error {
 		{9, "scope_note_type_ids_by_collection", s.runMigration009_ScopeNoteTypeIDsByCollection},
 		{10, "expand_marketplace_foundation_schema", s.runMigration010_ExpandMarketplaceFoundationSchema},
 		{11, "add_marketplace_commerce_schema", s.runMigration011_AddMarketplaceCommerceSchema},
+		{12, "add_study_sessions_schema", s.runMigration012_AddStudySessionsSchema},
 	}
 
 	for _, m := range migrations {
@@ -1080,6 +1081,44 @@ func (s *SQLiteStore) runMigration011_AddMarketplaceCommerceSchema() error {
 	for _, statement := range statements {
 		if _, err := s.db.Exec(statement); err != nil && !isIgnorableMigrationError(err) {
 			return fmt.Errorf("failed to apply marketplace commerce migration statement: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) runMigration012_AddStudySessionsSchema() error {
+	statements := []string{
+		`
+		CREATE TABLE IF NOT EXISTS study_sessions (
+			id TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			workspace_id TEXT NOT NULL,
+			deck_id INTEGER,
+			mode TEXT NOT NULL DEFAULT 'review',
+			status TEXT NOT NULL DEFAULT 'active',
+			started_at INTEGER NOT NULL,
+			ended_at INTEGER,
+			cards_reviewed INTEGER NOT NULL DEFAULT 0,
+			again_count INTEGER NOT NULL DEFAULT 0,
+			hard_count INTEGER NOT NULL DEFAULT 0,
+			good_count INTEGER NOT NULL DEFAULT 0,
+			easy_count INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+		)
+		`,
+		`CREATE INDEX IF NOT EXISTS idx_study_sessions_user_status ON study_sessions(user_id, status)`,
+		`CREATE INDEX IF NOT EXISTS idx_study_sessions_user_started_at ON study_sessions(user_id, started_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_study_sessions_deck_id ON study_sessions(deck_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_study_sessions_workspace_started_at ON study_sessions(workspace_id, started_at)`,
+	}
+
+	for _, statement := range statements {
+		if _, err := s.db.Exec(statement); err != nil && !isIgnorableMigrationError(err) {
+			return fmt.Errorf("failed to apply study sessions migration statement: %w", err)
 		}
 	}
 

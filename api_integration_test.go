@@ -3,12 +3,17 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -48,6 +53,11 @@ func (s *otpEmailStub) SendOTP(_ context.Context, to, code string, expiresAt tim
 }
 
 func setupAPITestEnv(t *testing.T) *apiTestEnv {
+	t.Helper()
+	return setupAPITestEnvWithConfig(t, mustLocalAppConfig())
+}
+
+func setupAPITestEnvWithConfig(t *testing.T, cfg AppConfig) *apiTestEnv {
 	t.Helper()
 
 	tempDir := t.TempDir()
@@ -120,7 +130,7 @@ func setupAPITestEnv(t *testing.T) *apiTestEnv {
 		t.Fatalf("failed to create test session: %v", err)
 	}
 
-	handler := NewAPIHandler(store, col, NewBackupManager(dbPath, backupDir, store))
+	handler := NewAPIHandlerWithConfig(store, col, NewBackupManager(dbPath, backupDir, store), cfg, NewEmailSender(cfg))
 	authCookie := fmt.Sprintf("%s=%s", sessionCookieName, session.ID)
 	router := newTestAPIRouter(handler, authCookie)
 
@@ -133,6 +143,12 @@ func setupAPITestEnv(t *testing.T) *apiTestEnv {
 		backupDir:  backupDir,
 		authCookie: authCookie,
 	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
 }
 
 func newTestAPIRouter(handler *APIHandler, authCookie string) http.Handler {
@@ -555,6 +571,30 @@ func TestAPI_NoteAndCardEndpoints(t *testing.T) {
 		t.Fatalf("expected duplicate to be detected, got %+v", dupResult)
 	}
 
+	cfg := mustLocalAppConfig()
+	cfg.OpenAI.APIKey = ""
+	aiEnv := setupAPITestEnvWithConfig(t, cfg)
+	suggestionRR := doJSONRequest(t, aiEnv.router, http.MethodPost, "/api/ai/card-suggestions", GenerateAICardSuggestionsRequest{
+		SourceText: "Mitochondria: The powerhouse of the cell\nATP: The cell's main energy currency",
+		NoteType:   "Basic",
+	})
+	if suggestionRR.Code != http.StatusOK {
+		t.Fatalf("expected AI suggestions 200, got %d (%s)", suggestionRR.Code, suggestionRR.Body.String())
+	}
+	suggestionResp := decodeJSON[AICardSuggestionsResponse](t, suggestionRR)
+	if suggestionResp.Provider != "dev" {
+		t.Fatalf("expected dev provider in test config, got %q", suggestionResp.Provider)
+	}
+	if len(suggestionResp.Suggestions) != 2 {
+		t.Fatalf("expected 2 AI suggestions, got %d", len(suggestionResp.Suggestions))
+	}
+	if got := suggestionResp.Suggestions[0].FieldVals["Front"]; got != "Mitochondria" {
+		t.Fatalf("expected first Front field to match source prompt, got %q", got)
+	}
+	if got := suggestionResp.Suggestions[0].FieldVals["Back"]; got != "The powerhouse of the cell" {
+		t.Fatalf("expected first Back field to match source answer, got %q", got)
+	}
+
 	getDueBadDeck := doRawRequest(env.router, http.MethodGet, "/api/decks/not-a-number/due", "")
 	if getDueBadDeck.Code != http.StatusBadRequest {
 		t.Fatalf("expected get due invalid deck id 400, got %d", getDueBadDeck.Code)
@@ -628,6 +668,76 @@ func TestAPI_NoteAndCardEndpoints(t *testing.T) {
 	})
 	if updateCard.Code != http.StatusOK {
 		t.Fatalf("expected update card 200, got %d (%s)", updateCard.Code, updateCard.Body.String())
+	}
+}
+
+func TestAPI_StudySessionLifecycle(t *testing.T) {
+	env := setupAPITestEnv(t)
+
+	createRR := doJSONRequest(t, env.router, http.MethodPost, "/api/study-sessions", CreateStudySessionRequest{
+		DeckID: 1,
+		Mode:   "review",
+	})
+	if createRR.Code != http.StatusCreated {
+		t.Fatalf("expected study session create 201, got %d (%s)", createRR.Code, createRR.Body.String())
+	}
+
+	session := decodeJSON[StudySession](t, createRR)
+	if session.Status != "active" {
+		t.Fatalf("expected active study session, got %s", session.Status)
+	}
+	if session.DeckID != 1 {
+		t.Fatalf("expected deckId=1, got %d", session.DeckID)
+	}
+
+	cardsReviewed := 2
+	againCount := 1
+	goodCount := 1
+	progressRR := doJSONRequest(t, env.router, http.MethodPatch, fmt.Sprintf("/api/study-sessions/%s", session.ID), UpdateStudySessionRequest{
+		CardsReviewed: &cardsReviewed,
+		AgainCount:    &againCount,
+		GoodCount:     &goodCount,
+	})
+	if progressRR.Code != http.StatusOK {
+		t.Fatalf("expected study session update 200, got %d (%s)", progressRR.Code, progressRR.Body.String())
+	}
+
+	progressed := decodeJSON[StudySession](t, progressRR)
+	if progressed.CardsReviewed != 2 || progressed.AgainCount != 1 || progressed.GoodCount != 1 {
+		t.Fatalf("expected persisted progress counts, got %+v", progressed)
+	}
+
+	completedRR := doJSONRequest(t, env.router, http.MethodPatch, fmt.Sprintf("/api/study-sessions/%s", session.ID), UpdateStudySessionRequest{
+		Status:        "completed",
+		CardsReviewed: &cardsReviewed,
+		AgainCount:    &againCount,
+		GoodCount:     &goodCount,
+	})
+	if completedRR.Code != http.StatusOK {
+		t.Fatalf("expected study session completion 200, got %d (%s)", completedRR.Code, completedRR.Body.String())
+	}
+
+	completed := decodeJSON[StudySession](t, completedRR)
+	if completed.Status != "completed" {
+		t.Fatalf("expected completed study session, got %s", completed.Status)
+	}
+	if completed.EndedAt.IsZero() {
+		t.Fatalf("expected completed study session to have endedAt set")
+	}
+
+	reloaded, err := env.store.GetStudySession(session.ID)
+	if err != nil {
+		t.Fatalf("failed to reload study session: %v", err)
+	}
+	if reloaded.Status != "completed" || reloaded.CardsReviewed != 2 || reloaded.GoodCount != 1 {
+		t.Fatalf("unexpected reloaded study session: %+v", reloaded)
+	}
+
+	rejectedRR := doJSONRequest(t, env.router, http.MethodPatch, fmt.Sprintf("/api/study-sessions/%s", session.ID), UpdateStudySessionRequest{
+		CardsReviewed: &cardsReviewed,
+	})
+	if rejectedRR.Code != http.StatusConflict {
+		t.Fatalf("expected closed session update to return 409, got %d (%s)", rejectedRR.Code, rejectedRR.Body.String())
 	}
 }
 
@@ -1314,7 +1424,7 @@ func TestAPI_MarketplacePremiumListingsRequireCreatorSetupAndCheckout(t *testing
 		DeckID:      1,
 		Title:       "Premium Listing",
 		Summary:     "Premium marketplace metadata",
-		Description: "Checkout remains deferred to Phase 4.",
+		Description: "Premium checkout requires creator setup and buyer licensing.",
 		Category:    "Certifications",
 		PriceMode:   "premium",
 		PriceCents:  4900,
@@ -1379,6 +1489,328 @@ func TestAPI_MarketplacePremiumListingsRequireCreatorSetupAndCheckout(t *testing
 	installed := decodeJSON[MarketplaceInstall](t, installAfterPurchase)
 	if installed.SourceVersionNumber != 1 {
 		t.Fatalf("expected premium install to target v1, got %+v", installed)
+	}
+}
+
+func TestAPI_MarketplaceCheckoutSessionSyncCompletesStripeOrder(t *testing.T) {
+	cfg := mustLocalAppConfig()
+	cfg.Environment = "production"
+	cfg.Stripe.SecretKey = "sk_test_marketplace"
+	cfg.Stripe.WebhookSecret = "whsec_marketplace_test"
+	env := setupAPITestEnvWithConfig(t, cfg)
+	memberClient := createAuthenticatedIsolatedTestClient(t, env, "stripe-buyer@example.com", "Stripe Buyer")
+	proHeaders := map[string]string{"X-Vutadex-Plan": "pro"}
+
+	createNoteForTest(t, env, CreateNoteRequest{
+		TypeID: "Basic",
+		DeckID: 1,
+		FieldVals: map[string]string{
+			"Front": "Stripe source card",
+			"Back":  "Stripe answer",
+		},
+	}, nil)
+
+	ownerSessionReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	ownerSessionReq.Header.Set("Cookie", env.authCookie)
+	ownerSession := env.handler.sessionFromRequest(ownerSessionReq)
+
+	creatorAccount := &MarketplaceCreatorAccount{
+		ID:                newID("mca"),
+		UserID:            ownerSession.UserID,
+		WorkspaceID:       ownerSession.WorkspaceID,
+		Provider:          "stripe",
+		ProviderAccountID: "acct_creator_ready",
+		OnboardingStatus:  "active",
+		DetailsSubmitted:  true,
+		ChargesEnabled:    true,
+		PayoutsEnabled:    true,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
+	}
+	if err := env.store.UpsertMarketplaceCreatorAccount(creatorAccount); err != nil {
+		t.Fatalf("failed to seed creator account: %v", err)
+	}
+
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host != "api.stripe.com" {
+			return nil, fmt.Errorf("unexpected host %s", req.URL.Host)
+		}
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/accounts/acct_creator_ready":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"id":"acct_creator_ready","details_submitted":true,"charges_enabled":true,"payouts_enabled":true}`)),
+			}, nil
+		case req.Method == http.MethodPost && req.URL.Path == "/v1/accounts/acct_creator_ready/login_links":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"url":"https://dashboard.stripe.test/acct_creator_ready"}`)),
+			}, nil
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/checkout/sessions/cs_test_sync_paid":
+			if got := req.Header.Get("Stripe-Account"); got != "acct_creator_ready" {
+				return nil, fmt.Errorf("expected Stripe-Account acct_creator_ready, got %q", got)
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"id":"cs_test_sync_paid","status":"complete","payment_status":"paid","payment_intent":"pi_sync_paid"}`)),
+			}, nil
+		default:
+			return nil, fmt.Errorf("unexpected stripe request %s %s", req.Method, req.URL.Path)
+		}
+	})
+	t.Cleanup(func() {
+		http.DefaultTransport = originalTransport
+	})
+
+	createListing := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/marketplace/listings", CreateMarketplaceListingRequest{
+		DeckID:      1,
+		Title:       "Stripe Premium Listing",
+		Summary:     "Premium via stripe sync",
+		Description: "Checkout session sync should complete the order.",
+		Category:    "Medicine",
+		PriceMode:   "premium",
+		PriceCents:  1900,
+		Currency:    "USD",
+	}, proHeaders)
+	if createListing.Code != http.StatusCreated {
+		t.Fatalf("expected premium listing create 201, got %d (%s)", createListing.Code, createListing.Body.String())
+	}
+	detail := decodeJSON[MarketplaceListingDetail](t, createListing)
+
+	publish := doJSONRequestWithHeaders(t, env.router, http.MethodPost, fmt.Sprintf("/api/marketplace/listings/%s/publish", detail.Listing.ID), PublishMarketplaceListingRequest{
+		ChangeSummary: "Premium v1",
+	}, proHeaders)
+	if publish.Code != http.StatusCreated {
+		t.Fatalf("expected premium listing publish 201, got %d (%s)", publish.Code, publish.Body.String())
+	}
+
+	checkoutSessionID := "cs_test_sync_paid"
+	order := &MarketplaceOrder{
+		ID:                        newID("mord"),
+		ListingID:                 detail.Listing.ID,
+		ListingVersionNumber:      1,
+		BuyerUserID:               memberClient.user.ID,
+		BuyerWorkspaceID:          memberClient.workspace.ID,
+		CreatorUserID:             ownerSession.UserID,
+		CreatorAccountID:          creatorAccount.ID,
+		Provider:                  "stripe",
+		ProviderCheckoutSessionID: checkoutSessionID,
+		Status:                    "pending",
+		AmountCents:               1900,
+		Currency:                  "USD",
+		PlatformFeeCents:          marketplacePlatformFeeCents(1900, cfg.Stripe.PlatformFeeBasisPts),
+		CreatedAt:                 time.Now(),
+		UpdatedAt:                 time.Now(),
+	}
+	order.CreatorAmountCents = order.AmountCents - order.PlatformFeeCents
+	if err := env.store.CreateMarketplaceOrder(order); err != nil {
+		t.Fatalf("failed to seed marketplace order: %v", err)
+	}
+
+	syncRR := doRawRequest(memberClient.router, http.MethodPost, fmt.Sprintf("/api/marketplace/checkout/sessions/%s/sync", checkoutSessionID), "")
+	if syncRR.Code != http.StatusOK {
+		t.Fatalf("expected checkout session sync 200, got %d (%s)", syncRR.Code, syncRR.Body.String())
+	}
+	syncResp := decodeJSON[MarketplaceCheckoutResponse](t, syncRR)
+	if !syncResp.Completed || syncResp.License == nil || syncResp.Order.Status != "paid" {
+		t.Fatalf("expected sync to complete order and grant license, got %+v", syncResp)
+	}
+
+	installAfterSync := doJSONRequest(t, memberClient.router, http.MethodPost, fmt.Sprintf("/api/marketplace/listings/%s/installs", detail.Listing.Slug), InstallMarketplaceListingRequest{
+		DestinationWorkspaceID: memberClient.workspace.ID,
+	})
+	if installAfterSync.Code != http.StatusCreated {
+		t.Fatalf("expected premium install after sync 201, got %d (%s)", installAfterSync.Code, installAfterSync.Body.String())
+	}
+}
+
+func TestAPI_MarketplaceWebhookCompletesOrderAndUpdatesCreatorAccount(t *testing.T) {
+	cfg := mustLocalAppConfig()
+	cfg.Environment = "production"
+	cfg.Stripe.SecretKey = "sk_test_marketplace"
+	cfg.Stripe.WebhookSecret = "whsec_marketplace_test"
+	env := setupAPITestEnvWithConfig(t, cfg)
+	memberClient := createAuthenticatedIsolatedTestClient(t, env, "webhook-buyer@example.com", "Webhook Buyer")
+	proHeaders := map[string]string{"X-Vutadex-Plan": "pro"}
+
+	createNoteForTest(t, env, CreateNoteRequest{
+		TypeID: "Basic",
+		DeckID: 1,
+		FieldVals: map[string]string{
+			"Front": "Webhook source card",
+			"Back":  "Webhook answer",
+		},
+	}, nil)
+
+	ownerSessionReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	ownerSessionReq.Header.Set("Cookie", env.authCookie)
+	ownerSession := env.handler.sessionFromRequest(ownerSessionReq)
+
+	creatorAccount := &MarketplaceCreatorAccount{
+		ID:                newID("mca"),
+		UserID:            ownerSession.UserID,
+		WorkspaceID:       ownerSession.WorkspaceID,
+		Provider:          "stripe",
+		ProviderAccountID: "acct_marketplace_webhook",
+		OnboardingStatus:  "pending",
+		DetailsSubmitted:  false,
+		ChargesEnabled:    false,
+		PayoutsEnabled:    false,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
+	}
+	if err := env.store.UpsertMarketplaceCreatorAccount(creatorAccount); err != nil {
+		t.Fatalf("failed to seed creator account: %v", err)
+	}
+
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host != "api.stripe.com" {
+			return nil, fmt.Errorf("unexpected host %s", req.URL.Host)
+		}
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/accounts/acct_marketplace_webhook":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"id":"acct_marketplace_webhook","details_submitted":true,"charges_enabled":true,"payouts_enabled":true}`)),
+			}, nil
+		case req.Method == http.MethodPost && req.URL.Path == "/v1/accounts/acct_marketplace_webhook/login_links":
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"url":"https://dashboard.stripe.test/acct_marketplace_webhook"}`)),
+			}, nil
+		default:
+			return nil, fmt.Errorf("unexpected stripe request %s %s", req.Method, req.URL.Path)
+		}
+	})
+	t.Cleanup(func() {
+		http.DefaultTransport = originalTransport
+	})
+
+	createListing := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/marketplace/listings", CreateMarketplaceListingRequest{
+		DeckID:      1,
+		Title:       "Webhook Premium Listing",
+		Summary:     "Premium via webhook completion",
+		Description: "Webhook should complete checkout and update creator state.",
+		Category:    "Engineering",
+		PriceMode:   "premium",
+		PriceCents:  2900,
+		Currency:    "USD",
+	}, proHeaders)
+	if createListing.Code != http.StatusCreated {
+		t.Fatalf("expected premium listing create 201, got %d (%s)", createListing.Code, createListing.Body.String())
+	}
+	detail := decodeJSON[MarketplaceListingDetail](t, createListing)
+
+	creatorAccount.DetailsSubmitted = true
+	creatorAccount.ChargesEnabled = true
+	creatorAccount.PayoutsEnabled = true
+	creatorAccount.OnboardingStatus = "active"
+	creatorAccount.UpdatedAt = time.Now()
+	if err := env.store.UpsertMarketplaceCreatorAccount(creatorAccount); err != nil {
+		t.Fatalf("failed to activate creator account: %v", err)
+	}
+
+	publish := doJSONRequestWithHeaders(t, env.router, http.MethodPost, fmt.Sprintf("/api/marketplace/listings/%s/publish", detail.Listing.ID), PublishMarketplaceListingRequest{
+		ChangeSummary: "Premium v1",
+	}, proHeaders)
+	if publish.Code != http.StatusCreated {
+		t.Fatalf("expected premium listing publish 201, got %d (%s)", publish.Code, publish.Body.String())
+	}
+
+	checkoutSessionID := "cs_test_webhook_paid"
+	order := &MarketplaceOrder{
+		ID:                        newID("mord"),
+		ListingID:                 detail.Listing.ID,
+		ListingVersionNumber:      1,
+		BuyerUserID:               memberClient.user.ID,
+		BuyerWorkspaceID:          memberClient.workspace.ID,
+		CreatorUserID:             ownerSession.UserID,
+		CreatorAccountID:          creatorAccount.ID,
+		Provider:                  "stripe",
+		ProviderCheckoutSessionID: checkoutSessionID,
+		Status:                    "pending",
+		AmountCents:               2900,
+		Currency:                  "USD",
+		PlatformFeeCents:          marketplacePlatformFeeCents(2900, cfg.Stripe.PlatformFeeBasisPts),
+		CreatedAt:                 time.Now(),
+		UpdatedAt:                 time.Now(),
+	}
+	order.CreatorAmountCents = order.AmountCents - order.PlatformFeeCents
+	if err := env.store.CreateMarketplaceOrder(order); err != nil {
+		t.Fatalf("failed to seed marketplace order: %v", err)
+	}
+
+	makeStripeSignature := func(payload []byte, secret string) string {
+		timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+		mac := hmac.New(sha256.New, []byte(secret))
+		mac.Write([]byte(timestamp))
+		mac.Write([]byte("."))
+		mac.Write(payload)
+		return fmt.Sprintf("t=%s,v1=%s", timestamp, hex.EncodeToString(mac.Sum(nil)))
+	}
+
+	accountPayload := []byte(`{"id":"evt_account","type":"account.updated","data":{"object":{"id":"acct_marketplace_webhook","details_submitted":true,"charges_enabled":true,"payouts_enabled":true}}}`)
+	accountReq := httptest.NewRequest(http.MethodPost, "/api/marketplace/webhook", bytes.NewReader(accountPayload))
+	accountReq.Header.Set("Stripe-Signature", makeStripeSignature(accountPayload, cfg.Stripe.WebhookSecret))
+	accountRR := httptest.NewRecorder()
+	env.router.ServeHTTP(accountRR, accountReq)
+	if accountRR.Code != http.StatusOK {
+		t.Fatalf("expected account webhook 200, got %d (%s)", accountRR.Code, accountRR.Body.String())
+	}
+
+	creatorAfterWebhook, err := env.store.GetMarketplaceCreatorAccount(creatorAccount.ID)
+	if err != nil {
+		t.Fatalf("failed to reload creator account: %v", err)
+	}
+	if !creatorAfterWebhook.DetailsSubmitted || !creatorAfterWebhook.ChargesEnabled || !creatorAfterWebhook.PayoutsEnabled {
+		t.Fatalf("expected creator account to be updated by webhook, got %+v", creatorAfterWebhook)
+	}
+
+	checkoutPayload := []byte(fmt.Sprintf(`{"id":"evt_checkout","type":"checkout.session.completed","data":{"object":{"id":"%s","payment_intent":"pi_webhook_paid","status":"complete","payment_status":"paid"}}}`, checkoutSessionID))
+	checkoutReq := httptest.NewRequest(http.MethodPost, "/api/marketplace/webhook", bytes.NewReader(checkoutPayload))
+	checkoutReq.Header.Set("Stripe-Signature", makeStripeSignature(checkoutPayload, cfg.Stripe.WebhookSecret))
+	checkoutRR := httptest.NewRecorder()
+	env.router.ServeHTTP(checkoutRR, checkoutReq)
+	if checkoutRR.Code != http.StatusOK {
+		t.Fatalf("expected checkout webhook 200, got %d (%s)", checkoutRR.Code, checkoutRR.Body.String())
+	}
+
+	reloadedOrder, err := env.store.GetMarketplaceOrder(order.ID)
+	if err != nil {
+		t.Fatalf("failed to reload order: %v", err)
+	}
+	if reloadedOrder.Status != "paid" || reloadedOrder.ProviderPaymentIntentID != "pi_webhook_paid" {
+		t.Fatalf("expected webhook to mark order paid, got %+v", reloadedOrder)
+	}
+
+	license, err := env.store.GetMarketplaceLicense(detail.Listing.ID, memberClient.user.ID)
+	if err != nil {
+		t.Fatalf("failed to load marketplace license: %v", err)
+	}
+	if license.Status != "active" || license.OrderID != order.ID {
+		t.Fatalf("expected active marketplace license after webhook, got %+v", license)
+	}
+
+	payout, err := env.store.GetMarketplacePayoutByOrder(order.ID)
+	if err != nil {
+		t.Fatalf("failed to load marketplace payout: %v", err)
+	}
+	if payout.Status != "pending" || payout.AmountCents != order.CreatorAmountCents {
+		t.Fatalf("expected pending payout after webhook, got %+v", payout)
+	}
+
+	installAfterWebhook := doJSONRequest(t, memberClient.router, http.MethodPost, fmt.Sprintf("/api/marketplace/listings/%s/installs", detail.Listing.Slug), InstallMarketplaceListingRequest{
+		DestinationWorkspaceID: memberClient.workspace.ID,
+	})
+	if installAfterWebhook.Code != http.StatusCreated {
+		t.Fatalf("expected premium install after webhook 201, got %d (%s)", installAfterWebhook.Code, installAfterWebhook.Body.String())
 	}
 }
 

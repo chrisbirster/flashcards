@@ -62,6 +62,12 @@ type Store interface {
 	AddRevlogForUser(userID string, r *fsrs.ReviewLog, cardID int64, timeTakenMs int) error
 	GetRevlogForCard(cardID int64) ([]*fsrs.ReviewLog, error)
 
+	// Study sessions
+	CreateStudySessionRecord(session *StudySession) error
+	GetStudySession(id string) (*StudySession, error)
+	GetStudySessionForUser(id, userID string) (*StudySession, error)
+	UpdateStudySessionRecord(session *StudySession) error
+
 	// Media
 	AddMedia(collectionID string, m *MediaRef) error
 	GetMedia(filename string) (*MediaRef, error)

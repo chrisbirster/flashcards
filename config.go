@@ -51,6 +51,12 @@ type StripeConfig struct {
 	PlatformFeeBasisPts int
 }
 
+type OpenAIConfig struct {
+	APIKey  string
+	Model   string
+	BaseURL string
+}
+
 type AppConfig struct {
 	Environment     string
 	Port            string
@@ -65,6 +71,7 @@ type AppConfig struct {
 	SessionSecret   string
 	Email           EmailConfig
 	Stripe          StripeConfig
+	OpenAI          OpenAIConfig
 	AuthSuccessPath string
 }
 
@@ -138,6 +145,11 @@ func LoadAppConfig() (AppConfig, error) {
 			CheckoutCancelURL:   stringEnv("VUTADEX_MARKETPLACE_CHECKOUT_CANCEL_URL", strings.TrimRight(appOrigin, "/")+"/marketplace?checkout=cancelled"),
 			PlatformFeeBasisPts: intEnv("VUTADEX_MARKETPLACE_PLATFORM_FEE_BPS", 1500),
 		},
+		OpenAI: OpenAIConfig{
+			APIKey:  strings.TrimSpace(os.Getenv("VUTADEX_OPENAI_API_KEY")),
+			Model:   stringEnv("VUTADEX_OPENAI_MODEL", "gpt-5-mini"),
+			BaseURL: strings.TrimRight(stringEnv("VUTADEX_OPENAI_BASE_URL", "https://api.openai.com/v1"), "/"),
+		},
 		AuthSuccessPath: stringEnv("VUTADEX_AUTH_SUCCESS_URL", "/decks"),
 	}
 
@@ -185,6 +197,10 @@ func mustLocalAppConfig() AppConfig {
 			CheckoutSuccessURL:  "http://localhost:3000/marketplace?checkout=success",
 			CheckoutCancelURL:   "http://localhost:3000/marketplace?checkout=cancelled",
 			PlatformFeeBasisPts: 1500,
+		},
+		OpenAI: OpenAIConfig{
+			Model:   "gpt-5-mini",
+			BaseURL: "https://api.openai.com/v1",
 		},
 		AuthSuccessPath: "/decks",
 	}

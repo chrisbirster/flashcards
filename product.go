@@ -191,6 +191,58 @@ type ImportLocalCollectionRequest struct {
 	Collection Collection `json:"collection"`
 }
 
+type GenerateAICardSuggestionsRequest struct {
+	SourceText        string            `json:"sourceText"`
+	NoteType          string            `json:"noteType"`
+	ExistingFieldVals map[string]string `json:"existingFieldVals,omitempty"`
+	MaxSuggestions    int               `json:"maxSuggestions,omitempty"`
+}
+
+type AICardSuggestion struct {
+	Title     string            `json:"title"`
+	Rationale string            `json:"rationale"`
+	FieldVals map[string]string `json:"fieldVals"`
+}
+
+type AICardSuggestionsResponse struct {
+	Suggestions []AICardSuggestion `json:"suggestions"`
+	Provider    string             `json:"provider"`
+	Model       string             `json:"model,omitempty"`
+}
+
+type StudySession struct {
+	ID            string    `json:"id"`
+	UserID        string    `json:"userId"`
+	WorkspaceID   string    `json:"workspaceId"`
+	DeckID        int64     `json:"deckId,omitempty"`
+	Mode          string    `json:"mode"`
+	Status        string    `json:"status"`
+	StartedAt     time.Time `json:"startedAt"`
+	EndedAt       time.Time `json:"endedAt,omitempty"`
+	CardsReviewed int       `json:"cardsReviewed"`
+	AgainCount    int       `json:"againCount"`
+	HardCount     int       `json:"hardCount"`
+	GoodCount     int       `json:"goodCount"`
+	EasyCount     int       `json:"easyCount"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}
+
+type CreateStudySessionRequest struct {
+	DeckID int64  `json:"deckId,omitempty"`
+	Mode   string `json:"mode,omitempty"`
+}
+
+type UpdateStudySessionRequest struct {
+	Status        string    `json:"status,omitempty"`
+	CardsReviewed *int      `json:"cardsReviewed,omitempty"`
+	AgainCount    *int      `json:"againCount,omitempty"`
+	HardCount     *int      `json:"hardCount,omitempty"`
+	GoodCount     *int      `json:"goodCount,omitempty"`
+	EasyCount     *int      `json:"easyCount,omitempty"`
+	EndedAt       time.Time `json:"endedAt,omitempty"`
+}
+
 type StudyGroup struct {
 	ID              string    `json:"id"`
 	WorkspaceID     string    `json:"workspaceId"`

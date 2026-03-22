@@ -108,6 +108,9 @@ func registerAPIRoutes(r chi.Router, handler *APIHandler) {
 
 		r.Get("/entitlements", handler.GetEntitlements)
 		r.Post("/onboarding/import-local-collection", handler.ImportLocalCollection)
+		r.Post("/ai/card-suggestions", handler.GenerateCardSuggestions)
+		r.Post("/study-sessions", handler.CreateStudySession)
+		r.Patch("/study-sessions/{id}", handler.UpdateStudySession)
 
 		r.Post("/billing/checkout", handler.BillingCheckout)
 		r.Post("/billing/portal", handler.BillingPortal)

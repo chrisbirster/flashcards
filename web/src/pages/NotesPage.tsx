@@ -4,9 +4,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Note, NoteType } from '#/lib/api'
 import { useAppRepository } from '#/lib/app-repository'
 import { ActionBar, FormActions } from '#/components/action-bar'
+import { AICardSuggestionPanel } from '#/components/ai-suggestion-panel'
 import { FieldRow } from '#/components/field-row'
 import { EmptyState, PageContainer, PageSection } from '#/components/page-layout'
 import { FullscreenSheet, Sheet } from '#/components/sheet'
+import { useMediaQuery } from '#/lib/use-media-query'
 
 function formatTimestamp(value: string) {
   const date = new Date(value)
@@ -39,6 +41,18 @@ function buildFieldValues(noteType: NoteType | undefined, source: Record<string,
     shaped[field] = source[field] || ''
   })
   return shaped
+}
+
+function buildAISourceText(noteType: NoteType | undefined, values: Record<string, string>) {
+  if (!noteType) return ''
+  return noteType.fields
+    .map((field) => {
+      const value = values[field]?.trim()
+      if (!value) return ''
+      return `${field}: ${value}`
+    })
+    .filter(Boolean)
+    .join('\n')
 }
 
 export function NotesPage() {
@@ -95,6 +109,8 @@ export function NotesPage() {
   const [draftTags, setDraftTags] = useState('')
   const [editorMessage, setEditorMessage] = useState<string | null>(null)
   const [editorError, setEditorError] = useState<string | null>(null)
+  const [aiOpen, setAiOpen] = useState(false)
+  const isDesktopAI = useMediaQuery('(min-width: 768px)')
 
   useEffect(() => {
     if (!selectedNote) return
@@ -173,6 +189,7 @@ export function NotesPage() {
   }
 
   const currentNoteType = noteTypeMap.get(draftTypeId)
+  const aiInitialSource = buildAISourceText(currentNoteType, draftFieldVals)
   const editorFields = currentNoteType?.fields ?? Object.keys(draftFieldVals)
   const parsedDraftTags = parseTags(draftTags)
 
@@ -300,6 +317,34 @@ export function NotesPage() {
               </select>
             </FieldRow>
           </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setAiOpen((current) => !current)}
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
+            >
+              AI suggestions
+            </button>
+            <p className="text-sm text-[var(--app-text-soft)]">
+              Paste rough notes, apply a suggestion, then save when it looks right.
+            </p>
+          </div>
+
+          {aiOpen && isDesktopAI ? (
+            <AICardSuggestionPanel
+              open={aiOpen}
+              noteType={currentNoteType}
+              initialSourceText={aiInitialSource}
+              existingFieldVals={draftFieldVals}
+              onApplySuggestion={(suggestion) => {
+                setDraftFieldVals(buildFieldValues(currentNoteType, suggestion.fieldVals))
+                setEditorMessage('AI suggestion applied. Review and save when ready.')
+                setEditorError(null)
+                setAiOpen(false)
+              }}
+            />
+          ) : null}
 
           <div className="space-y-4">
             {editorFields.map((field) => (
@@ -564,6 +609,21 @@ export function NotesPage() {
       >
         {renderEditorForm('mobile')}
       </FullscreenSheet>
+
+      <Sheet open={aiOpen && !isDesktopAI} onClose={() => setAiOpen(false)} title="AI card suggestions">
+        <AICardSuggestionPanel
+          open={aiOpen && !isDesktopAI}
+          noteType={currentNoteType}
+          initialSourceText={aiInitialSource}
+          existingFieldVals={draftFieldVals}
+          onApplySuggestion={(suggestion) => {
+            setDraftFieldVals(buildFieldValues(currentNoteType, suggestion.fieldVals))
+            setEditorMessage('AI suggestion applied. Review and save when ready.')
+            setEditorError(null)
+            setAiOpen(false)
+          }}
+        />
+      </Sheet>
     </PageContainer>
   )
 }

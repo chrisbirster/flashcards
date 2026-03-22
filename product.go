@@ -354,6 +354,9 @@ type MarketplaceListing struct {
 	Title         string    `json:"title"`
 	Summary       string    `json:"summary"`
 	Description   string    `json:"description"`
+	Category      string    `json:"category"`
+	Tags          []string  `json:"tags"`
+	CoverImageURL string    `json:"coverImageUrl"`
 	CreatorUserID string    `json:"creatorUserId"`
 	PriceMode     string    `json:"priceMode"`
 	PriceCents    int       `json:"priceCents"`
@@ -362,4 +365,109 @@ type MarketplaceListing struct {
 	InstallCount  int       `json:"installCount,omitempty"`
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`
+}
+
+type MarketplaceListingVersion struct {
+	ID                string    `json:"id"`
+	ListingID         string    `json:"listingId"`
+	VersionNumber     int       `json:"versionNumber"`
+	SourceDeckID      int64     `json:"sourceDeckId"`
+	PublishedByUserID string    `json:"publishedByUserId"`
+	ChangeSummary     string    `json:"changeSummary"`
+	NoteCount         int       `json:"noteCount"`
+	CardCount         int       `json:"cardCount"`
+	CreatedAt         time.Time `json:"createdAt"`
+}
+
+type MarketplaceInstall struct {
+	ID                  string    `json:"id"`
+	ListingID           string    `json:"listingId"`
+	WorkspaceID         string    `json:"workspaceId"`
+	InstalledByUserID   string    `json:"installedByUserId"`
+	InstalledDeckID     int64     `json:"installedDeckId"`
+	InstalledDeckName   string    `json:"installedDeckName,omitempty"`
+	SourceVersionNumber int       `json:"sourceVersionNumber"`
+	Status              string    `json:"status"`
+	SupersededByInstall string    `json:"supersededByInstallId,omitempty"`
+	CreatedAt           time.Time `json:"createdAt"`
+	UpdatedAt           time.Time `json:"updatedAt"`
+}
+
+type MarketplaceListingSummary struct {
+	ID                  string               `json:"id"`
+	Slug                string               `json:"slug"`
+	Title               string               `json:"title"`
+	Summary             string               `json:"summary"`
+	Description         string               `json:"description"`
+	Category            string               `json:"category"`
+	Tags                []string             `json:"tags"`
+	CoverImageURL       string               `json:"coverImageUrl"`
+	CreatorUserID       string               `json:"creatorUserId"`
+	CreatorDisplayName  string               `json:"creatorDisplayName,omitempty"`
+	CreatorEmail        string               `json:"creatorEmail,omitempty"`
+	WorkspaceID         string               `json:"workspaceId"`
+	SourceDeckID        int64                `json:"sourceDeckId"`
+	SourceDeckName      string               `json:"sourceDeckName"`
+	PriceMode           string               `json:"priceMode"`
+	PriceCents          int                  `json:"priceCents"`
+	Currency            string               `json:"currency"`
+	Status              string               `json:"status"`
+	InstallCount        int                  `json:"installCount"`
+	LatestVersionNumber int                  `json:"latestVersionNumber"`
+	CanEdit             bool                 `json:"canEdit"`
+	UpdateAvailable     bool                 `json:"updateAvailable"`
+	CurrentUserInstall  *MarketplaceInstall  `json:"currentUserInstall,omitempty"`
+	CreatedAt           time.Time            `json:"createdAt"`
+	UpdatedAt           time.Time            `json:"updatedAt"`
+}
+
+type MarketplaceListingDetail struct {
+	Listing             MarketplaceListingSummary   `json:"listing"`
+	LatestVersion       *MarketplaceListingVersion  `json:"latestVersion,omitempty"`
+	Versions            []MarketplaceListingVersion `json:"versions"`
+	CurrentUserInstall  *MarketplaceInstall         `json:"currentUserInstall,omitempty"`
+	UpdateAvailable     bool                        `json:"updateAvailable"`
+	CanEdit             bool                        `json:"canEdit"`
+	CanPublish          bool                        `json:"canPublish"`
+	AvailableWorkspaces []Workspace                 `json:"availableWorkspaces"`
+}
+
+type CreateMarketplaceListingRequest struct {
+	DeckID        int64    `json:"deckId"`
+	Title         string   `json:"title"`
+	Slug          string   `json:"slug,omitempty"`
+	Summary       string   `json:"summary"`
+	Description   string   `json:"description"`
+	Category      string   `json:"category"`
+	Tags          []string `json:"tags"`
+	CoverImageURL string   `json:"coverImageUrl"`
+	PriceMode     string   `json:"priceMode,omitempty"`
+	PriceCents    int      `json:"priceCents,omitempty"`
+	Currency      string   `json:"currency,omitempty"`
+}
+
+type UpdateMarketplaceListingRequest struct {
+	DeckID        int64    `json:"deckId"`
+	Title         string   `json:"title"`
+	Slug          string   `json:"slug,omitempty"`
+	Summary       string   `json:"summary"`
+	Description   string   `json:"description"`
+	Category      string   `json:"category"`
+	Tags          []string `json:"tags"`
+	CoverImageURL string   `json:"coverImageUrl"`
+	PriceMode     string   `json:"priceMode,omitempty"`
+	PriceCents    int      `json:"priceCents,omitempty"`
+	Currency      string   `json:"currency,omitempty"`
+}
+
+type PublishMarketplaceListingRequest struct {
+	ChangeSummary string `json:"changeSummary"`
+}
+
+type InstallMarketplaceListingRequest struct {
+	DestinationWorkspaceID string `json:"destinationWorkspaceId"`
+}
+
+type UpdateMarketplaceInstallRequest struct {
+	DestinationWorkspaceID string `json:"destinationWorkspaceId,omitempty"`
 }

@@ -1242,6 +1242,321 @@ func TestAPI_StudyGroupsInstallAcrossDifferentCollections(t *testing.T) {
 	}
 }
 
+func TestAPI_MarketplacePublishingRequiresProOrHigher(t *testing.T) {
+	env := setupAPITestEnv(t)
+
+	createFree := doJSONRequest(t, env.router, http.MethodPost, "/api/marketplace/listings", CreateMarketplaceListingRequest{
+		DeckID:      1,
+		Title:       "Free Plan Listing",
+		Summary:     "Should be blocked",
+		Description: "Free users cannot publish marketplace listings.",
+		PriceMode:   "free",
+	})
+	if createFree.Code != http.StatusForbidden {
+		t.Fatalf("expected free plan marketplace create to return 403, got %d (%s)", createFree.Code, createFree.Body.String())
+	}
+	freeErr := decodeJSON[APIErrorResponse](t, createFree)
+	if freeErr.Code != "marketplace_publish_not_available" {
+		t.Fatalf("expected marketplace_publish_not_available code, got %+v", freeErr)
+	}
+
+	createPro := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/marketplace/listings", CreateMarketplaceListingRequest{
+		DeckID:      1,
+		Title:       "Pro Plan Listing",
+		Summary:     "Creator listing",
+		Description: "Pro users can create marketplace drafts.",
+		Category:    "Medicine",
+		Tags:        []string{"anki-alternative", "exam-prep"},
+		PriceMode:   "free",
+	}, map[string]string{"X-Vutadex-Plan": "pro"})
+	if createPro.Code != http.StatusCreated {
+		t.Fatalf("expected pro plan marketplace create to return 201, got %d (%s)", createPro.Code, createPro.Body.String())
+	}
+	detail := decodeJSON[MarketplaceListingDetail](t, createPro)
+	if detail.Listing.Status != "draft" || !detail.CanEdit {
+		t.Fatalf("expected creator draft detail after pro create, got %+v", detail)
+	}
+
+	publish := doJSONRequestWithHeaders(t, env.router, http.MethodPost, fmt.Sprintf("/api/marketplace/listings/%s/publish", detail.Listing.ID), PublishMarketplaceListingRequest{
+		ChangeSummary: "Initial catalog release",
+	}, map[string]string{"X-Vutadex-Plan": "pro"})
+	if publish.Code != http.StatusCreated {
+		t.Fatalf("expected pro publish 201, got %d (%s)", publish.Code, publish.Body.String())
+	}
+	version := decodeJSON[MarketplaceListingVersion](t, publish)
+	if version.VersionNumber != 1 {
+		t.Fatalf("expected first marketplace version number to be 1, got %+v", version)
+	}
+}
+
+func TestAPI_MarketplacePremiumListingsRequirePhase4Checkout(t *testing.T) {
+	env := setupAPITestEnv(t)
+	memberClient := createAuthenticatedIsolatedTestClient(t, env, "marketplace-buyer@example.com", "Marketplace Buyer")
+	proHeaders := map[string]string{"X-Vutadex-Plan": "pro"}
+
+	createNoteForTest(t, env, CreateNoteRequest{
+		TypeID: "Basic",
+		DeckID: 1,
+		FieldVals: map[string]string{
+			"Front": "Premium source card",
+			"Back":  "Premium answer",
+		},
+	}, nil)
+
+	createListing := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/marketplace/listings", CreateMarketplaceListingRequest{
+		DeckID:      1,
+		Title:       "Premium Listing",
+		Summary:     "Premium marketplace metadata",
+		Description: "Checkout remains deferred to Phase 4.",
+		Category:    "Certifications",
+		PriceMode:   "premium",
+		PriceCents:  4900,
+		Currency:    "USD",
+	}, proHeaders)
+	if createListing.Code != http.StatusCreated {
+		t.Fatalf("expected premium listing create 201, got %d (%s)", createListing.Code, createListing.Body.String())
+	}
+	detail := decodeJSON[MarketplaceListingDetail](t, createListing)
+
+	publish := doJSONRequestWithHeaders(t, env.router, http.MethodPost, fmt.Sprintf("/api/marketplace/listings/%s/publish", detail.Listing.ID), PublishMarketplaceListingRequest{
+		ChangeSummary: "Premium v1",
+	}, proHeaders)
+	if publish.Code != http.StatusCreated {
+		t.Fatalf("expected premium listing publish 201, got %d (%s)", publish.Code, publish.Body.String())
+	}
+
+	install := doJSONRequest(t, memberClient.router, http.MethodPost, fmt.Sprintf("/api/marketplace/listings/%s/installs", detail.Listing.Slug), InstallMarketplaceListingRequest{
+		DestinationWorkspaceID: memberClient.workspace.ID,
+	})
+	if install.Code != http.StatusConflict {
+		t.Fatalf("expected premium listing install to return 409, got %d (%s)", install.Code, install.Body.String())
+	}
+	apiErr := decodeJSON[APIErrorResponse](t, install)
+	if apiErr.Code != "marketplace_purchase_required" {
+		t.Fatalf("expected marketplace_purchase_required code, got %+v", apiErr)
+	}
+}
+
+func TestAPI_MarketplaceFreeListingsPublishInstallAndUpdateAcrossCollections(t *testing.T) {
+	env := setupAPITestEnv(t)
+	memberClient := createAuthenticatedIsolatedTestClient(t, env, "marketplace-member@example.com", "Marketplace Member")
+	proHeaders := map[string]string{"X-Vutadex-Plan": "pro"}
+
+	createNoteForTest(t, env, CreateNoteRequest{
+		TypeID: "Basic",
+		DeckID: 1,
+		FieldVals: map[string]string{
+			"Front": "Marketplace source card 1",
+			"Back":  "Marketplace answer 1",
+		},
+	}, nil)
+
+	createListing := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/marketplace/listings", CreateMarketplaceListingRequest{
+		DeckID:      1,
+		Title:       "USMLE Foundations",
+		Summary:     "A versioned source deck for marketplace installs.",
+		Description: "Free listing installs should create workspace-local copies with source attribution.",
+		Category:    "Medicine",
+		Tags:        []string{"usmle", "anki-alternative"},
+		PriceMode:   "free",
+	}, proHeaders)
+	if createListing.Code != http.StatusCreated {
+		t.Fatalf("expected create marketplace listing 201, got %d (%s)", createListing.Code, createListing.Body.String())
+	}
+	draftDetail := decodeJSON[MarketplaceListingDetail](t, createListing)
+	listingID := draftDetail.Listing.ID
+	listingSlug := draftDetail.Listing.Slug
+
+	publicBeforePublish := doRawRequest(memberClient.router, http.MethodGet, "/api/marketplace/listings", "")
+	if publicBeforePublish.Code != http.StatusOK {
+		t.Fatalf("expected marketplace public list 200, got %d (%s)", publicBeforePublish.Code, publicBeforePublish.Body.String())
+	}
+	if listings := decodeJSON[[]MarketplaceListingSummary](t, publicBeforePublish); len(listings) != 0 {
+		t.Fatalf("expected draft listing to be hidden from public catalog, got %+v", listings)
+	}
+
+	creatorMineBeforePublish := doRawRequest(env.router, http.MethodGet, "/api/marketplace/listings?scope=mine", "")
+	if creatorMineBeforePublish.Code != http.StatusOK {
+		t.Fatalf("expected marketplace mine list 200, got %d (%s)", creatorMineBeforePublish.Code, creatorMineBeforePublish.Body.String())
+	}
+	mineListings := decodeJSON[[]MarketplaceListingSummary](t, creatorMineBeforePublish)
+	if len(mineListings) != 1 || mineListings[0].Status != "draft" {
+		t.Fatalf("expected creator mine list to include one draft listing, got %+v", mineListings)
+	}
+
+	draftDetailForMember := doRawRequest(memberClient.router, http.MethodGet, fmt.Sprintf("/api/marketplace/listings/%s", listingSlug), "")
+	if draftDetailForMember.Code != http.StatusNotFound {
+		t.Fatalf("expected draft listing detail to be hidden from non-creators, got %d (%s)", draftDetailForMember.Code, draftDetailForMember.Body.String())
+	}
+
+	publishV1 := doJSONRequestWithHeaders(t, env.router, http.MethodPost, fmt.Sprintf("/api/marketplace/listings/%s/publish", listingID), PublishMarketplaceListingRequest{
+		ChangeSummary: "Initial free catalog release",
+	}, proHeaders)
+	if publishV1.Code != http.StatusCreated {
+		t.Fatalf("expected publish v1 201, got %d (%s)", publishV1.Code, publishV1.Body.String())
+	}
+	version1 := decodeJSON[MarketplaceListingVersion](t, publishV1)
+	if version1.VersionNumber != 1 || version1.NoteCount != 1 || version1.CardCount != 1 {
+		t.Fatalf("expected v1 marketplace metadata to reflect source deck, got %+v", version1)
+	}
+
+	publicAfterPublish := doRawRequest(memberClient.router, http.MethodGet, "/api/marketplace/listings", "")
+	if publicAfterPublish.Code != http.StatusOK {
+		t.Fatalf("expected marketplace public list after publish 200, got %d (%s)", publicAfterPublish.Code, publicAfterPublish.Body.String())
+	}
+	publicListings := decodeJSON[[]MarketplaceListingSummary](t, publicAfterPublish)
+	if len(publicListings) != 1 || publicListings[0].Slug != listingSlug || publicListings[0].LatestVersionNumber != 1 {
+		t.Fatalf("expected published marketplace listing in public catalog, got %+v", publicListings)
+	}
+
+	memberDetailRR := doRawRequest(memberClient.router, http.MethodGet, fmt.Sprintf("/api/marketplace/listings/%s", listingSlug), "")
+	if memberDetailRR.Code != http.StatusOK {
+		t.Fatalf("expected published marketplace detail 200, got %d (%s)", memberDetailRR.Code, memberDetailRR.Body.String())
+	}
+	memberDetail := decodeJSON[MarketplaceListingDetail](t, memberDetailRR)
+	if memberDetail.LatestVersion == nil || memberDetail.LatestVersion.VersionNumber != 1 {
+		t.Fatalf("expected published detail to expose latest version metadata, got %+v", memberDetail.LatestVersion)
+	}
+
+	installRR := doJSONRequest(t, memberClient.router, http.MethodPost, fmt.Sprintf("/api/marketplace/listings/%s/installs", listingSlug), InstallMarketplaceListingRequest{
+		DestinationWorkspaceID: memberClient.workspace.ID,
+	})
+	if installRR.Code != http.StatusCreated {
+		t.Fatalf("expected marketplace install 201, got %d (%s)", installRR.Code, installRR.Body.String())
+	}
+	memberInstall := decodeJSON[MarketplaceInstall](t, installRR)
+	if memberInstall.SourceVersionNumber != 1 || memberInstall.Status != "active" {
+		t.Fatalf("expected active marketplace install on version 1, got %+v", memberInstall)
+	}
+
+	var destinationCollectionID string
+	if err := env.store.db.QueryRow(`SELECT collection_id FROM decks WHERE id = ?`, memberInstall.InstalledDeckID).Scan(&destinationCollectionID); err != nil {
+		t.Fatalf("failed to load installed marketplace deck collection: %v", err)
+	}
+	if destinationCollectionID != memberClient.workspace.CollectionID {
+		t.Fatalf("expected marketplace install to land in destination workspace collection %q, got %q", memberClient.workspace.CollectionID, destinationCollectionID)
+	}
+
+	var sourceCollectionID string
+	if err := env.store.db.QueryRow(`SELECT collection_id FROM decks WHERE id = 1`).Scan(&sourceCollectionID); err != nil {
+		t.Fatalf("failed to load marketplace source deck collection: %v", err)
+	}
+	if sourceCollectionID == destinationCollectionID {
+		t.Fatalf("expected marketplace source and destination collections to differ, both were %q", sourceCollectionID)
+	}
+
+	memberDetailAfterInstallRR := doRawRequest(memberClient.router, http.MethodGet, fmt.Sprintf("/api/marketplace/listings/%s", listingSlug), "")
+	if memberDetailAfterInstallRR.Code != http.StatusOK {
+		t.Fatalf("expected marketplace detail after install 200, got %d (%s)", memberDetailAfterInstallRR.Code, memberDetailAfterInstallRR.Body.String())
+	}
+	memberDetailAfterInstall := decodeJSON[MarketplaceListingDetail](t, memberDetailAfterInstallRR)
+	if memberDetailAfterInstall.CurrentUserInstall == nil || memberDetailAfterInstall.CurrentUserInstall.SourceVersionNumber != 1 {
+		t.Fatalf("expected current user install metadata after install, got %+v", memberDetailAfterInstall.CurrentUserInstall)
+	}
+
+	var memberCardID int64
+	if err := env.store.db.QueryRow(`SELECT id FROM cards WHERE deck_id = ? ORDER BY id ASC LIMIT 1`, memberInstall.InstalledDeckID).Scan(&memberCardID); err != nil {
+		t.Fatalf("failed to load installed marketplace deck card: %v", err)
+	}
+	memberAnswer := doJSONRequest(t, memberClient.router, http.MethodPost, fmt.Sprintf("/api/cards/%d/answer", memberCardID), AnswerCardRequest{
+		Rating:      3,
+		TimeTakenMs: 700,
+	})
+	if memberAnswer.Code != http.StatusOK {
+		t.Fatalf("expected marketplace installed deck answer 200, got %d (%s)", memberAnswer.Code, memberAnswer.Body.String())
+	}
+
+	sourceDueAfterInstallAnswer := doRawRequest(env.router, http.MethodGet, "/api/decks/1/due?limit=10", "")
+	if sourceDueAfterInstallAnswer.Code != http.StatusOK {
+		t.Fatalf("expected source deck due queue 200, got %d (%s)", sourceDueAfterInstallAnswer.Code, sourceDueAfterInstallAnswer.Body.String())
+	}
+	if cards := decodeJSON[[]Card](t, sourceDueAfterInstallAnswer); len(cards) != 1 {
+		t.Fatalf("expected source deck due queue to remain unchanged after marketplace install study, got %d", len(cards))
+	}
+
+	createNoteForTest(t, env, CreateNoteRequest{
+		TypeID: "Basic",
+		DeckID: 1,
+		FieldVals: map[string]string{
+			"Front": "Marketplace source card 2",
+			"Back":  "Marketplace answer 2",
+		},
+	}, nil)
+
+	publishV2 := doJSONRequestWithHeaders(t, env.router, http.MethodPost, fmt.Sprintf("/api/marketplace/listings/%s/publish", listingID), PublishMarketplaceListingRequest{
+		ChangeSummary: "Added a second marketplace source card",
+	}, proHeaders)
+	if publishV2.Code != http.StatusCreated {
+		t.Fatalf("expected publish v2 201, got %d (%s)", publishV2.Code, publishV2.Body.String())
+	}
+	version2 := decodeJSON[MarketplaceListingVersion](t, publishV2)
+	if version2.VersionNumber != 2 || version2.NoteCount != 2 || version2.CardCount != 2 {
+		t.Fatalf("expected v2 marketplace metadata to reflect updated source deck, got %+v", version2)
+	}
+
+	memberDetailBeforeUpdateRR := doRawRequest(memberClient.router, http.MethodGet, fmt.Sprintf("/api/marketplace/listings/%s", listingSlug), "")
+	if memberDetailBeforeUpdateRR.Code != http.StatusOK {
+		t.Fatalf("expected marketplace detail before update 200, got %d (%s)", memberDetailBeforeUpdateRR.Code, memberDetailBeforeUpdateRR.Body.String())
+	}
+	memberDetailBeforeUpdate := decodeJSON[MarketplaceListingDetail](t, memberDetailBeforeUpdateRR)
+	if !memberDetailBeforeUpdate.UpdateAvailable {
+		t.Fatalf("expected marketplace detail updateAvailable=true after publishing v2")
+	}
+	if memberDetailBeforeUpdate.CurrentUserInstall == nil || memberDetailBeforeUpdate.CurrentUserInstall.SourceVersionNumber != 1 {
+		t.Fatalf("expected current user install to still point at version 1 before update, got %+v", memberDetailBeforeUpdate.CurrentUserInstall)
+	}
+
+	updateInstallRR := doJSONRequest(t, memberClient.router, http.MethodPost, fmt.Sprintf("/api/marketplace/listings/%s/installs/%s/update", listingSlug, memberInstall.ID), UpdateMarketplaceInstallRequest{})
+	if updateInstallRR.Code != http.StatusOK {
+		t.Fatalf("expected marketplace install update 200, got %d (%s)", updateInstallRR.Code, updateInstallRR.Body.String())
+	}
+	memberInstallV2 := decodeJSON[MarketplaceInstall](t, updateInstallRR)
+	if memberInstallV2.ID == memberInstall.ID {
+		t.Fatalf("expected marketplace install update to create a fresh install record")
+	}
+	if memberInstallV2.SourceVersionNumber != 2 || memberInstallV2.Status != "active" {
+		t.Fatalf("expected active version 2 marketplace install after update, got %+v", memberInstallV2)
+	}
+
+	oldInstall, err := env.store.GetMarketplaceInstall(memberInstall.ID)
+	if err != nil {
+		t.Fatalf("failed to reload superseded marketplace install: %v", err)
+	}
+	if oldInstall.Status != "superseded" || oldInstall.SupersededByInstall != memberInstallV2.ID {
+		t.Fatalf("expected original marketplace install to be superseded by the new install, got %+v", oldInstall)
+	}
+
+	oldNotes, oldCards, err := env.store.GetDeckContentSummary(memberInstall.InstalledDeckID)
+	if err != nil {
+		t.Fatalf("failed to read original marketplace install summary: %v", err)
+	}
+	if oldNotes != 1 || oldCards != 1 {
+		t.Fatalf("expected original marketplace install copy to remain on v1, got notes=%d cards=%d", oldNotes, oldCards)
+	}
+	newNotes, newCards, err := env.store.GetDeckContentSummary(memberInstallV2.InstalledDeckID)
+	if err != nil {
+		t.Fatalf("failed to read updated marketplace install summary: %v", err)
+	}
+	if newNotes != 2 || newCards != 2 {
+		t.Fatalf("expected updated marketplace install copy to reflect v2 content, got notes=%d cards=%d", newNotes, newCards)
+	}
+
+	removeInstallRR := doJSONRequest(t, memberClient.router, http.MethodDelete, fmt.Sprintf("/api/marketplace/listings/%s/installs/%s", listingSlug, memberInstallV2.ID), struct{}{})
+	if removeInstallRR.Code != http.StatusNoContent {
+		t.Fatalf("expected remove marketplace install 204, got %d (%s)", removeInstallRR.Code, removeInstallRR.Body.String())
+	}
+	removedInstall, err := env.store.GetMarketplaceInstall(memberInstallV2.ID)
+	if err != nil {
+		t.Fatalf("failed to reload removed marketplace install: %v", err)
+	}
+	if removedInstall.Status != "removed" {
+		t.Fatalf("expected removed marketplace install status=removed, got %+v", removedInstall)
+	}
+	if _, err := env.store.GetDeck(memberInstallV2.InstalledDeckID); err == nil {
+		t.Fatalf("expected removing a marketplace install to delete its copied deck %d", memberInstallV2.InstalledDeckID)
+	}
+}
+
 func TestAPI_NoteTypeFieldTemplateEmptyAndBackupEndpoints(t *testing.T) {
 	env := setupAPITestEnv(t)
 

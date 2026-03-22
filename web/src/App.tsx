@@ -4,6 +4,7 @@ import { Layout } from '#/layouts/root-layout'
 import { DecksPage } from '#/pages/DecksPage'
 import { HomePage } from '#/pages/HomePage'
 import { NotesPage } from '#/pages/NotesPage'
+import { MarketplaceDetailPage, MarketplacePage, MarketplacePublishPage } from '#/pages/MarketplacePage'
 import { StudyPage } from '#/pages/StudyPage'
 import { AddNotePage } from '#/pages/AddNotePage'
 import { StudyGroupDetailPage, StudyGroupJoinPage, StudyGroupsPage } from '#/pages/StudyGroupsPage'
@@ -53,6 +54,9 @@ export default function App() {
           <Route index element={<HomePage />} />
           <Route path="notes/view" element={<NotesPage />} />
           <Route path="decks" element={<DecksPage />} />
+          <Route path="marketplace" element={<MarketplacePage />} />
+          <Route path="marketplace/publish" element={<MarketplacePublishPage />} />
+          <Route path="marketplace/:slug" element={<MarketplaceDetailPage />} />
           <Route path="study-groups" element={<StudyGroupsPage />} />
           <Route path="study-groups/join" element={<StudyGroupJoinPage />} />
           <Route path="study-groups/:groupId" element={<StudyGroupDetailPage />} />

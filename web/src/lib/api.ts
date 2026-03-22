@@ -457,6 +457,111 @@ export interface UpdateStudyGroupInstallRequest {
   destinationWorkspaceId?: string
 }
 
+export interface MarketplaceInstall {
+  id: string
+  listingId: string
+  workspaceId: string
+  installedByUserId: string
+  installedDeckId: number
+  installedDeckName?: string
+  sourceVersionNumber: number
+  status: 'active' | 'superseded' | 'removed'
+  supersededByInstallId?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MarketplaceListingVersion {
+  id: string
+  listingId: string
+  versionNumber: number
+  sourceDeckId: number
+  publishedByUserId: string
+  changeSummary: string
+  noteCount: number
+  cardCount: number
+  createdAt: string
+}
+
+export interface MarketplaceListingSummary {
+  id: string
+  slug: string
+  title: string
+  summary: string
+  description: string
+  category: string
+  tags: string[]
+  coverImageUrl: string
+  creatorUserId: string
+  creatorDisplayName?: string
+  creatorEmail?: string
+  workspaceId: string
+  sourceDeckId: number
+  sourceDeckName: string
+  priceMode: 'free' | 'premium'
+  priceCents: number
+  currency: string
+  status: 'draft' | 'published' | 'archived'
+  installCount: number
+  latestVersionNumber: number
+  canEdit: boolean
+  updateAvailable: boolean
+  currentUserInstall?: MarketplaceInstall
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MarketplaceListingDetail {
+  listing: MarketplaceListingSummary
+  latestVersion?: MarketplaceListingVersion
+  versions: MarketplaceListingVersion[]
+  currentUserInstall?: MarketplaceInstall
+  updateAvailable: boolean
+  canEdit: boolean
+  canPublish: boolean
+  availableWorkspaces: WorkspaceSession[]
+}
+
+export interface CreateMarketplaceListingRequest {
+  deckId: number
+  title: string
+  slug?: string
+  summary: string
+  description: string
+  category: string
+  tags: string[]
+  coverImageUrl: string
+  priceMode?: 'free' | 'premium'
+  priceCents?: number
+  currency?: string
+}
+
+export interface UpdateMarketplaceListingRequest {
+  deckId: number
+  title: string
+  slug?: string
+  summary: string
+  description: string
+  category: string
+  tags: string[]
+  coverImageUrl: string
+  priceMode?: 'free' | 'premium'
+  priceCents?: number
+  currency?: string
+}
+
+export interface PublishMarketplaceListingRequest {
+  changeSummary?: string
+}
+
+export interface InstallMarketplaceListingRequest {
+  destinationWorkspaceId?: string
+}
+
+export interface UpdateMarketplaceInstallRequest {
+  destinationWorkspaceId?: string
+}
+
 // Deck endpoints
 export async function fetchDecks(): Promise<Deck[]> {
   return requestJSON(`${API_BASE}/decks`)
@@ -866,6 +971,69 @@ export async function removeStudyGroupInstall(id: string, installId: string): Pr
 
 export async function fetchStudyGroupDashboard(id: string): Promise<StudyGroupDashboard> {
   return requestJSON(`${API_BASE}/study-groups/${id}/dashboard`)
+}
+
+export async function fetchMarketplaceListings(scope?: 'mine'): Promise<MarketplaceListingSummary[]> {
+  const params = new URLSearchParams()
+  if (scope) params.set('scope', scope)
+  const query = params.toString()
+  return requestJSON(`${API_BASE}/marketplace/listings${query ? `?${query}` : ''}`)
+}
+
+export async function createMarketplaceListing(req: CreateMarketplaceListingRequest): Promise<MarketplaceListingDetail> {
+  return requestJSON(`${API_BASE}/marketplace/listings`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+}
+
+export async function fetchMarketplaceListing(ref: string): Promise<MarketplaceListingDetail> {
+  return requestJSON(`${API_BASE}/marketplace/listings/${ref}`)
+}
+
+export async function updateMarketplaceListing(ref: string, req: UpdateMarketplaceListingRequest): Promise<MarketplaceListingDetail> {
+  return requestJSON(`${API_BASE}/marketplace/listings/${ref}`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+}
+
+export async function deleteMarketplaceListing(ref: string): Promise<void> {
+  return requestJSON(`${API_BASE}/marketplace/listings/${ref}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function publishMarketplaceListing(ref: string, req: PublishMarketplaceListingRequest = {}): Promise<MarketplaceListingVersion> {
+  return requestJSON(`${API_BASE}/marketplace/listings/${ref}/publish`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+}
+
+export async function installMarketplaceListing(ref: string, req: InstallMarketplaceListingRequest = {}): Promise<MarketplaceInstall> {
+  return requestJSON(`${API_BASE}/marketplace/listings/${ref}/installs`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+}
+
+export async function updateMarketplaceInstall(ref: string, installId: string, req: UpdateMarketplaceInstallRequest = {}): Promise<MarketplaceInstall> {
+  return requestJSON(`${API_BASE}/marketplace/listings/${ref}/installs/${installId}/update`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(req),
+  })
+}
+
+export async function removeMarketplaceInstall(ref: string, installId: string): Promise<void> {
+  return requestJSON(`${API_BASE}/marketplace/listings/${ref}/installs/${installId}`, {
+    method: 'DELETE',
+  })
 }
 
 // Backup endpoints

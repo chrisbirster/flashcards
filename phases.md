@@ -17,7 +17,7 @@ Status legend:
 | Phase 0 | `done` | Mobile-first app foundation, Vutadex dark/light theme system, mobile shell, dashboard aggregation, and responsive rewrites for core app routes. |
 | Phase 1 | `done` | Shared-content / per-user-review-state split for authenticated study, due queues, deck stats, and revlog ownership. |
 | Phase 2 | `done` | Study Groups foundation: canonical source deck, published versions, invites, personal installs, fork/update state, and cross-collection installs. |
-| Phase 3 | `planned` | Marketplace foundation: listings, publish flow, versioned source installs, and listing detail pages. |
+| Phase 3 | `done` | Marketplace foundation: listing CRUD, publish flow, listing detail pages, and free versioned installs with source attribution. |
 | Phase 4 | `later` | Paid marketplace and creator payouts via Stripe Connect Express. |
 | Phase 5 | `later` | AI note-to-card generation, analytics, and study protocols. |
 | Phase 6 | `later` | Real-time collaborative editing using Hocuspocus/Yjs. |
@@ -73,17 +73,38 @@ Status legend:
 - Scoped note type identities by collection and rewired request handlers so deck, note, template, and study flows resolve the active workspace collection correctly.
 - Added regression coverage for cross-collection Study Group installs and preserved per-user review isolation after install.
 
+### Phase 3
+- Added Marketplace foundation flows:
+  - listing CRUD
+  - explicit publish flow
+  - published listing detail pages
+  - creator management surface
+  - free install, update, and removal flows
+- Added marketplace listing versions so installs point at published source versions instead of mutable raw deck content.
+- Reused the Phase 2 copy/install model so marketplace installs create workspace-local copies with private review history.
+- Added integration coverage for:
+  - Pro-plus publishing entitlement gates
+  - draft vs published visibility
+  - premium install blocking until Phase 4
+  - free cross-collection installs
+  - fresh-copy version updates
+  - source deck review isolation after install study
+- Tightened request-scoped collection loading so cross-collection installs cannot leave stale note/card ID counters in memory.
+
 ## Next Up
 
-### Phase 3
-- Start Marketplace foundation work.
-- Initial scope:
-  - listing CRUD
-  - publish flow
-  - listing detail pages
-  - workspace-local installs with source attribution and version metadata
-  - reuse the source-version and personal-install model from Phase 2
-- Keep payments, creator payouts, and Stripe Connect out of scope until Phase 4.
+### Phase 4
+- Paid marketplace and creator economy is the next implementation target.
+- Current implementation target:
+  - Stripe Connect Express onboarding
+  - premium listing checkout
+  - order and license records
+  - platform fee tracking
+  - payout bookkeeping
+- Explicitly out of scope before Phase 4 starts:
+  - real payment capture for premium marketplace listings
+  - creator payouts
+  - premium install entitlement after checkout
 
 ## Notes
 
@@ -263,7 +284,7 @@ Exit criteria:
 
 ### Phase 3: Marketplace Foundation
 
-Status: `planned`
+Status: `done`
 
 Objective:
 - Launch the non-payment marketplace surface so decks can be listed, browsed, published, and installed.
@@ -288,23 +309,32 @@ Primary scope:
   - price mode
   - install count
   - status
+- Add explicit marketplace listing versions so installs point at a published source version instead of raw mutable deck content.
 
 Publishing rules:
 - Free users can browse and install free listings.
 - Pro, Team, and Enterprise users can publish.
-- Team and Enterprise can publish under workspace/organization identity later as needed.
+- Team and Enterprise can publish under workspace identity for now.
+- Premium purchase flows remain deferred to Phase 4, so this tranche only guarantees free listing installs.
 
 Install model:
 - Installing a listing creates a workspace-local deck install linked back to the source listing.
 - Review history does not copy.
 - Installed content keeps source attribution and version metadata.
+- Listing updates are versioned.
+- If a newer free version exists, users can install the newer version as a fresh copy.
 - Marketplace should reuse the source-version and personal-install model introduced in Phase 2 where possible.
 
 Dependencies:
 - Phase 1 per-user review state.
+- Phase 2 copy/install pipeline and cross-collection support.
 
 Exit criteria:
-- Users can browse listings, open listing detail pages, publish listings, and install free decks.
+- Users can browse listings.
+- Users can open listing detail pages.
+- Eligible users can create and publish listings.
+- Free users can install free listings into a workspace.
+- Installed marketplace copies keep source attribution and published version metadata.
 
 ### Phase 4: Paid Marketplace and Creator Economy
 

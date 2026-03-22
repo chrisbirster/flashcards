@@ -33,6 +33,7 @@ func (s *SQLiteStore) migrate() error {
 		{7, "add_study_group_versions_and_installs", s.runMigration007_AddStudyGroupVersioningSchema},
 		{8, "retain_removed_study_group_installs", s.runMigration008_RetainRemovedStudyGroupInstalls},
 		{9, "scope_note_type_ids_by_collection", s.runMigration009_ScopeNoteTypeIDsByCollection},
+		{10, "expand_marketplace_foundation_schema", s.runMigration010_ExpandMarketplaceFoundationSchema},
 	}
 
 	for _, m := range migrations {
@@ -901,5 +902,77 @@ func (s *SQLiteStore) runMigration009_ScopeNoteTypeIDsByCollection() error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (s *SQLiteStore) runMigration010_ExpandMarketplaceFoundationSchema() error {
+	statements := []string{
+		`ALTER TABLE marketplace_listings ADD COLUMN category TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE marketplace_listings ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'`,
+		`ALTER TABLE marketplace_listings ADD COLUMN cover_image_url TEXT NOT NULL DEFAULT ''`,
+		`
+		CREATE TABLE IF NOT EXISTS marketplace_listing_versions (
+			id TEXT PRIMARY KEY,
+			listing_id TEXT NOT NULL,
+			version_number INTEGER NOT NULL,
+			source_deck_id INTEGER NOT NULL,
+			published_by_user_id TEXT NOT NULL,
+			change_summary TEXT NOT NULL DEFAULT '',
+			note_count INTEGER NOT NULL,
+			card_count INTEGER NOT NULL,
+			created_at INTEGER NOT NULL,
+			UNIQUE(listing_id, version_number),
+			FOREIGN KEY (listing_id) REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+			FOREIGN KEY (source_deck_id) REFERENCES decks(id) ON DELETE CASCADE,
+			FOREIGN KEY (published_by_user_id) REFERENCES users(id) ON DELETE CASCADE
+		)
+		`,
+		`ALTER TABLE marketplace_installs RENAME TO marketplace_installs_old`,
+		`
+		CREATE TABLE marketplace_installs (
+			id TEXT PRIMARY KEY,
+			listing_id TEXT NOT NULL,
+			workspace_id TEXT NOT NULL,
+			installed_by_user_id TEXT NOT NULL,
+			installed_deck_id INTEGER,
+			source_version_number INTEGER NOT NULL DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'active',
+			superseded_by_install_id TEXT,
+			created_at INTEGER NOT NULL,
+			updated_at INTEGER NOT NULL,
+			FOREIGN KEY (listing_id) REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+			FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+			FOREIGN KEY (installed_by_user_id) REFERENCES users(id) ON DELETE CASCADE,
+			FOREIGN KEY (installed_deck_id) REFERENCES decks(id) ON DELETE SET NULL,
+			FOREIGN KEY (superseded_by_install_id) REFERENCES marketplace_installs(id) ON DELETE SET NULL
+		)
+		`,
+		`
+		INSERT INTO marketplace_installs (
+			id, listing_id, workspace_id, installed_by_user_id, installed_deck_id,
+			source_version_number, status, superseded_by_install_id, created_at, updated_at
+		)
+		SELECT
+			id, listing_id, workspace_id, installed_by_user_id, NULL,
+			0, 'active', NULL, created_at, created_at
+		FROM marketplace_installs_old
+		`,
+		`DROP TABLE marketplace_installs_old`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_listings_workspace ON marketplace_listings(workspace_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_listings_deck ON marketplace_listings(deck_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_listings_status ON marketplace_listings(status)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_listings_creator ON marketplace_listings(creator_user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_listing_versions_listing ON marketplace_listing_versions(listing_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_installs_listing ON marketplace_installs(listing_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_installs_user ON marketplace_installs(installed_by_user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_marketplace_installs_workspace ON marketplace_installs(workspace_id)`,
+	}
+
+	for _, statement := range statements {
+		if _, err := s.db.Exec(statement); err != nil && !isIgnorableMigrationError(err) {
+			return fmt.Errorf("failed to apply marketplace foundation migration statement: %w", err)
+		}
+	}
+
 	return nil
 }

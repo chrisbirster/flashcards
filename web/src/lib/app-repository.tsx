@@ -4,11 +4,13 @@ import {
   answerCard,
   checkDuplicate,
   createBackup,
+  createMarketplaceListing,
   fetchDashboard,
   createStudyGroup,
   createDeck,
   createTemplate,
   createNote,
+  deleteMarketplaceListing,
   deleteStudyGroupMember,
   deleteDeck,
   deleteNote,
@@ -21,6 +23,8 @@ import {
   fetchDeckStats,
   fetchDueCards,
   fetchEntitlements,
+  fetchMarketplaceListing,
+  fetchMarketplaceListings,
   fetchNote,
   fetchNotes,
   fetchNoteType,
@@ -30,6 +34,7 @@ import {
   fetchStudyGroupDashboard,
   fetchStudyGroups,
   fetchStudyGroupVersions,
+  installMarketplaceListing,
   installStudyGroupDeck,
   inviteStudyGroupMember,
   joinStudyGroup,
@@ -40,13 +45,17 @@ import {
   importNotesFile,
   listBackups,
   logout,
+  publishMarketplaceListing,
   publishStudyGroupVersion,
   removeField,
+  removeMarketplaceInstall,
   removeStudyGroupInstall,
   renameField,
   reorderFields,
   setFieldOptions,
   setSortField,
+  updateMarketplaceInstall,
+  updateMarketplaceListing,
   updateStudyGroup,
   updateStudyGroupInstall,
   updateStudyGroupMember,
@@ -74,14 +83,21 @@ import {
   type FieldsResponse,
   type ImportFileRequest,
   type ImportNotesResponse,
+  type InstallMarketplaceListingRequest,
   type InstallStudyGroupDeckRequest,
   type InviteStudyGroupMemberRequest,
   type JoinStudyGroupRequest,
   type ListNotesParams,
   type ListNotesResponse,
+  type MarketplaceInstall,
+  type MarketplaceListingDetail,
+  type MarketplaceListingSummary,
+  type MarketplaceListingVersion,
   type Note,
   type NoteType,
+  type CreateMarketplaceListingRequest,
   type CreateStudyGroupRequest,
+  type PublishMarketplaceListingRequest,
   type PublishStudyGroupVersionRequest,
   type RenameFieldRequest,
   type ReorderFieldsRequest,
@@ -94,6 +110,8 @@ import {
   type TemplatesResponse,
   type UpdateCardRequest,
   type UpdateDeckRequest,
+  type UpdateMarketplaceInstallRequest,
+  type UpdateMarketplaceListingRequest,
   type UpdateNoteRequest,
   type UpdateStudyGroupInstallRequest,
   type UpdateStudyGroupMemberRequest,
@@ -157,6 +175,15 @@ export interface AppRepository {
   updateStudyGroupInstall(id: string, installId: string, req?: UpdateStudyGroupInstallRequest): Promise<StudyGroupInstall>
   removeStudyGroupInstall(id: string, installId: string): Promise<void>
   fetchStudyGroupDashboard(id: string): Promise<StudyGroupDashboard>
+  fetchMarketplaceListings(scope?: 'mine'): Promise<MarketplaceListingSummary[]>
+  createMarketplaceListing(req: CreateMarketplaceListingRequest): Promise<MarketplaceListingDetail>
+  fetchMarketplaceListing(ref: string): Promise<MarketplaceListingDetail>
+  updateMarketplaceListing(ref: string, req: UpdateMarketplaceListingRequest): Promise<MarketplaceListingDetail>
+  deleteMarketplaceListing(ref: string): Promise<void>
+  publishMarketplaceListing(ref: string, req?: PublishMarketplaceListingRequest): Promise<MarketplaceListingVersion>
+  installMarketplaceListing(ref: string, req?: InstallMarketplaceListingRequest): Promise<MarketplaceInstall>
+  updateMarketplaceInstall(ref: string, installId: string, req?: UpdateMarketplaceInstallRequest): Promise<MarketplaceInstall>
+  removeMarketplaceInstall(ref: string, installId: string): Promise<void>
   logout(): Promise<{ok: boolean}>
 }
 
@@ -214,6 +241,15 @@ export const remoteRepository: AppRepository = {
   updateStudyGroupInstall,
   removeStudyGroupInstall,
   fetchStudyGroupDashboard,
+  fetchMarketplaceListings,
+  createMarketplaceListing,
+  fetchMarketplaceListing,
+  updateMarketplaceListing,
+  deleteMarketplaceListing,
+  publishMarketplaceListing,
+  installMarketplaceListing,
+  updateMarketplaceInstall,
+  removeMarketplaceInstall,
   logout,
 }
 
@@ -339,6 +375,15 @@ export function createLocalRepository(): AppRepository {
     updateStudyGroupInstall: () => notImplemented('updateStudyGroupInstall'),
     removeStudyGroupInstall: () => notImplemented('removeStudyGroupInstall'),
     fetchStudyGroupDashboard: () => notImplemented('fetchStudyGroupDashboard'),
+    fetchMarketplaceListings: () => notImplemented('fetchMarketplaceListings'),
+    createMarketplaceListing: () => notImplemented('createMarketplaceListing'),
+    fetchMarketplaceListing: () => notImplemented('fetchMarketplaceListing'),
+    updateMarketplaceListing: () => notImplemented('updateMarketplaceListing'),
+    deleteMarketplaceListing: () => notImplemented('deleteMarketplaceListing'),
+    publishMarketplaceListing: () => notImplemented('publishMarketplaceListing'),
+    installMarketplaceListing: () => notImplemented('installMarketplaceListing'),
+    updateMarketplaceInstall: () => notImplemented('updateMarketplaceInstall'),
+    removeMarketplaceInstall: () => notImplemented('removeMarketplaceInstall'),
     logout: () => Promise.resolve({ok: true}),
   }
 }

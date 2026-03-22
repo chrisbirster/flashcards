@@ -133,6 +133,20 @@ func registerAPIRoutes(r chi.Router, handler *APIHandler) {
 			r.Get("/dashboard", handler.GetStudyGroupDashboard)
 		})
 
+		r.Route("/marketplace", func(r chi.Router) {
+			r.Get("/listings", handler.ListMarketplaceListings)
+			r.Post("/listings", handler.CreateMarketplaceListing)
+			r.Route("/listings/{ref}", func(r chi.Router) {
+				r.Get("/", handler.GetMarketplaceListing)
+				r.Patch("/", handler.UpdateMarketplaceListing)
+				r.Delete("/", handler.DeleteMarketplaceListing)
+				r.Post("/publish", handler.PublishMarketplaceListing)
+				r.Post("/installs", handler.InstallMarketplaceListing)
+				r.Post("/installs/{installId}/update", handler.UpdateMarketplaceInstall)
+				r.Delete("/installs/{installId}", handler.RemoveMarketplaceInstall)
+			})
+		})
+
 		r.Post("/backups", handler.CreateBackup)
 		r.Get("/backups", handler.ListBackups)
 		r.Post("/backups/restore", handler.RestoreBackup)
@@ -267,12 +281,16 @@ func (h *APIHandler) collectionIDForRequest(r *http.Request) string {
 
 func (h *APIHandler) collectionForRequest(r *http.Request) (*Collection, string, error) {
 	collectionID := h.collectionIDForRequest(r)
-	if collectionID == h.collectionID && h.collection != nil {
-		return h.collection, collectionID, nil
-	}
 	col, err := h.store.GetCollection(collectionID)
 	if err != nil {
 		return nil, collectionID, err
+	}
+	if collectionID == h.collectionID {
+		if h.collection != nil {
+			*h.collection = *col
+			return h.collection, collectionID, nil
+		}
+		h.collection = col
 	}
 	return col, collectionID, nil
 }

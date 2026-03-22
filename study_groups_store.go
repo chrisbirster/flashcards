@@ -21,8 +21,13 @@ func (s *SQLiteStore) ListWorkspacesForUser(userID string) ([]Workspace, error) 
 		SELECT id, name, slug, collection_id, owner_user_id, organization_id, created_at, updated_at
 		FROM workspaces
 		WHERE owner_user_id = ?
+		   OR organization_id IN (
+				SELECT organization_id
+				FROM organization_members
+				WHERE user_id = ? AND status = 'active'
+		   )
 		ORDER BY created_at ASC
-	`, userID)
+	`, userID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -43,8 +48,16 @@ func (s *SQLiteStore) GetWorkspaceForUser(userID, workspaceID string) (*Workspac
 	row := s.db.QueryRow(`
 		SELECT id, name, slug, collection_id, owner_user_id, organization_id, created_at, updated_at
 		FROM workspaces
-		WHERE id = ? AND owner_user_id = ?
-	`, workspaceID, userID)
+		WHERE id = ?
+		  AND (
+			 owner_user_id = ?
+			 OR organization_id IN (
+				SELECT organization_id
+				FROM organization_members
+				WHERE user_id = ? AND status = 'active'
+			 )
+		  )
+	`, workspaceID, userID, userID)
 	return scanWorkspaceRow(row)
 }
 
@@ -795,9 +808,10 @@ func (s *SQLiteStore) BuildStudyGroupDetail(groupID, userID string) (*StudyGroup
 			detail.UpdateAvailable = true
 		}
 	}
-	detail.CanEdit = member.Role == "owner" || member.Role == "admin"
-	detail.CanInvite = detail.CanEdit
-	detail.CanPublishVersion = detail.CanEdit
+	detail.CanEdit = member.Role == "owner" || member.Role == "admin" || member.Role == "edit"
+	detail.CanManageMembers = member.Role == "owner" || member.Role == "admin"
+	detail.CanInvite = detail.CanManageMembers
+	detail.CanPublishVersion = detail.CanManageMembers
 	if dashboard, err := s.GetStudyGroupDashboard(groupID); err == nil {
 		detail.Dashboard = dashboard
 	}

@@ -64,7 +64,7 @@ export function LoginPage() {
     onSuccess: async (session) => {
       queryClient.setQueryData(['auth-session'], session)
       await queryClient.invalidateQueries({queryKey: ['auth-session']})
-      navigate(redirectTo, {replace: true})
+      navigate(session.user?.onboarding ? '/onboarding/plan' : redirectTo, {replace: true})
     },
     onError: (error) => {
       setVerifyError(error instanceof Error ? error.message : 'Failed to verify code')
@@ -72,7 +72,7 @@ export function LoginPage() {
   })
 
   if (sessionQuery.data?.authenticated) {
-    return <Navigate to="/decks" replace />
+    return <Navigate to={sessionQuery.data.user?.onboarding ? '/onboarding/plan' : redirectTo} replace />
   }
 
   const activeEmail = requestedEmail || email

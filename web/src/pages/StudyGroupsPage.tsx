@@ -1,9 +1,9 @@
-import { type ReactNode, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { useAppRepository } from '#/lib/app-repository'
 import { EmptyState, PageContainer, PageSection, SurfaceCard } from '#/components/page-layout'
-import { Sheet } from '#/components/sheet'
+import { ConfirmSheet, Sheet } from '#/components/sheet'
 
 function formatDateTime(value?: string) {
   if (!value) return 'Unknown'
@@ -138,7 +138,7 @@ export function StudyGroupsPage() {
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-muted-surface)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--app-muted)]">
-                      {group.role || 'member'}
+                      {group.role || 'read'}
                     </span>
                     <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card-strong)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--app-text-soft)]">
                       {group.membershipStatus}
@@ -268,14 +268,19 @@ export function StudyGroupsPage() {
 export function StudyGroupDetailPage() {
   const repository = useAppRepository()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const params = useParams()
   const groupId = params.groupId ?? ''
   const [inviteOpen, setInviteOpen] = useState(false)
   const [publishOpen, setPublishOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState<'admin' | 'member'>('member')
+  const [inviteRole, setInviteRole] = useState<'admin' | 'edit' | 'read'>('read')
   const [changeSummary, setChangeSummary] = useState('')
   const [workspaceId, setWorkspaceId] = useState('')
+  const [groupName, setGroupName] = useState('')
+  const [groupDescription, setGroupDescription] = useState('')
 
   const detailQuery = useQuery({
     queryKey: ['study-group', groupId],
@@ -289,6 +294,13 @@ export function StudyGroupDetailPage() {
     [detail?.members]
   )
 
+  useEffect(() => {
+    if (detail) {
+      setGroupName(detail.group.name)
+      setGroupDescription(detail.group.description || '')
+    }
+  }, [detail])
+
   const refreshGroup = () => {
     queryClient.invalidateQueries({ queryKey: ['study-groups'] })
     queryClient.invalidateQueries({ queryKey: ['study-group', groupId] })
@@ -299,8 +311,30 @@ export function StudyGroupDetailPage() {
     onSuccess: () => {
       refreshGroup()
       setInviteEmail('')
-      setInviteRole('member')
+      setInviteRole('read')
       setInviteOpen(false)
+    },
+  })
+
+  const updateGroupMutation = useMutation({
+    mutationFn: () =>
+      repository.updateStudyGroup(groupId, {
+        name: groupName,
+        description: groupDescription,
+        visibility: detail!.group.visibility,
+        joinPolicy: detail!.group.joinPolicy,
+      }),
+    onSuccess: () => {
+      refreshGroup()
+      setEditOpen(false)
+    },
+  })
+
+  const deleteGroupMutation = useMutation({
+    mutationFn: () => repository.deleteStudyGroup(groupId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['study-groups'] })
+      navigate('/study-groups', { replace: true })
     },
   })
 
@@ -330,7 +364,7 @@ export function StudyGroupDetailPage() {
   })
 
   const memberMutation = useMutation({
-    mutationFn: ({memberId, role}: {memberId: string; role: 'admin' | 'member'}) =>
+    mutationFn: ({memberId, role}: {memberId: string; role: 'owner' | 'admin' | 'edit' | 'read'}) =>
       repository.updateStudyGroupMember(groupId, memberId, {role}),
     onSuccess: refreshGroup,
   })
@@ -378,6 +412,15 @@ export function StudyGroupDetailPage() {
                 Invite
               </button>
             ) : null}
+            {detail.canManageMembers ? (
+              <button
+                type="button"
+                onClick={() => setEditOpen(true)}
+                className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 text-sm font-semibold text-[var(--app-text)]"
+              >
+                Edit group
+              </button>
+            ) : null}
             {detail.canPublishVersion ? (
               <button
                 type="button"
@@ -385,6 +428,15 @@ export function StudyGroupDetailPage() {
                 className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)]"
               >
                 Publish update
+              </button>
+            ) : null}
+            {detail.canManageMembers ? (
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(true)}
+                className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-danger-line)] bg-[var(--app-danger-surface)] px-4 text-sm font-semibold text-[var(--app-danger-text)]"
+              >
+                Delete group
               </button>
             ) : null}
           </div>
@@ -407,7 +459,7 @@ export function StudyGroupDetailPage() {
                 {detail.role} • {detail.membershipStatus}
               </p>
               <p className="mt-2 text-sm text-[var(--app-text-soft)]">
-                Owners and admins can invite members and publish source versions. Member installs keep private review history.
+                Read members can install and study personal copies. Edit members can update source content through the workspace. Admins and owners manage members and publish versions.
               </p>
             </SurfaceCard>
           </div>
@@ -571,7 +623,7 @@ export function StudyGroupDetailPage() {
               <div>
                 <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-muted)]">Members</p>
                 <p className="mt-2 text-sm text-[var(--app-text-soft)]">
-                  Active members install personal copies. Owners and admins manage invites and source publishing.
+                  Active members install personal copies. Admins and owners manage invites and publishing.
                 </p>
               </div>
               <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-muted-surface)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-[var(--app-muted)]">
@@ -589,23 +641,43 @@ export function StudyGroupDetailPage() {
                           {member.role} • {member.status}
                         </p>
                       </div>
-                      {detail.canEdit && member.role !== 'owner' ? (
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            onClick={() => memberMutation.mutate({memberId: member.id, role: member.role === 'admin' ? 'member' : 'admin'})}
-                            className="inline-flex min-h-10 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-3 text-xs font-semibold text-[var(--app-text-soft)]"
-                          >
-                            {member.role === 'admin' ? 'Make member' : 'Make admin'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeMemberMutation.mutate(member.id)}
-                            className="inline-flex min-h-10 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-3 text-xs font-semibold text-[var(--app-danger-text)]"
-                          >
-                            Remove
-                          </button>
-                        </div>
+                      {detail.canManageMembers ? (
+                        (() => {
+                          const canMutateMember =
+                            detail.role === 'owner' || member.role !== 'owner'
+                          const roleOptions =
+                            detail.role === 'owner'
+                              ? ['read', 'edit', 'admin', 'owner']
+                              : ['read', 'edit', 'admin']
+
+                          return canMutateMember ? (
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <select
+                                value={member.role}
+                                onChange={(event) =>
+                                  memberMutation.mutate({
+                                    memberId: member.id,
+                                    role: event.target.value as 'owner' | 'admin' | 'edit' | 'read',
+                                  })
+                                }
+                                className="min-h-10 rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-3 text-xs font-semibold text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
+                              >
+                                {roleOptions.map((role) => (
+                                  <option key={role} value={role}>
+                                    {role}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => removeMemberMutation.mutate(member.id)}
+                                className="inline-flex min-h-10 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-3 text-xs font-semibold text-[var(--app-danger-text)]"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ) : null
+                        })()
                       ) : null}
                     </div>
                     {member.inviteExpiresAt ? (
@@ -650,10 +722,11 @@ export function StudyGroupDetailPage() {
             <span className="text-sm font-medium text-[var(--app-text)]">Role</span>
             <select
               value={inviteRole}
-              onChange={(event) => setInviteRole(event.target.value as 'admin' | 'member')}
+              onChange={(event) => setInviteRole(event.target.value as 'admin' | 'edit' | 'read')}
               className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 py-3 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
             >
-              <option value="member">Member</option>
+              <option value="read">Read</option>
+              <option value="edit">Edit</option>
               <option value="admin">Admin</option>
             </select>
           </label>
@@ -672,6 +745,51 @@ export function StudyGroupDetailPage() {
           </button>
         </div>
       </Sheet>
+
+      <Sheet open={editOpen} onClose={() => setEditOpen(false)} title="Edit study group">
+        <div className="space-y-4">
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-[var(--app-text)]">Name</span>
+            <input
+              value={groupName}
+              onChange={(event) => setGroupName(event.target.value)}
+              className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 py-3 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
+            />
+          </label>
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-[var(--app-text)]">Description</span>
+            <textarea
+              value={groupDescription}
+              onChange={(event) => setGroupDescription(event.target.value)}
+              rows={4}
+              className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-4 py-3 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
+            />
+          </label>
+          {updateGroupMutation.isError ? (
+            <p className="text-sm text-[var(--app-danger-text)]">
+              {updateGroupMutation.error instanceof Error ? updateGroupMutation.error.message : 'Failed to update study group.'}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => updateGroupMutation.mutate()}
+            disabled={updateGroupMutation.isPending || !groupName.trim()}
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)] disabled:opacity-60"
+          >
+            {updateGroupMutation.isPending ? 'Saving...' : 'Save changes'}
+          </button>
+        </div>
+      </Sheet>
+
+      <ConfirmSheet
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title="Delete study group"
+        description="This removes the study group container. Existing personal installs remain personal workspace copies, but the source publishing surface is removed."
+        confirmLabel={deleteGroupMutation.isPending ? 'Deleting...' : 'Delete group'}
+        destructive
+        onConfirm={() => deleteGroupMutation.mutate()}
+      />
 
       <Sheet open={publishOpen} onClose={() => setPublishOpen(false)} title="Publish source version">
         <div className="space-y-4">

@@ -157,6 +157,7 @@ func (h *APIHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 			ID:          newID("usr"),
 			Email:       email,
 			DisplayName: displayNameForEmail(email),
+			Onboarding:  true,
 			LastLoginAt: now,
 			CreatedAt:   now,
 			UpdatedAt:   now,

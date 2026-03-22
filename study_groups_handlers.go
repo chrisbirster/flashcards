@@ -14,10 +14,19 @@ import (
 
 func validStudyGroupRole(role string) bool {
 	switch role {
-	case "owner", "admin", "member":
+	case "owner", "admin", "edit", "read":
 		return true
 	default:
 		return false
+	}
+}
+
+func normalizeStudyGroupRole(role string) string {
+	switch strings.TrimSpace(role) {
+	case "member":
+		return "read"
+	default:
+		return strings.TrimSpace(role)
 	}
 }
 
@@ -28,6 +37,14 @@ func validStudyGroupMemberStatus(status string) bool {
 	default:
 		return false
 	}
+}
+
+func canManageStudyGroupMembers(role string) bool {
+	return role == "owner" || role == "admin"
+}
+
+func canEditStudyGroupSource(role string) bool {
+	return role == "owner" || role == "admin" || role == "edit"
 }
 
 func (h *APIHandler) reloadCollectionSnapshot(collectionID string) error {
@@ -117,6 +134,9 @@ func (h *APIHandler) ListStudyGroups(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) CreateStudyGroup(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	session, _, ok := h.requireStudyGroupsEntitlement(w, r)
 	if !ok {
 		return
@@ -234,7 +254,7 @@ func (h *APIHandler) UpdateStudyGroup(w http.ResponseWriter, r *http.Request) {
 		respondAPIError(w, http.StatusInternalServerError, "study_group_access_failed", err.Error())
 		return
 	}
-	if member.Status != "active" || (member.Role != "owner" && member.Role != "admin") {
+	if member.Status != "active" || !canManageStudyGroupMembers(member.Role) {
 		respondAPIError(w, http.StatusForbidden, "study_group_forbidden", "Only owners and admins can update this study group.")
 		return
 	}
@@ -287,7 +307,7 @@ func (h *APIHandler) DeleteStudyGroup(w http.ResponseWriter, r *http.Request) {
 		respondAPIError(w, http.StatusInternalServerError, "study_group_access_failed", err.Error())
 		return
 	}
-	if member.Status != "active" || (member.Role != "owner" && member.Role != "admin") {
+	if member.Status != "active" || !canManageStudyGroupMembers(member.Role) {
 		respondAPIError(w, http.StatusForbidden, "study_group_forbidden", "Only owners and admins can delete this study group.")
 		return
 	}
@@ -309,7 +329,7 @@ func (h *APIHandler) InviteStudyGroupMember(w http.ResponseWriter, r *http.Reque
 		respondAPIError(w, http.StatusInternalServerError, "study_group_access_failed", err.Error())
 		return
 	}
-	if member.Status != "active" || (member.Role != "owner" && member.Role != "admin") {
+	if member.Status != "active" || !canManageStudyGroupMembers(member.Role) {
 		respondAPIError(w, http.StatusForbidden, "study_group_forbidden", "Only owners and admins can invite members.")
 		return
 	}
@@ -320,12 +340,12 @@ func (h *APIHandler) InviteStudyGroupMember(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
-	req.Role = strings.TrimSpace(req.Role)
+	req.Role = normalizeStudyGroupRole(req.Role)
 	if req.Role == "" {
-		req.Role = "member"
+		req.Role = "read"
 	}
 	if req.Email == "" || !validStudyGroupRole(req.Role) || req.Role == "owner" {
-		respondAPIError(w, http.StatusBadRequest, "invalid_member_request", "Invite requires an email and role of admin or member.")
+		respondAPIError(w, http.StatusBadRequest, "invalid_member_request", "Invite requires an email and role of admin, edit, or read.")
 		return
 	}
 
@@ -372,7 +392,7 @@ func (h *APIHandler) UpdateStudyGroupMember(w http.ResponseWriter, r *http.Reque
 		respondAPIError(w, http.StatusInternalServerError, "study_group_access_failed", err.Error())
 		return
 	}
-	if member.Status != "active" || (member.Role != "owner" && member.Role != "admin") {
+	if member.Status != "active" || !canManageStudyGroupMembers(member.Role) {
 		respondAPIError(w, http.StatusForbidden, "study_group_forbidden", "Only owners and admins can update members.")
 		return
 	}
@@ -392,9 +412,9 @@ func (h *APIHandler) UpdateStudyGroupMember(w http.ResponseWriter, r *http.Reque
 		respondAPIError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
 		return
 	}
-	if role := strings.TrimSpace(req.Role); role != "" {
+	if role := normalizeStudyGroupRole(req.Role); role != "" {
 		if !validStudyGroupRole(role) || role == "owner" {
-			respondAPIError(w, http.StatusBadRequest, "invalid_member_role", "Role must be admin or member.")
+			respondAPIError(w, http.StatusBadRequest, "invalid_member_role", "Role must be admin, edit, or read.")
 			return
 		}
 		targetMember.Role = role
@@ -440,7 +460,7 @@ func (h *APIHandler) DeleteStudyGroupMember(w http.ResponseWriter, r *http.Reque
 		respondAPIError(w, http.StatusInternalServerError, "study_group_access_failed", err.Error())
 		return
 	}
-	if member.Status != "active" || (member.Role != "owner" && member.Role != "admin") {
+	if member.Status != "active" || !canManageStudyGroupMembers(member.Role) {
 		respondAPIError(w, http.StatusForbidden, "study_group_forbidden", "Only owners and admins can remove members.")
 		return
 	}
@@ -587,7 +607,7 @@ func (h *APIHandler) PublishStudyGroupVersion(w http.ResponseWriter, r *http.Req
 		respondAPIError(w, http.StatusInternalServerError, "study_group_access_failed", err.Error())
 		return
 	}
-	if member.Status != "active" || (member.Role != "owner" && member.Role != "admin") {
+	if member.Status != "active" || !canManageStudyGroupMembers(member.Role) {
 		respondAPIError(w, http.StatusForbidden, "study_group_forbidden", "Only owners and admins can publish versions.")
 		return
 	}
@@ -777,7 +797,7 @@ func (h *APIHandler) RemoveStudyGroupInstall(w http.ResponseWriter, r *http.Requ
 		respondAPIError(w, http.StatusNotFound, "study_group_install_not_found", "Study group install not found.")
 		return
 	}
-	if install.StudyGroupMemberID != member.ID && member.Role != "owner" && member.Role != "admin" {
+	if install.StudyGroupMemberID != member.ID && !canManageStudyGroupMembers(member.Role) {
 		respondAPIError(w, http.StatusForbidden, "study_group_forbidden", "You can only remove your own install.")
 		return
 	}

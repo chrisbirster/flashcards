@@ -27,6 +27,9 @@ import {
 import { TemplatesPage } from "#/pages/TemplatesPage";
 import { EmptyCardsPage } from "#/pages/EmptyCardsPage";
 import { LoginPage } from "#/pages/LoginPage";
+import { SettingsPage } from "#/pages/SettingsPage";
+import { OnboardingPlanPage } from "#/pages/OnboardingPlanPage";
+import { TeamPage } from "#/pages/TeamPage";
 import { useAppRepository } from "#/lib/app-repository";
 import {
   AddNoteFieldEditorRoutePage,
@@ -60,6 +63,17 @@ function RequireAuthLayout() {
     );
   }
 
+  const onboarding = sessionQuery.data.user?.onboarding ?? false;
+  const isOnboardingPath = location.pathname.startsWith("/onboarding/plan");
+
+  if (onboarding && !isOnboardingPath) {
+    return <Navigate to="/onboarding/plan" replace />;
+  }
+
+  if (!onboarding && isOnboardingPath) {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <Layout>
       <Outlet />
@@ -74,7 +88,10 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<RequireAuthLayout />}>
           <Route index element={<HomePage />} />
+          <Route path="onboarding/plan" element={<OnboardingPlanPage />} />
           <Route path="stats" element={<StatsPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="team" element={<TeamPage />} />
           <Route path="notes/view" element={<NotesPage />} />
           <Route path="decks" element={<DecksPage />} />
           <Route path="marketplace" element={<MarketplacePage />} />
@@ -112,7 +129,6 @@ export default function App() {
           {/* <Route path="notes/:noteId" element={<EditNotePage />} /> */}
           {/* <Route path="card/:cardId" element={<CardPage />} /> */}
           {/* <Route path="templates" element={<TemplatesPage />} /> */}
-          {/* <Route path="settings" element={<SettingsPage />} /> */}
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

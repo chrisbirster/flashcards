@@ -40,6 +40,22 @@ export function MoreSheet({
 
         <div className="grid gap-3">
           <Link
+            to="/settings"
+            onClick={onClose}
+            className="inline-flex min-h-11 items-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
+          >
+            User settings
+          </Link>
+          {session?.workspace?.organizationId ? (
+            <Link
+              to="/team"
+              onClick={onClose}
+              className="inline-flex min-h-11 items-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
+            >
+              Team
+            </Link>
+          ) : null}
+          <Link
             to="/stats"
             onClick={onClose}
             className="inline-flex min-h-11 items-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"

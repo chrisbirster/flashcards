@@ -20,7 +20,7 @@ Status legend:
 | Phase 2 | `done`        | Study Groups foundation: canonical source deck, published versions, invites, personal installs, fork/update state, and cross-collection installs. |
 | Phase 3 | `done`        | Marketplace foundation: listing CRUD, publish flow, listing detail pages, and free versioned installs with source attribution.                    |
 | Phase 4 | `done`        | Paid marketplace commerce: creator onboarding, premium checkout, license grants, payout bookkeeping, and webhook-safe completion.                 |
-| Phase 5 | `in_progress` | AI note-to-card generation, analytics, and study protocols.                                                                                       |
+| Phase 5 | `in_progress` | Account onboarding, plan management, team administration, Study Group RBAC, and remaining AI/analytics/study protocols.                           |
 | Phase 6 | `later`       | Real-time collaborative editing using Hocuspocus/Yjs.                                                                                             |
 
 ## Completed
@@ -111,16 +111,38 @@ Status legend:
 
 ## Next Up
 
-### Phase 5
+### Phase 5A: Account + Team + Study Group Administration
 
-- AI generation, analytics, and study protocols are the active implementation target.
-- Current implementation slice:
+- Make billing and collaboration administration user-manageable without exposing internal workspace storage details.
+- Active implementation slice:
+  - account-level onboarding flag after sign-in
+  - post-auth plan selection gate
+  - plan management from User Settings
+  - dedicated Team view for current org-backed workspace
+  - Team roles:
+    - `read`
+    - `edit`
+    - `admin`
+    - `owner`
+  - Study Group roles:
+    - `read`
+    - `edit`
+    - `admin`
+    - `owner`
+  - settings cleanup:
+    - remove workspace slug
+    - remove collection id
+
+### Phase 5B: AI + Analytics + Study Protocols Follow-on
+
+- Continue the AI and analytics lane that is already underway.
+- Current shipped work in this lane:
   - note-to-card suggestion generation from notes
   - explicit review/accept flow before save
   - persisted study session lifecycle for review sessions
   - initial Home and Deck analytics surfaces powered by study sessions
   - dedicated Stats page with daily activity, answer mix, recent sessions, and active deck ranking
-- Follow-on work in this phase:
+- Follow-on work in this lane:
   - Pomodoro/focus-session support
   - richer group analytics surfaces
   - richer study-event persistence beyond session rollups
@@ -271,10 +293,12 @@ Core product rules:
 - Member edits to an installed copy mark that install as `forked`.
 - No review-history preservation across source-version updates in this phase.
 - Invited users can join regardless of their own plan.
+- Study Groups continue to rely on workspace-local installs with private per-user review history.
 - Roles:
   - `owner`
   - `admin`
-  - `member`
+  - `edit`
+  - `read`
 
 Backend scope:
 
@@ -445,9 +469,83 @@ Exit criteria:
 - License is granted exactly once.
 - Platform fee and payout records are correct and webhook-safe.
 
-### Phase 5: AI Generation, Analytics, and Study Protocols
+### Phase 5: Account Onboarding, Plan Management, Team Administration, Study Group RBAC, and Remaining AI/Analytics/Study Protocols
 
 Status: `in_progress`
+
+Objective:
+
+- Split the phase into:
+  - Phase 5A: account onboarding, plan management, team administration, and Study Group RBAC
+  - Phase 5B: the remaining AI, analytics, and study protocol work
+- Make account and collaboration administration user-manageable without exposing internal workspace storage details while continuing the AI/analytics lane already underway.
+
+### Phase 5A
+
+Objective:
+
+- Add the account, billing, and collaboration administration surfaces needed to manage plans, teams, and Study Group roles from the app.
+
+Primary scope:
+
+- account-level onboarding flag and post-sign-in plan gate
+- `/onboarding/plan`
+- plan management in `/settings`
+- `/team` for org-backed workspace administration
+- Settings cleanup:
+  - remove workspace slug
+  - remove collection id
+- Team roles:
+  - `read`
+  - `edit`
+  - `admin`
+  - `owner`
+- Study Group roles:
+  - `read`
+  - `edit`
+  - `admin`
+  - `owner`
+
+Product rules:
+
+- The `onboarding` flag is account-level and boolean-only for now.
+- Plan selection during onboarding targets the current workspace.
+- Personal workspace owners can change plan.
+- Team admins and owners can change plan for the current org-backed workspace.
+- Team `read` and `edit` roles cannot change plan or manage members.
+- Team `edit` can still mutate team-owned content through normal app routes.
+- Study Group `read` can install/update/remove personal copies only.
+- Study Group `edit` can update group-owned source content through the workspace but cannot manage members or publish versions.
+- Study Group `admin` and `owner` manage members and publish versions.
+- Study Groups and Marketplace continue to rely on workspace-local installs with private per-user review history.
+
+Current implementation snapshot:
+
+- Partially implemented:
+  - backend onboarding flag support
+  - onboarding plan-selection endpoint
+  - workspace plan-management endpoint
+  - org/team membership roles and invite lifecycle support
+  - Study Group role migration to `read/edit/admin/owner`
+  - content write gating for org-backed workspaces
+- Remaining in this slice:
+  - onboarding route and redirect polish
+  - Settings plan-management UI
+  - Team management page
+  - Team links in account menus
+  - Study Group detail/member UI updates for the expanded role model
+
+Exit criteria:
+
+- Authenticated users with `onboarding=true` are redirected into plan selection.
+- Choosing a plan updates the current workspace subscription and flips onboarding to false.
+- Users can later change plan from Settings.
+- Settings no longer show workspace slug or collection id.
+- Team admins and owners can add/remove members.
+- Team roles `read/edit/admin/owner` are enforced.
+- Study Group roles `read/edit/admin/owner` are enforced.
+
+### Phase 5B
 
 Objective:
 
@@ -468,11 +566,12 @@ Primary scope:
   - focus sessions
   - gap-based session structure
 
-Planned product rules:
+Product rules:
 
 - AI generation is assistive, not auto-publishing.
 - User approval is required before cards are persisted.
 - Likely gated to Pro and above, with Enterprise overrides later.
+- Study Groups and Marketplace continue to rely on workspace-local installs with private per-user review history.
 
 Current implementation snapshot:
 

@@ -390,6 +390,62 @@ func TestAPI_OTPRequestAndVerifyCreatesSession(t *testing.T) {
 	if len(cookies) == 0 || cookies[0].Name != sessionCookieName {
 		t.Fatalf("expected session cookie to be set, got %+v", cookies)
 	}
+	if !session.User.Onboarding {
+		t.Fatalf("expected new OTP user to start in onboarding, got %+v", session.User)
+	}
+}
+
+func TestAPI_OnboardingPlanSelectionClearsFlagAndCreatesOrganization(t *testing.T) {
+	env := setupAPITestEnv(t)
+	emailStub := &otpEmailStub{}
+	env.handler.emailSender = emailStub
+
+	requestRR := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/auth/otp/request", map[string]string{
+		"email": "onboarding@example.com",
+	}, map[string]string{
+		"X-Test-No-Auth": "1",
+	})
+	if requestRR.Code != http.StatusOK {
+		t.Fatalf("expected OTP request 200, got %d (%s)", requestRR.Code, requestRR.Body.String())
+	}
+
+	verifyRR := doJSONRequestWithHeaders(t, env.router, http.MethodPost, "/api/auth/otp/verify", map[string]string{
+		"email": "onboarding@example.com",
+		"code":  emailStub.lastCode,
+	}, map[string]string{
+		"X-Test-No-Auth": "1",
+	})
+	if verifyRR.Code != http.StatusOK {
+		t.Fatalf("expected OTP verify 200, got %d (%s)", verifyRR.Code, verifyRR.Body.String())
+	}
+	session := decodeJSON[AuthSessionResponse](t, verifyRR)
+	if session.User == nil || !session.User.Onboarding {
+		t.Fatalf("expected verified user to remain in onboarding before plan selection, got %+v", session.User)
+	}
+
+	cookies := verifyRR.Result().Cookies()
+	if len(cookies) == 0 || cookies[0].Name != sessionCookieName {
+		t.Fatalf("expected onboarding session cookie to be set, got %+v", cookies)
+	}
+	authCookie := fmt.Sprintf("%s=%s", sessionCookieName, cookies[0].Value)
+	userRouter := newTestAPIRouter(env.handler, authCookie)
+
+	selectPlanRR := doJSONRequest(t, userRouter, http.MethodPost, "/api/onboarding/plan", UpdateWorkspacePlanRequest{
+		Plan: PlanTeam,
+	})
+	if selectPlanRR.Code != http.StatusOK {
+		t.Fatalf("expected onboarding plan selection 200, got %d (%s)", selectPlanRR.Code, selectPlanRR.Body.String())
+	}
+	updated := decodeJSON[AuthSessionResponse](t, selectPlanRR)
+	if updated.User == nil || updated.User.Onboarding {
+		t.Fatalf("expected onboarding to clear after plan selection, got %+v", updated.User)
+	}
+	if updated.Workspace == nil || updated.Workspace.OrganizationID == "" {
+		t.Fatalf("expected team selection to attach an organization to the workspace, got %+v", updated.Workspace)
+	}
+	if updated.Organization == nil || updated.OrganizationMember == nil || updated.OrganizationMember.Role != "owner" {
+		t.Fatalf("expected team selection to create owner membership, got org=%+v member=%+v", updated.Organization, updated.OrganizationMember)
+	}
 }
 
 type createNoteAPIResponse struct {
@@ -1090,7 +1146,7 @@ func TestAPI_StudyGroupsUsePublishedVersionsAndPersonalInstalls(t *testing.T) {
 
 	inviteMember := doJSONRequestWithHeaders(t, env.router, http.MethodPost, fmt.Sprintf("/api/study-groups/%s/members", groupID), InviteStudyGroupMemberRequest{
 		Email: memberClient.user.Email,
-		Role:  "member",
+		Role:  "read",
 	}, teamHeaders)
 	if inviteMember.Code != http.StatusCreated {
 		t.Fatalf("expected member invite to return 201, got %d (%s)", inviteMember.Code, inviteMember.Body.String())
@@ -1109,8 +1165,8 @@ func TestAPI_StudyGroupsUsePublishedVersionsAndPersonalInstalls(t *testing.T) {
 		t.Fatalf("expected join group 200, got %d (%s)", joinGroup.Code, joinGroup.Body.String())
 	}
 	memberDetailAfterJoin := decodeJSON[StudyGroupDetail](t, joinGroup)
-	if memberDetailAfterJoin.Role != "member" || memberDetailAfterJoin.MembershipStatus != "active" {
-		t.Fatalf("expected joined member to be active member, got role=%q status=%q", memberDetailAfterJoin.Role, memberDetailAfterJoin.MembershipStatus)
+	if memberDetailAfterJoin.Role != "read" || memberDetailAfterJoin.MembershipStatus != "active" {
+		t.Fatalf("expected joined member to be active read member, got role=%q status=%q", memberDetailAfterJoin.Role, memberDetailAfterJoin.MembershipStatus)
 	}
 	if memberDetailAfterJoin.CurrentUserInstall != nil {
 		t.Fatalf("expected join without installLatest to leave current install nil, got %+v", memberDetailAfterJoin.CurrentUserInstall)
@@ -1341,7 +1397,7 @@ func TestAPI_StudyGroupsInstallAcrossDifferentCollections(t *testing.T) {
 
 	inviteMember := doJSONRequestWithHeaders(t, env.router, http.MethodPost, fmt.Sprintf("/api/study-groups/%s/members", groupID), InviteStudyGroupMemberRequest{
 		Email: memberClient.user.Email,
-		Role:  "member",
+		Role:  "read",
 	}, teamHeaders)
 	if inviteMember.Code != http.StatusCreated {
 		t.Fatalf("expected member invite to return 201, got %d (%s)", inviteMember.Code, inviteMember.Body.String())

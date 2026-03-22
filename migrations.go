@@ -36,6 +36,7 @@ func (s *SQLiteStore) migrate() error {
 		{10, "expand_marketplace_foundation_schema", s.runMigration010_ExpandMarketplaceFoundationSchema},
 		{11, "add_marketplace_commerce_schema", s.runMigration011_AddMarketplaceCommerceSchema},
 		{12, "add_study_sessions_schema", s.runMigration012_AddStudySessionsSchema},
+		{13, "add_phase5a_account_team_schema", s.runMigration013_AddPhase5AAccountTeamSchema},
 	}
 
 	for _, m := range migrations {
@@ -1119,6 +1120,28 @@ func (s *SQLiteStore) runMigration012_AddStudySessionsSchema() error {
 	for _, statement := range statements {
 		if _, err := s.db.Exec(statement); err != nil && !isIgnorableMigrationError(err) {
 			return fmt.Errorf("failed to apply study sessions migration statement: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) runMigration013_AddPhase5AAccountTeamSchema() error {
+	statements := []string{
+		`ALTER TABLE users ADD COLUMN onboarding INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE organization_members ADD COLUMN invite_token TEXT`,
+		`ALTER TABLE organization_members ADD COLUMN invite_expires_at INTEGER`,
+		`ALTER TABLE organization_members ADD COLUMN joined_at INTEGER`,
+		`ALTER TABLE organization_members ADD COLUMN removed_at INTEGER`,
+		`UPDATE organization_members SET role = 'edit' WHERE role = 'member'`,
+		`UPDATE study_group_members SET role = 'read' WHERE role = 'member'`,
+		`CREATE INDEX IF NOT EXISTS idx_organization_members_user ON organization_members(user_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_organization_members_token ON organization_members(invite_token)`,
+	}
+
+	for _, statement := range statements {
+		if _, err := s.db.Exec(statement); err != nil && !isIgnorableMigrationError(err) {
+			return fmt.Errorf("failed to apply phase 5A account/team migration statement: %w", err)
 		}
 	}
 

@@ -397,6 +397,7 @@ export interface AccountUser {
   email: string;
   displayName: string;
   avatarUrl?: string;
+  onboarding: boolean;
 }
 
 export interface WorkspaceSession {
@@ -404,6 +405,55 @@ export interface WorkspaceSession {
   name: string;
   slug: string;
   collectionId: string;
+  ownerUserId?: string;
+  organizationId?: string;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrganizationMember {
+  id: string;
+  organizationId: string;
+  userId?: string;
+  email: string;
+  role: "read" | "edit" | "admin" | "owner";
+  status: "invited" | "active" | "removed" | "declined" | "expired";
+  inviteToken?: string;
+  inviteExpiresAt?: string;
+  joinedAt?: string;
+  removedAt?: string;
+  createdAt: string;
+}
+
+export interface Subscription {
+  id: string;
+  workspaceId?: string;
+  organizationId?: string;
+  plan: Entitlements["plan"];
+  status: string;
+  provider?: string;
+  providerCustomerId?: string;
+  providerSubscriptionId?: string;
+  currentPeriodEnd?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrganizationDetail {
+  organization: Organization;
+  workspace?: WorkspaceSession;
+  subscription?: Subscription;
+  membership: OrganizationMember;
+  members: OrganizationMember[];
+  canManagePlan: boolean;
+  canManageMembers: boolean;
+  canEdit: boolean;
 }
 
 export interface AuthSessionResponse {
@@ -412,6 +462,8 @@ export interface AuthSessionResponse {
   otpAuthEnabled: boolean;
   user?: AccountUser;
   workspace?: WorkspaceSession;
+  organization?: Organization;
+  organizationMember?: OrganizationMember;
   entitlements: Entitlements;
 }
 
@@ -428,7 +480,7 @@ export interface StudyGroupMember {
   studyGroupId: string;
   userId?: string;
   email: string;
-  role: "owner" | "admin" | "member";
+  role: "owner" | "admin" | "edit" | "read";
   status: "invited" | "active" | "removed" | "declined" | "expired";
   inviteToken?: string;
   inviteExpiresAt?: string;
@@ -526,6 +578,7 @@ export interface StudyGroupDetail {
   currentUserInstall?: StudyGroupInstall;
   updateAvailable: boolean;
   canEdit: boolean;
+  canManageMembers: boolean;
   canInvite: boolean;
   canPublishVersion: boolean;
   dashboard: StudyGroupDashboard;
@@ -550,11 +603,11 @@ export interface UpdateStudyGroupRequest {
 
 export interface InviteStudyGroupMemberRequest {
   email: string;
-  role: "admin" | "member";
+  role: "admin" | "edit" | "read";
 }
 
 export interface UpdateStudyGroupMemberRequest {
-  role?: "admin" | "member";
+  role?: "admin" | "edit" | "read" | "owner";
   status?: "invited" | "active" | "removed" | "declined" | "expired";
 }
 
@@ -574,6 +627,34 @@ export interface InstallStudyGroupDeckRequest {
 
 export interface UpdateStudyGroupInstallRequest {
   destinationWorkspaceId?: string;
+}
+
+export interface CreateOrganizationRequest {
+  name: string;
+  slug?: string;
+}
+
+export interface AddOrganizationMemberRequest {
+  email: string;
+  role: "read" | "edit" | "admin";
+}
+
+export interface UpdateOrganizationRequest {
+  name: string;
+  slug?: string;
+}
+
+export interface UpdateOrganizationMemberRequest {
+  role?: "read" | "edit" | "admin" | "owner";
+  status?: "invited" | "active" | "removed" | "declined" | "expired";
+}
+
+export interface JoinOrganizationRequest {
+  token: string;
+}
+
+export interface UpdateWorkspacePlanRequest {
+  plan: "free" | "pro" | "team" | "enterprise";
 }
 
 export interface MarketplaceInstall {
@@ -1202,6 +1283,12 @@ export async function updateStudyGroup(
   });
 }
 
+export async function deleteStudyGroup(id: string): Promise<void> {
+  return requestJSON(`${API_BASE}/study-groups/${id}`, {
+    method: "DELETE",
+  });
+}
+
 export async function inviteStudyGroupMember(
   id: string,
   req: InviteStudyGroupMemberRequest,
@@ -1300,6 +1387,111 @@ export async function fetchStudyGroupDashboard(
   id: string,
 ): Promise<StudyGroupDashboard> {
   return requestJSON(`${API_BASE}/study-groups/${id}/dashboard`);
+}
+
+export async function fetchOrganization(
+  orgId: string,
+): Promise<OrganizationDetail> {
+  return requestJSON(`${API_BASE}/orgs/${encodeURIComponent(orgId)}`);
+}
+
+export async function createOrganization(
+  req: CreateOrganizationRequest,
+): Promise<OrganizationDetail> {
+  return requestJSON(`${API_BASE}/orgs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+export async function updateOrganization(
+  orgId: string,
+  req: UpdateOrganizationRequest,
+): Promise<OrganizationDetail> {
+  return requestJSON(`${API_BASE}/orgs/${encodeURIComponent(orgId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+export async function deleteOrganization(orgId: string): Promise<void> {
+  return requestJSON(`${API_BASE}/orgs/${encodeURIComponent(orgId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function addOrganizationMember(
+  orgId: string,
+  req: AddOrganizationMemberRequest,
+): Promise<{ member: OrganizationMember }> {
+  return requestJSON(`${API_BASE}/orgs/${encodeURIComponent(orgId)}/members`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+export async function updateOrganizationMember(
+  orgId: string,
+  memberId: string,
+  req: UpdateOrganizationMemberRequest,
+): Promise<{ member: OrganizationMember }> {
+  return requestJSON(
+    `${API_BASE}/orgs/${encodeURIComponent(orgId)}/members/${encodeURIComponent(memberId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    },
+  );
+}
+
+export async function deleteOrganizationMember(
+  orgId: string,
+  memberId: string,
+): Promise<void> {
+  return requestJSON(
+    `${API_BASE}/orgs/${encodeURIComponent(orgId)}/members/${encodeURIComponent(memberId)}`,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
+export async function joinOrganization(
+  req: JoinOrganizationRequest,
+): Promise<OrganizationDetail> {
+  return requestJSON(`${API_BASE}/orgs/join`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+export async function updateWorkspacePlan(
+  workspaceId: string,
+  req: UpdateWorkspacePlanRequest,
+): Promise<AuthSessionResponse> {
+  return requestJSON(
+    `${API_BASE}/workspaces/${encodeURIComponent(workspaceId)}/plan`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    },
+  );
+}
+
+export async function completeOnboardingPlan(
+  req: UpdateWorkspacePlanRequest,
+): Promise<AuthSessionResponse> {
+  return requestJSON(`${API_BASE}/onboarding/plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
 }
 
 export async function fetchMarketplaceListings(

@@ -188,6 +188,9 @@ func (h *APIHandler) ListDecks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) CreateDeck(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	col, collectionID, err := h.collectionForRequest(r)
 	if err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "collection_load_failed", err.Error())
@@ -423,6 +426,9 @@ func (h *APIHandler) GetDeckStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	col, collectionID, err := h.collectionForRequest(r)
 	if err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "collection_load_failed", err.Error())
@@ -510,6 +516,9 @@ func (h *APIHandler) CreateNote(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) ImportNotes(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	fileData, opts, err := parseImportRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -889,6 +898,9 @@ type ReorderFieldsRequest struct {
 }
 
 func (h *APIHandler) AddField(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	col, collectionID, err := h.collectionForRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -958,6 +970,9 @@ func (h *APIHandler) AddField(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) RenameField(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	col, collectionID, err := h.collectionForRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1051,6 +1066,9 @@ func (h *APIHandler) RenameField(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) RemoveField(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	col, collectionID, err := h.collectionForRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1116,6 +1134,9 @@ func (h *APIHandler) RemoveField(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) ReorderFields(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	col, collectionID, err := h.collectionForRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1179,6 +1200,9 @@ func (h *APIHandler) ReorderFields(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) SetSortField(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	col, collectionID, err := h.collectionForRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1224,6 +1248,9 @@ func (h *APIHandler) SetSortField(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) SetFieldOptions(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	col, collectionID, err := h.collectionForRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1281,6 +1308,9 @@ func (h *APIHandler) SetFieldOptions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) UpdateTemplate(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	col, collectionID, err := h.collectionForRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

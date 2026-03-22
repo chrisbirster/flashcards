@@ -446,6 +446,9 @@ func (h *APIHandler) ListNotes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) UpdateNote(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	col, _, err := h.collectionForRequest(r)
 	if err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "collection_load_failed", err.Error())
@@ -524,6 +527,9 @@ func (h *APIHandler) UpdateNote(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) DeleteNote(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	col, _, err := h.collectionForRequest(r)
 	if err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "collection_load_failed", err.Error())
@@ -566,6 +572,9 @@ func (h *APIHandler) DeleteNote(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) UpdateDeck(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	col, _, err := h.collectionForRequest(r)
 	if err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "collection_load_failed", err.Error())
@@ -608,6 +617,9 @@ func (h *APIHandler) UpdateDeck(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) DeleteDeck(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	col, _, err := h.collectionForRequest(r)
 	if err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "collection_load_failed", err.Error())
@@ -700,6 +712,9 @@ func defaultTemplateForNoteType(nt NoteType, name string) CardTemplate {
 }
 
 func (h *APIHandler) CreateTemplate(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	col, collectionID, err := h.collectionForRequest(r)
 	if err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "collection_load_failed", err.Error())
@@ -752,6 +767,9 @@ func (h *APIHandler) CreateTemplate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) DeleteTemplate(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	col, collectionID, err := h.collectionForRequest(r)
 	if err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "collection_load_failed", err.Error())

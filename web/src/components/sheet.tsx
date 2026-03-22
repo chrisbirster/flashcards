@@ -37,15 +37,25 @@ export function Sheet({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 md:hidden">
+    <div className="fixed inset-0 z-50">
       <Overlay onClose={onClose} />
       <div
-        className="absolute inset-x-0 bottom-0 rounded-t-[1.75rem] border border-[var(--app-line)] bg-[var(--app-panel)] shadow-2xl"
+        className="absolute inset-x-0 bottom-0 rounded-t-[1.75rem] border border-[var(--app-line)] bg-[var(--app-panel)] shadow-2xl md:hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="mx-auto mt-3 h-1.5 w-14 rounded-full bg-[var(--app-line-strong)]" />
         {title ? <div className="px-5 py-4 text-sm font-semibold text-[var(--app-text)]">{title}</div> : null}
         <div className="max-h-[78dvh] overflow-y-auto px-5 pb-5">{children}</div>
+      </div>
+      <div className="absolute inset-0 hidden items-center justify-center p-6 md:flex">
+        <div className="w-full max-w-lg rounded-[1.75rem] border border-[var(--app-line)] bg-[var(--app-panel)] shadow-2xl">
+          {title ? (
+            <div className="border-b border-[var(--app-line)] px-6 py-5 text-base font-semibold text-[var(--app-text)]">
+              {title}
+            </div>
+          ) : null}
+          <div className="max-h-[min(80vh,48rem)] overflow-y-auto px-6 py-6">{children}</div>
+        </div>
       </div>
     </div>
   )

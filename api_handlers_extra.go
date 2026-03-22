@@ -107,6 +107,7 @@ func registerAPIRoutes(r chi.Router, handler *APIHandler) {
 		r.Post("/cards/empty/delete", handler.DeleteEmptyCards)
 
 		r.Get("/entitlements", handler.GetEntitlements)
+		r.Post("/onboarding/plan", handler.CompleteOnboardingPlanSelection)
 		r.Post("/onboarding/import-local-collection", handler.ImportLocalCollection)
 		r.Post("/ai/card-suggestions", handler.GenerateCardSuggestions)
 		r.Post("/study-sessions", handler.CreateStudySession)
@@ -118,7 +119,15 @@ func registerAPIRoutes(r chi.Router, handler *APIHandler) {
 		r.Post("/billing/webhook", handler.BillingWebhook)
 
 		r.Post("/orgs", handler.CreateOrganization)
+		r.Get("/orgs/{orgId}", handler.GetOrganization)
+		r.Patch("/orgs/{orgId}", handler.UpdateOrganization)
+		r.Delete("/orgs/{orgId}", handler.DeleteOrganization)
+		r.Get("/orgs/{orgId}/members", handler.ListOrganizationMembers)
 		r.Post("/orgs/{orgId}/members", handler.AddOrganizationMember)
+		r.Patch("/orgs/{orgId}/members/{memberId}", handler.UpdateOrganizationMember)
+		r.Delete("/orgs/{orgId}/members/{memberId}", handler.DeleteOrganizationMember)
+		r.Post("/orgs/join", handler.JoinOrganization)
+		r.Patch("/workspaces/{workspaceId}/plan", handler.UpdateWorkspacePlan)
 
 		r.Get("/study-groups", handler.ListStudyGroups)
 		r.Post("/study-groups", handler.CreateStudyGroup)
@@ -269,6 +278,12 @@ func (h *APIHandler) planForRequest(r *http.Request, session *SessionRecord) Pla
 		if err == nil && subscription.Status == "active" {
 			return subscription.Plan
 		}
+		if workspace, err := h.store.GetWorkspaceRecord(session.WorkspaceID); err == nil && workspace.OrganizationID != "" {
+			subscription, err := h.store.GetSubscriptionForOrganization(workspace.OrganizationID)
+			if err == nil && subscription.Status == "active" {
+				return subscription.Plan
+			}
+		}
 	}
 	return resolvePlanFromRequest(r, session)
 }
@@ -360,6 +375,14 @@ func (h *APIHandler) buildSessionResponse(r *http.Request) AuthSessionResponse {
 	if session.WorkspaceID != "" {
 		if workspace, err := h.store.GetWorkspaceRecord(session.WorkspaceID); err == nil {
 			response.Workspace = workspace
+			if workspace.OrganizationID != "" {
+				if org, err := h.store.GetOrganizationRecord(workspace.OrganizationID); err == nil {
+					response.Organization = org
+				}
+				if member, err := h.store.GetOrganizationMemberByUser(workspace.OrganizationID, session.UserID); err == nil {
+					response.OrganizationMember = member
+				}
+			}
 		}
 	}
 
@@ -548,6 +571,7 @@ func (h *APIHandler) GoogleAuthCallback(w http.ResponseWriter, r *http.Request) 
 			Email:       googleUser.Email,
 			DisplayName: firstNonEmpty(googleUser.Name, googleUser.Email),
 			AvatarURL:   googleUser.Picture,
+			Onboarding:  true,
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		}
@@ -640,6 +664,11 @@ func (h *APIHandler) CreateOrganization(w http.ResponseWriter, r *http.Request) 
 		respondAPIError(w, http.StatusUnauthorized, "auth_required", "You must be signed in to create an organization")
 		return
 	}
+	plan := h.planForRequest(r, session)
+	if !entitlementsForPlan(plan, h.usageForSession(session)).Features.Organizations {
+		respondAPIError(w, http.StatusForbidden, "organization_not_available", "Team creation requires a Team or Enterprise plan.")
+		return
+	}
 
 	var req CreateOrganizationRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -650,11 +679,29 @@ func (h *APIHandler) CreateOrganization(w http.ResponseWriter, r *http.Request) 
 		respondAPIError(w, http.StatusBadRequest, "invalid_name", "Organization name is required")
 		return
 	}
+	workspace, err := h.workspaceForSession(session)
+	if err != nil || workspace == nil {
+		respondAPIError(w, http.StatusInternalServerError, "workspace_not_found", "Workspace not found.")
+		return
+	}
+	if workspace.OrganizationID != "" {
+		respondAPIError(w, http.StatusConflict, "organization_exists", "The current workspace already belongs to a team.")
+		return
+	}
+	if workspace.OwnerUserID != session.UserID {
+		respondAPIError(w, http.StatusForbidden, "organization_forbidden", "Only the workspace owner can turn this workspace into a team.")
+		return
+	}
+	user, err := h.store.GetUserByID(session.UserID)
+	if err != nil {
+		respondAPIError(w, http.StatusInternalServerError, "user_lookup_failed", err.Error())
+		return
+	}
 
 	now := time.Now()
 	org := &Organization{
 		ID:        newID("org"),
-		Name:      strings.TrimSpace(req.Name),
+		Name:      sanitizeHTML(strings.TrimSpace(req.Name)),
 		Slug:      firstNonEmpty(strings.TrimSpace(req.Slug), fmt.Sprintf("%s-%s", slugify(req.Name), slugify(newID("o")[2:8]))),
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -668,20 +715,26 @@ func (h *APIHandler) CreateOrganization(w http.ResponseWriter, r *http.Request) 
 		ID:             newID("orgmem"),
 		OrganizationID: org.ID,
 		UserID:         session.UserID,
-		Email:          firstNonEmpty(h.buildSessionResponse(r).User.Email, ""),
+		Email:          user.Email,
 		Role:           "owner",
 		Status:         "active",
+		JoinedAt:       now,
 		CreatedAt:      now,
 	}
 	if err := h.store.CreateOrganizationMemberRecord(member); err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "organization_member_failed", err.Error())
 		return
 	}
-
-	respondJSON(w, http.StatusCreated, map[string]interface{}{
-		"organization": org,
-		"member":       member,
-	})
+	if err := h.ensureWorkspaceAttachedToOrganization(workspace, org); err != nil {
+		respondAPIError(w, http.StatusInternalServerError, "workspace_attach_failed", err.Error())
+		return
+	}
+	detail, err := h.buildOrganizationDetail(org.ID, session.UserID)
+	if err != nil {
+		respondAPIError(w, http.StatusInternalServerError, "organization_detail_failed", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusCreated, detail)
 }
 
 func (h *APIHandler) AddOrganizationMember(w http.ResponseWriter, r *http.Request) {
@@ -696,26 +749,43 @@ func (h *APIHandler) AddOrganizationMember(w http.ResponseWriter, r *http.Reques
 		respondAPIError(w, http.StatusNotFound, "organization_not_found", "Organization not found")
 		return
 	}
+	currentMember, err := h.store.GetOrganizationMemberByUser(orgID, session.UserID)
+	if err != nil || currentMember.Status != "active" || !canManageOrganizationMembers(currentMember.Role) {
+		respondAPIError(w, http.StatusForbidden, "organization_forbidden", "Only team admins and owners can invite members.")
+		return
+	}
 
 	var req AddOrganizationMemberRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondAPIError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
 		return
 	}
-	if strings.TrimSpace(req.Email) == "" {
-		respondAPIError(w, http.StatusBadRequest, "invalid_email", "Invite email is required")
+	email, err := normalizeEmail(req.Email)
+	if err != nil {
+		respondAPIError(w, http.StatusBadRequest, "invalid_email", err.Error())
+		return
+	}
+	role := strings.TrimSpace(req.Role)
+	if role == "" {
+		role = "read"
+	}
+	if !validOrganizationRole(role) || role == "owner" {
+		respondAPIError(w, http.StatusBadRequest, "invalid_role", "Role must be read, edit, or admin.")
 		return
 	}
 
+	now := time.Now()
 	member := &OrganizationMember{
-		ID:             newID("orgmem"),
-		OrganizationID: orgID,
-		Email:          strings.TrimSpace(req.Email),
-		Role:           firstNonEmpty(strings.TrimSpace(req.Role), "member"),
-		Status:         "pending",
-		CreatedAt:      time.Now(),
+		ID:              newID("orgmem"),
+		OrganizationID:  orgID,
+		Email:           email,
+		Role:            role,
+		Status:          "invited",
+		InviteToken:     newID("orginvite"),
+		InviteExpiresAt: now.Add(organizationInviteTTL),
+		CreatedAt:       now,
 	}
-	if err := h.store.CreateOrganizationMemberRecord(member); err != nil {
+	if err := h.store.UpsertOrganizationInvitation(member); err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "organization_member_failed", err.Error())
 		return
 	}

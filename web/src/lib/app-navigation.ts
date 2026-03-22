@@ -28,7 +28,10 @@ export const appNavigation: AppNavigationItem[] = [
 
 export function pageTitleForPath(pathname: string): string {
   if (pathname === "/") return "Home";
+  if (pathname.startsWith("/onboarding/plan")) return "Choose Plan";
   if (pathname.startsWith("/stats")) return "Stats";
+  if (pathname.startsWith("/settings")) return "User Settings";
+  if (pathname.startsWith("/team")) return "Team";
   if (pathname.startsWith("/notes/view")) return "Notes";
   if (pathname.startsWith("/notes/add")) return "Add Note";
   if (pathname.startsWith("/marketplace")) return "Marketplace";

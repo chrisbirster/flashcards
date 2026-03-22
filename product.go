@@ -53,6 +53,7 @@ type User struct {
 	Email       string    `json:"email"`
 	DisplayName string    `json:"displayName"`
 	AvatarURL   string    `json:"avatarUrl,omitempty"`
+	Onboarding  bool      `json:"onboarding"`
 	LastLoginAt time.Time `json:"lastLoginAt,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
@@ -87,13 +88,17 @@ type Organization struct {
 }
 
 type OrganizationMember struct {
-	ID             string    `json:"id"`
-	OrganizationID string    `json:"organizationId"`
-	UserID         string    `json:"userId,omitempty"`
-	Email          string    `json:"email"`
-	Role           string    `json:"role"`
-	Status         string    `json:"status"`
-	CreatedAt      time.Time `json:"createdAt"`
+	ID              string    `json:"id"`
+	OrganizationID  string    `json:"organizationId"`
+	UserID          string    `json:"userId,omitempty"`
+	Email           string    `json:"email"`
+	Role            string    `json:"role"`
+	Status          string    `json:"status"`
+	InviteToken     string    `json:"inviteToken,omitempty"`
+	InviteExpiresAt time.Time `json:"inviteExpiresAt,omitempty"`
+	JoinedAt        time.Time `json:"joinedAt,omitempty"`
+	RemovedAt       time.Time `json:"removedAt,omitempty"`
+	CreatedAt       time.Time `json:"createdAt"`
 }
 
 type SessionRecord struct {
@@ -155,12 +160,14 @@ type DeckShare struct {
 }
 
 type AuthSessionResponse struct {
-	Authenticated        bool         `json:"authenticated"`
-	GoogleAuthConfigured bool         `json:"googleAuthConfigured"`
-	OTPAuthEnabled       bool         `json:"otpAuthEnabled"`
-	User                 *User        `json:"user,omitempty"`
-	Workspace            *Workspace   `json:"workspace,omitempty"`
-	Entitlements         Entitlements `json:"entitlements"`
+	Authenticated        bool                `json:"authenticated"`
+	GoogleAuthConfigured bool                `json:"googleAuthConfigured"`
+	OTPAuthEnabled       bool                `json:"otpAuthEnabled"`
+	User                 *User               `json:"user,omitempty"`
+	Workspace            *Workspace          `json:"workspace,omitempty"`
+	Organization         *Organization       `json:"organization,omitempty"`
+	OrganizationMember   *OrganizationMember `json:"organizationMember,omitempty"`
+	Entitlements         Entitlements        `json:"entitlements"`
 }
 
 type RecentDeckNoteSummary struct {
@@ -181,6 +188,35 @@ type CreateOrganizationRequest struct {
 type AddOrganizationMemberRequest struct {
 	Email string `json:"email"`
 	Role  string `json:"role"`
+}
+
+type UpdateOrganizationRequest struct {
+	Name string `json:"name"`
+	Slug string `json:"slug,omitempty"`
+}
+
+type UpdateOrganizationMemberRequest struct {
+	Role   string `json:"role,omitempty"`
+	Status string `json:"status,omitempty"`
+}
+
+type JoinOrganizationRequest struct {
+	Token string `json:"token"`
+}
+
+type UpdateWorkspacePlanRequest struct {
+	Plan Plan `json:"plan"`
+}
+
+type OrganizationDetail struct {
+	Organization     Organization         `json:"organization"`
+	Workspace        *Workspace           `json:"workspace,omitempty"`
+	Subscription     *Subscription        `json:"subscription,omitempty"`
+	Membership       OrganizationMember   `json:"membership"`
+	Members          []OrganizationMember `json:"members"`
+	CanManagePlan    bool                 `json:"canManagePlan"`
+	CanManageMembers bool                 `json:"canManageMembers"`
+	CanEdit          bool                 `json:"canEdit"`
 }
 
 type ShareDeckRequest struct {
@@ -402,6 +438,7 @@ type StudyGroupDetail struct {
 	CurrentUserInstall  *StudyGroupInstall  `json:"currentUserInstall,omitempty"`
 	UpdateAvailable     bool                `json:"updateAvailable"`
 	CanEdit             bool                `json:"canEdit"`
+	CanManageMembers    bool                `json:"canManageMembers"`
 	CanInvite           bool                `json:"canInvite"`
 	CanPublishVersion   bool                `json:"canPublishVersion"`
 	Dashboard           StudyGroupDashboard `json:"dashboard"`

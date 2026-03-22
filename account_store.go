@@ -43,27 +43,29 @@ func firstFieldPreview(fieldMap map[string]string) string {
 
 func (s *SQLiteStore) CreateUser(user *User) error {
 	query := `
-		INSERT INTO users (id, email, display_name, avatar_url, last_login_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO users (id, email, display_name, avatar_url, onboarding, last_login_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`
-	_, err := s.db.Exec(query, user.ID, user.Email, user.DisplayName, user.AvatarURL, nullIfZeroTime(user.LastLoginAt), user.CreatedAt.Unix(), user.UpdatedAt.Unix())
+	_, err := s.db.Exec(query, user.ID, user.Email, user.DisplayName, user.AvatarURL, boolToInt(user.Onboarding), nullIfZeroTime(user.LastLoginAt), user.CreatedAt.Unix(), user.UpdatedAt.Unix())
 	return err
 }
 
 func (s *SQLiteStore) GetUserByID(id string) (*User, error) {
-	query := `SELECT id, email, display_name, avatar_url, last_login_at, created_at, updated_at FROM users WHERE id = ?`
+	query := `SELECT id, email, display_name, avatar_url, onboarding, last_login_at, created_at, updated_at FROM users WHERE id = ?`
 	row := s.db.QueryRow(query, id)
 
 	var user User
 	var avatar sql.NullString
+	var onboarding int
 	var lastLoginAt, createdAt, updatedAt sql.NullInt64
-	if err := row.Scan(&user.ID, &user.Email, &user.DisplayName, &avatar, &lastLoginAt, &createdAt, &updatedAt); err != nil {
+	if err := row.Scan(&user.ID, &user.Email, &user.DisplayName, &avatar, &onboarding, &lastLoginAt, &createdAt, &updatedAt); err != nil {
 		return nil, err
 	}
 
 	if avatar.Valid {
 		user.AvatarURL = avatar.String
 	}
+	user.Onboarding = onboarding == 1
 	if lastLoginAt.Valid {
 		user.LastLoginAt = time.Unix(lastLoginAt.Int64, 0)
 	}
@@ -121,6 +123,20 @@ func (s *SQLiteStore) CreateWorkspaceRecord(workspace *Workspace) error {
 		nullIfEmpty(workspace.OrganizationID),
 		workspace.CreatedAt.Unix(),
 		workspace.UpdatedAt.Unix(),
+	)
+	return err
+}
+
+func (s *SQLiteStore) UpdateWorkspaceRecord(workspace *Workspace) error {
+	_, err := s.db.Exec(
+		`UPDATE workspaces SET name = ?, slug = ?, collection_id = ?, owner_user_id = ?, organization_id = ?, updated_at = ? WHERE id = ?`,
+		workspace.Name,
+		workspace.Slug,
+		workspace.CollectionID,
+		nullIfEmpty(workspace.OwnerUserID),
+		nullIfEmpty(workspace.OrganizationID),
+		workspace.UpdatedAt.Unix(),
+		workspace.ID,
 	)
 	return err
 }
@@ -198,10 +214,20 @@ func (s *SQLiteStore) GetOrganizationRecord(id string) (*Organization, error) {
 	return &org, nil
 }
 
+func (s *SQLiteStore) UpdateOrganizationRecord(org *Organization) error {
+	_, err := s.db.Exec(`UPDATE organizations SET name = ?, slug = ?, updated_at = ? WHERE id = ?`, org.Name, org.Slug, org.UpdatedAt.Unix(), org.ID)
+	return err
+}
+
+func (s *SQLiteStore) DeleteOrganizationRecord(id string) error {
+	_, err := s.db.Exec(`DELETE FROM organizations WHERE id = ?`, id)
+	return err
+}
+
 func (s *SQLiteStore) CreateOrganizationMemberRecord(member *OrganizationMember) error {
 	query := `
-		INSERT INTO organization_members (id, organization_id, user_id, email, role, status, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO organization_members (id, organization_id, user_id, email, role, status, invite_token, invite_expires_at, joined_at, removed_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := s.db.Exec(
 		query,
@@ -211,9 +237,188 @@ func (s *SQLiteStore) CreateOrganizationMemberRecord(member *OrganizationMember)
 		member.Email,
 		member.Role,
 		member.Status,
+		nullIfEmpty(member.InviteToken),
+		nullIfZeroTime(member.InviteExpiresAt),
+		nullIfZeroTime(member.JoinedAt),
+		nullIfZeroTime(member.RemovedAt),
 		member.CreatedAt.Unix(),
 	)
 	return err
+}
+
+func scanOrganizationMemberRow(scanner interface{ Scan(dest ...any) error }) (*OrganizationMember, error) {
+	var member OrganizationMember
+	var userID, inviteToken sql.NullString
+	var inviteExpiresAt, joinedAt, removedAt sql.NullInt64
+	var createdAt int64
+	if err := scanner.Scan(
+		&member.ID,
+		&member.OrganizationID,
+		&userID,
+		&member.Email,
+		&member.Role,
+		&member.Status,
+		&inviteToken,
+		&inviteExpiresAt,
+		&joinedAt,
+		&removedAt,
+		&createdAt,
+	); err != nil {
+		return nil, err
+	}
+	if userID.Valid {
+		member.UserID = userID.String
+	}
+	if inviteToken.Valid {
+		member.InviteToken = inviteToken.String
+	}
+	member.InviteExpiresAt = unixTimeOrZero(inviteExpiresAt)
+	member.JoinedAt = unixTimeOrZero(joinedAt)
+	member.RemovedAt = unixTimeOrZero(removedAt)
+	member.CreatedAt = time.Unix(createdAt, 0)
+	return &member, nil
+}
+
+func (s *SQLiteStore) GetOrganizationMember(id string) (*OrganizationMember, error) {
+	row := s.db.QueryRow(`
+		SELECT id, organization_id, user_id, email, role, status, invite_token, invite_expires_at, joined_at, removed_at, created_at
+		FROM organization_members
+		WHERE id = ?
+	`, id)
+	return scanOrganizationMemberRow(row)
+}
+
+func (s *SQLiteStore) GetOrganizationMemberByUser(orgID, userID string) (*OrganizationMember, error) {
+	row := s.db.QueryRow(`
+		SELECT id, organization_id, user_id, email, role, status, invite_token, invite_expires_at, joined_at, removed_at, created_at
+		FROM organization_members
+		WHERE organization_id = ? AND user_id = ?
+	`, orgID, userID)
+	return scanOrganizationMemberRow(row)
+}
+
+func (s *SQLiteStore) GetOrganizationMemberByEmail(orgID, email string) (*OrganizationMember, error) {
+	row := s.db.QueryRow(`
+		SELECT id, organization_id, user_id, email, role, status, invite_token, invite_expires_at, joined_at, removed_at, created_at
+		FROM organization_members
+		WHERE organization_id = ? AND lower(email) = lower(?)
+	`, orgID, email)
+	return scanOrganizationMemberRow(row)
+}
+
+func (s *SQLiteStore) GetOrganizationMemberByInviteToken(token string) (*OrganizationMember, error) {
+	row := s.db.QueryRow(`
+		SELECT id, organization_id, user_id, email, role, status, invite_token, invite_expires_at, joined_at, removed_at, created_at
+		FROM organization_members
+		WHERE invite_token = ?
+	`, token)
+	return scanOrganizationMemberRow(row)
+}
+
+func (s *SQLiteStore) ListOrganizationMembers(orgID string) ([]OrganizationMember, error) {
+	rows, err := s.db.Query(`
+		SELECT id, organization_id, user_id, email, role, status, invite_token, invite_expires_at, joined_at, removed_at, created_at
+		FROM organization_members
+		WHERE organization_id = ?
+		ORDER BY created_at ASC, lower(email)
+	`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var members []OrganizationMember
+	for rows.Next() {
+		member, err := scanOrganizationMemberRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		members = append(members, *member)
+	}
+	return members, rows.Err()
+}
+
+func (s *SQLiteStore) UpdateOrganizationMember(member *OrganizationMember) error {
+	_, err := s.db.Exec(`
+		UPDATE organization_members
+		SET user_id = ?, role = ?, status = ?, invite_token = ?, invite_expires_at = ?, joined_at = ?, removed_at = ?
+		WHERE id = ?
+	`,
+		nullIfEmpty(member.UserID),
+		member.Role,
+		member.Status,
+		nullIfEmpty(member.InviteToken),
+		nullIfZeroTime(member.InviteExpiresAt),
+		nullIfZeroTime(member.JoinedAt),
+		nullIfZeroTime(member.RemovedAt),
+		member.ID,
+	)
+	return err
+}
+
+func (s *SQLiteStore) UpsertOrganizationInvitation(member *OrganizationMember) error {
+	_, err := s.db.Exec(`
+		INSERT INTO organization_members (
+			id, organization_id, user_id, email, role, status, invite_token, invite_expires_at, joined_at, removed_at, created_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(organization_id, email) DO UPDATE SET
+			role = excluded.role,
+			status = excluded.status,
+			invite_token = excluded.invite_token,
+			invite_expires_at = excluded.invite_expires_at,
+			removed_at = excluded.removed_at
+	`,
+		member.ID,
+		member.OrganizationID,
+		nullIfEmpty(member.UserID),
+		member.Email,
+		member.Role,
+		member.Status,
+		nullIfEmpty(member.InviteToken),
+		nullIfZeroTime(member.InviteExpiresAt),
+		nullIfZeroTime(member.JoinedAt),
+		nullIfZeroTime(member.RemovedAt),
+		member.CreatedAt.Unix(),
+	)
+	return err
+}
+
+func (s *SQLiteStore) ListOrganizationsForUser(userID string) ([]Organization, error) {
+	rows, err := s.db.Query(`
+		SELECT o.id, o.name, o.slug, o.created_at, o.updated_at
+		FROM organizations o
+		JOIN organization_members om ON om.organization_id = o.id
+		WHERE om.user_id = ? AND om.status = 'active'
+		ORDER BY o.created_at ASC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var organizations []Organization
+	for rows.Next() {
+		var org Organization
+		var createdAt, updatedAt int64
+		if err := rows.Scan(&org.ID, &org.Name, &org.Slug, &createdAt, &updatedAt); err != nil {
+			return nil, err
+		}
+		org.CreatedAt = time.Unix(createdAt, 0)
+		org.UpdatedAt = time.Unix(updatedAt, 0)
+		organizations = append(organizations, org)
+	}
+	return organizations, rows.Err()
+}
+
+func (s *SQLiteStore) GetWorkspaceForOrganization(orgID string) (*Workspace, error) {
+	row := s.db.QueryRow(`
+		SELECT id, name, slug, collection_id, owner_user_id, organization_id, created_at, updated_at
+		FROM workspaces
+		WHERE organization_id = ?
+		ORDER BY created_at ASC
+		LIMIT 1
+	`, orgID)
+	return scanWorkspaceRow(row)
 }
 
 func (s *SQLiteStore) CreateSessionRecord(session *SessionRecord) error {
@@ -280,8 +485,18 @@ func (s *SQLiteStore) TouchSessionRecord(id string, expiresAt, lastSeenAt time.T
 	return err
 }
 
+func (s *SQLiteStore) UpdateSessionWorkspace(id, workspaceID string) error {
+	_, err := s.db.Exec(`UPDATE sessions SET workspace_id = ? WHERE id = ?`, nullIfEmpty(workspaceID), id)
+	return err
+}
+
 func (s *SQLiteStore) UpdateUserLastLogin(userID string, at time.Time) error {
 	_, err := s.db.Exec(`UPDATE users SET last_login_at = ?, updated_at = ? WHERE id = ?`, at.Unix(), at.Unix(), userID)
+	return err
+}
+
+func (s *SQLiteStore) UpdateUserOnboarding(userID string, onboarding bool) error {
+	_, err := s.db.Exec(`UPDATE users SET onboarding = ?, updated_at = ? WHERE id = ?`, boolToInt(onboarding), time.Now().Unix(), userID)
 	return err
 }
 
@@ -351,6 +566,61 @@ func (s *SQLiteStore) GetSubscriptionForWorkspace(workspaceID string) (*Subscrip
 
 	if orgID.Valid {
 		subscription.OrganizationID = orgID.String
+	}
+	if provider.Valid {
+		subscription.Provider = provider.String
+	}
+	if customerID.Valid {
+		subscription.ProviderCustomerID = customerID.String
+	}
+	if subscriptionID.Valid {
+		subscription.ProviderSubscriptionID = subscriptionID.String
+	}
+	if currentPeriodEnd.Valid {
+		subscription.CurrentPeriodEnd = time.Unix(currentPeriodEnd.Int64, 0)
+	}
+	if createdAt.Valid {
+		subscription.CreatedAt = time.Unix(createdAt.Int64, 0)
+	}
+	if updatedAt.Valid {
+		subscription.UpdatedAt = time.Unix(updatedAt.Int64, 0)
+	}
+	subscription.Plan = parsePlan(plan)
+	return &subscription, nil
+}
+
+func (s *SQLiteStore) GetSubscriptionForOrganization(organizationID string) (*Subscription, error) {
+	row := s.db.QueryRow(`
+		SELECT id, workspace_id, organization_id, plan, status, provider, provider_customer_id,
+		       provider_subscription_id, current_period_end, created_at, updated_at
+		FROM subscriptions
+		WHERE organization_id = ?
+		ORDER BY updated_at DESC
+		LIMIT 1
+	`, organizationID)
+
+	var subscription Subscription
+	var workspaceID, provider, customerID, subscriptionID sql.NullString
+	var currentPeriodEnd, createdAt, updatedAt sql.NullInt64
+	var plan string
+	if err := row.Scan(
+		&subscription.ID,
+		&workspaceID,
+		&subscription.OrganizationID,
+		&plan,
+		&subscription.Status,
+		&provider,
+		&customerID,
+		&subscriptionID,
+		&currentPeriodEnd,
+		&createdAt,
+		&updatedAt,
+	); err != nil {
+		return nil, err
+	}
+
+	if workspaceID.Valid {
+		subscription.WorkspaceID = workspaceID.String
 	}
 	if provider.Valid {
 		subscription.Provider = provider.String

@@ -117,6 +117,9 @@ func (h *APIHandler) ListMarketplaceListings(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *APIHandler) CreateMarketplaceListing(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	session, ok := h.requireMarketplacePublishEntitlement(w, r)
 	if !ok {
 		return
@@ -219,6 +222,9 @@ func (h *APIHandler) GetMarketplaceListing(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *APIHandler) UpdateMarketplaceListing(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	session, ok := h.requireMarketplacePublishEntitlement(w, r)
 	if !ok {
 		return
@@ -307,6 +313,9 @@ func (h *APIHandler) UpdateMarketplaceListing(w http.ResponseWriter, r *http.Req
 }
 
 func (h *APIHandler) DeleteMarketplaceListing(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	session, ok := h.requireMarketplacePublishEntitlement(w, r)
 	if !ok {
 		return
@@ -343,6 +352,9 @@ func (h *APIHandler) DeleteMarketplaceListing(w http.ResponseWriter, r *http.Req
 }
 
 func (h *APIHandler) PublishMarketplaceListing(w http.ResponseWriter, r *http.Request) {
+	if !h.requireWorkspaceWritePermission(w, r) {
+		return
+	}
 	session, ok := h.requireMarketplacePublishEntitlement(w, r)
 	if !ok {
 		return

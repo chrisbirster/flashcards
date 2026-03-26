@@ -37,6 +37,8 @@ func (s *SQLiteStore) migrate() error {
 		{11, "add_marketplace_commerce_schema", s.runMigration011_AddMarketplaceCommerceSchema},
 		{12, "add_study_sessions_schema", s.runMigration012_AddStudySessionsSchema},
 		{13, "add_phase5a_account_team_schema", s.runMigration013_AddPhase5AAccountTeamSchema},
+		{14, "add_deck_priority_order", s.runMigration014_AddDeckPriorityOrder},
+		{15, "add_focus_session_protocol_fields", s.runMigration015_AddFocusSessionProtocolFields},
 	}
 
 	for _, m := range migrations {
@@ -141,6 +143,7 @@ func (s *SQLiteStore) runMigration001_InitialSchema() error {
 		name TEXT NOT NULL,
 		parent_id INTEGER,
 		options_id INTEGER,
+		priority_order INTEGER NOT NULL DEFAULT 0,
 		FOREIGN KEY (collection_id) REFERENCES collections(id),
 		FOREIGN KEY (parent_id) REFERENCES decks(id),
 		FOREIGN KEY (options_id) REFERENCES deck_options(id)
@@ -404,6 +407,49 @@ func (s *SQLiteStore) runMigration003_AddAccountBillingSchema() error {
 	_, err := s.db.Exec(schema)
 	if err != nil {
 		return fmt.Errorf("failed to add account and billing schema: %w", err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) runMigration014_AddDeckPriorityOrder() error {
+	exists, err := s.columnExists("decks", "priority_order")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		if _, err := s.db.Exec(`ALTER TABLE decks ADD COLUMN priority_order INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("failed to add decks.priority_order: %w", err)
+		}
+	}
+
+	if _, err := s.db.Exec(`
+		UPDATE decks
+		SET priority_order = id
+		WHERE priority_order IS NULL OR priority_order <= 0
+	`); err != nil {
+		return fmt.Errorf("failed to backfill decks.priority_order: %w", err)
+	}
+
+	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_decks_collection_priority ON decks(collection_id, priority_order, id)`); err != nil {
+		return fmt.Errorf("failed to create deck priority index: %w", err)
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) runMigration015_AddFocusSessionProtocolFields() error {
+	statements := []string{
+		`ALTER TABLE study_sessions ADD COLUMN protocol TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE study_sessions ADD COLUMN target_minutes INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE study_sessions ADD COLUMN break_minutes INTEGER NOT NULL DEFAULT 0`,
+		`CREATE INDEX IF NOT EXISTS idx_study_sessions_mode_status ON study_sessions(mode, status)`,
+	}
+
+	for _, statement := range statements {
+		if _, err := s.db.Exec(statement); err != nil && !isIgnorableMigrationError(err) {
+			return fmt.Errorf("failed to apply focus session migration statement: %w", err)
+		}
 	}
 
 	return nil

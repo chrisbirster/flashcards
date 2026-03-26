@@ -214,7 +214,7 @@ export function SettingsPage() {
               <SurfaceCard
                 key={option.plan}
                 className={[
-                  "border-none bg-[var(--app-card-strong)] p-4",
+                  "flex h-full flex-col border-none bg-[var(--app-card-strong)] p-4",
                   isCurrent ? "ring-1 ring-[var(--app-accent)]" : "",
                 ].join(" ")}
               >
@@ -224,23 +224,25 @@ export function SettingsPage() {
                 <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
                   {option.description}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => updatePlanMutation.mutate(option.plan)}
-                  disabled={isCurrent || !canManagePlan || updatePlanMutation.isPending}
-                  className={[
-                    "mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-2xl px-4 text-sm font-semibold transition disabled:opacity-60",
-                    isCurrent
-                      ? "border border-[var(--app-line-strong)] bg-[var(--app-card)] text-[var(--app-text)]"
-                      : "bg-[var(--app-accent)] text-[var(--app-accent-ink)] hover:brightness-105",
-                  ].join(" ")}
-                >
-                  {isPending
-                    ? "Updating..."
-                    : isCurrent
-                      ? "Current plan"
-                      : `Switch to ${option.label}`}
-                </button>
+                <div className="mt-auto pt-6">
+                  <button
+                    type="button"
+                    onClick={() => updatePlanMutation.mutate(option.plan)}
+                    disabled={isCurrent || !canManagePlan || updatePlanMutation.isPending}
+                    className={[
+                      "inline-flex min-h-11 w-full items-center justify-center rounded-2xl px-4 text-center text-sm font-semibold transition disabled:opacity-60",
+                      isCurrent
+                        ? "border border-[var(--app-line-strong)] bg-[var(--app-card)] text-[var(--app-text)]"
+                        : "bg-[var(--app-accent)] text-[var(--app-accent-ink)] hover:brightness-105",
+                    ].join(" ")}
+                  >
+                    {isPending
+                      ? "Updating..."
+                      : isCurrent
+                        ? "Current plan"
+                        : `Switch to ${option.label}`}
+                  </button>
+                </div>
               </SurfaceCard>
             );
           })}

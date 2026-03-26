@@ -55,6 +55,11 @@ export interface Deck {
   parentId?: number;
   cardIds: number[];
   dueToday: number;
+  dueReviewBacklog: number;
+  newCardsPerDay: number;
+  reviewsPerDay: number;
+  priorityOrder: number;
+  newCardsPaused: boolean;
   noteCount: number;
   cardCount: number;
   canDelete: boolean;
@@ -72,6 +77,7 @@ export interface DeckStats {
   buried: number;
   totalCards: number;
   dueToday: number;
+  dueReviewBacklog: number;
 }
 
 export interface Note {
@@ -163,7 +169,10 @@ export interface UpdateNoteRequest {
 }
 
 export interface UpdateDeckRequest {
-  name: string;
+  name?: string;
+  newCardsPerDay?: number;
+  reviewsPerDay?: number;
+  priorityOrder?: number;
 }
 
 export interface CreateTemplateRequest {
@@ -309,6 +318,8 @@ export interface StudyAnalyticsOverview {
   sessions7d: number;
   cardsReviewed7d: number;
   minutesStudied7d: number;
+  focusSessions7d: number;
+  focusMinutes7d: number;
   currentStreak: number;
   lastStudiedAt?: string;
   answerBreakdown: StudyAnswerBreakdown;
@@ -347,6 +358,9 @@ export interface StudySessionSummary {
   deckId?: number;
   deckName?: string;
   mode: string;
+  protocol?: string;
+  targetMinutes?: number;
+  breakMinutes?: number;
   status: "active" | "completed" | "abandoned";
   cardsReviewed: number;
   minutesStudied: number;
@@ -365,6 +379,9 @@ export interface StudySession {
   workspaceId: string;
   deckId?: number;
   mode: string;
+  protocol?: string;
+  targetMinutes?: number;
+  breakMinutes?: number;
   status: "active" | "completed" | "abandoned";
   startedAt: string;
   endedAt?: string;
@@ -380,6 +397,9 @@ export interface StudySession {
 export interface CreateStudySessionRequest {
   deckId?: number;
   mode?: string;
+  protocol?: "pomodoro" | "deep-focus" | "custom";
+  targetMinutes?: number;
+  breakMinutes?: number;
 }
 
 export interface UpdateStudySessionRequest {

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	fsrs "github.com/open-spaced-repetition/go-fsrs/v3"
 )
 
 type apiTestEnv struct {
@@ -283,6 +284,25 @@ func createAuthenticatedIsolatedTestClient(t *testing.T, env *apiTestEnv, email,
 	}
 }
 
+func activateWorkspaceSubscriptionForTest(t *testing.T, env *apiTestEnv, workspaceID string, plan Plan) {
+	t.Helper()
+
+	now := time.Now()
+	subscription := &Subscription{
+		ID:               newID("sub"),
+		WorkspaceID:      workspaceID,
+		Plan:             plan,
+		Status:           "active",
+		Provider:         "test",
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		CurrentPeriodEnd: now.Add(30 * 24 * time.Hour),
+	}
+	if err := env.store.UpsertSubscription(subscription); err != nil {
+		t.Fatalf("failed to create active workspace subscription for %s: %v", workspaceID, err)
+	}
+}
+
 func doJSONRequest(t *testing.T, router http.Handler, method, path string, payload interface{}) *httptest.ResponseRecorder {
 	t.Helper()
 	return doJSONRequestWithHeaders(t, router, method, path, payload, nil)
@@ -499,6 +519,15 @@ func TestAPI_DeckAndCollectionEndpoints(t *testing.T) {
 	if strings.Contains(createdDeck.Name, "<script>") {
 		t.Fatalf("expected deck name to be sanitized, got %q", createdDeck.Name)
 	}
+	if createdDeck.NewCardsPerDay != defaultNewCardsPerDay {
+		t.Fatalf("expected default newCardsPerDay=%d, got %d", defaultNewCardsPerDay, createdDeck.NewCardsPerDay)
+	}
+	if createdDeck.ReviewsPerDay != defaultReviewsPerDay {
+		t.Fatalf("expected default reviewsPerDay=%d, got %d", defaultReviewsPerDay, createdDeck.ReviewsPerDay)
+	}
+	if createdDeck.PriorityOrder <= 0 {
+		t.Fatalf("expected created deck to have positive priority order, got %d", createdDeck.PriorityOrder)
+	}
 
 	listDecks := doRawRequest(env.router, http.MethodGet, "/api/decks", "")
 	if listDecks.Code != http.StatusOK {
@@ -532,6 +561,109 @@ func TestAPI_DeckAndCollectionEndpoints(t *testing.T) {
 	getStats := doRawRequest(env.router, http.MethodGet, fmt.Sprintf("/api/decks/%d/stats", createdDeck.ID), "")
 	if getStats.Code != http.StatusOK {
 		t.Fatalf("expected get stats 200, got %d", getStats.Code)
+	}
+}
+
+func TestAPI_DeckWorkloadPolicy_DefaultCapPauseRuleAndPriority(t *testing.T) {
+	env := setupAPITestEnv(t)
+	sessionID := strings.TrimPrefix(env.authCookie, sessionCookieName+"=")
+	sessionRecord, err := env.store.GetSessionRecord(sessionID)
+	if err != nil {
+		t.Fatalf("failed to load current session: %v", err)
+	}
+	activateWorkspaceSubscriptionForTest(t, env, sessionRecord.WorkspaceID, PlanPro)
+
+	for i := 0; i < 25; i++ {
+		createNoteForTest(t, env, CreateNoteRequest{
+			TypeID: "Basic",
+			DeckID: 1,
+			FieldVals: map[string]string{
+				"Front": fmt.Sprintf("Default cap %d", i),
+				"Back":  "Answer",
+			},
+		}, nil)
+	}
+
+	dueWithDefaults := doRawRequest(env.router, http.MethodGet, "/api/decks/1/due?limit=100", "")
+	if dueWithDefaults.Code != http.StatusOK {
+		t.Fatalf("expected due request 200, got %d (%s)", dueWithDefaults.Code, dueWithDefaults.Body.String())
+	}
+	defaultDueCards := decodeJSON[[]Card](t, dueWithDefaults)
+	if len(defaultDueCards) != defaultNewCardsPerDay {
+		t.Fatalf("expected default new-card cap to return %d cards, got %d", defaultNewCardsPerDay, len(defaultDueCards))
+	}
+
+	for i := 0; i < 5; i++ {
+		if _, err := env.store.db.Exec(`
+			UPDATE card_review_states
+			SET state = ?, due = ?
+			WHERE user_id = ? AND card_id = ?
+		`, int(fsrs.Review), time.Now().Add(-time.Hour).Unix(), sessionRecord.UserID, defaultDueCards[i].ID); err != nil {
+			t.Fatalf("failed to promote card %d into review backlog: %v", defaultDueCards[i].ID, err)
+		}
+	}
+
+	reviewsPerDay := 3
+	newCardsPerDay := 20
+	priorityOrder := 1
+	updateDeckRR := doJSONRequest(t, env.router, http.MethodPatch, "/api/decks/1", UpdateDeckRequest{
+		ReviewsPerDay:  &reviewsPerDay,
+		NewCardsPerDay: &newCardsPerDay,
+		PriorityOrder:  &priorityOrder,
+	})
+	if updateDeckRR.Code != http.StatusOK {
+		t.Fatalf("expected deck settings update 200, got %d (%s)", updateDeckRR.Code, updateDeckRR.Body.String())
+	}
+	updatedDeck := decodeJSON[DeckResponse](t, updateDeckRR)
+	if !updatedDeck.NewCardsPaused {
+		t.Fatalf("expected deck to pause new cards when backlog exceeds review cap, got %+v", updatedDeck)
+	}
+	if updatedDeck.DueReviewBacklog != 5 {
+		t.Fatalf("expected due review backlog=5, got %d", updatedDeck.DueReviewBacklog)
+	}
+
+	dueWithBacklog := doRawRequest(env.router, http.MethodGet, "/api/decks/1/due?limit=100", "")
+	if dueWithBacklog.Code != http.StatusOK {
+		t.Fatalf("expected due request with backlog 200, got %d (%s)", dueWithBacklog.Code, dueWithBacklog.Body.String())
+	}
+	backlogCards := decodeJSON[[]Card](t, dueWithBacklog)
+	if len(backlogCards) != reviewsPerDay {
+		t.Fatalf("expected due cards to stop at review cap=%d while new cards are paused, got %d", reviewsPerDay, len(backlogCards))
+	}
+
+	for _, card := range backlogCards {
+		var state int
+		if err := env.store.db.QueryRow(`SELECT state FROM card_review_states WHERE user_id = ? AND card_id = ?`, sessionRecord.UserID, card.ID).Scan(&state); err != nil {
+			t.Fatalf("failed to read review state for card %d: %v", card.ID, err)
+		}
+		if state != int(fsrs.Review) {
+			t.Fatalf("expected paused-new queue to return only review cards, got state=%d for card %d", state, card.ID)
+		}
+	}
+
+	secondDeckRR := doJSONRequest(t, env.router, http.MethodPost, "/api/decks", CreateDeckRequest{Name: "Later deck"})
+	if secondDeckRR.Code != http.StatusCreated {
+		t.Fatalf("expected second deck create 201, got %d (%s)", secondDeckRR.Code, secondDeckRR.Body.String())
+	}
+	secondDeck := decodeJSON[DeckResponse](t, secondDeckRR)
+	latePriority := 9
+	updateSecondDeckRR := doJSONRequest(t, env.router, http.MethodPatch, fmt.Sprintf("/api/decks/%d", secondDeck.ID), UpdateDeckRequest{
+		PriorityOrder: &latePriority,
+	})
+	if updateSecondDeckRR.Code != http.StatusOK {
+		t.Fatalf("expected second deck priority update 200, got %d (%s)", updateSecondDeckRR.Code, updateSecondDeckRR.Body.String())
+	}
+
+	listDecksRR := doRawRequest(env.router, http.MethodGet, "/api/decks", "")
+	if listDecksRR.Code != http.StatusOK {
+		t.Fatalf("expected list decks 200, got %d (%s)", listDecksRR.Code, listDecksRR.Body.String())
+	}
+	listedDecks := decodeJSON[[]DeckResponse](t, listDecksRR)
+	if len(listedDecks) < 2 {
+		t.Fatalf("expected at least two decks, got %d", len(listedDecks))
+	}
+	if listedDecks[0].ID != 1 {
+		t.Fatalf("expected lower priority order deck to surface first, got deck ID %d", listedDecks[0].ID)
 	}
 }
 
@@ -842,6 +974,66 @@ func TestAPI_StudySessionLifecycle(t *testing.T) {
 	})
 	if rejectedRR.Code != http.StatusConflict {
 		t.Fatalf("expected closed session update to return 409, got %d (%s)", rejectedRR.Code, rejectedRR.Body.String())
+	}
+}
+
+func TestAPI_FocusSessionLifecycleAndAnalytics(t *testing.T) {
+	env := setupAPITestEnv(t)
+
+	createRR := doJSONRequest(t, env.router, http.MethodPost, "/api/study-sessions", CreateStudySessionRequest{
+		Mode:          "focus",
+		Protocol:      "pomodoro",
+		TargetMinutes: 25,
+		BreakMinutes:  5,
+	})
+	if createRR.Code != http.StatusCreated {
+		t.Fatalf("expected focus session create 201, got %d (%s)", createRR.Code, createRR.Body.String())
+	}
+
+	session := decodeJSON[StudySession](t, createRR)
+	if session.Mode != "focus" || session.Protocol != "pomodoro" {
+		t.Fatalf("expected focus pomodoro session, got %+v", session)
+	}
+	if session.TargetMinutes != 25 || session.BreakMinutes != 5 {
+		t.Fatalf("expected focus timing to persist, got %+v", session)
+	}
+
+	endedAt := time.Now().UTC().Add(25 * time.Minute)
+	completedRR := doJSONRequest(t, env.router, http.MethodPatch, fmt.Sprintf("/api/study-sessions/%s", session.ID), UpdateStudySessionRequest{
+		Status:  "completed",
+		EndedAt: endedAt,
+	})
+	if completedRR.Code != http.StatusOK {
+		t.Fatalf("expected focus session completion 200, got %d (%s)", completedRR.Code, completedRR.Body.String())
+	}
+
+	completed := decodeJSON[StudySession](t, completedRR)
+	if completed.Status != "completed" {
+		t.Fatalf("expected completed focus session, got %+v", completed)
+	}
+
+	analyticsRR := doRawRequest(env.router, http.MethodGet, "/api/analytics/overview", "")
+	if analyticsRR.Code != http.StatusOK {
+		t.Fatalf("expected analytics overview 200, got %d (%s)", analyticsRR.Code, analyticsRR.Body.String())
+	}
+	analytics := decodeJSON[StudyAnalyticsOverview](t, analyticsRR)
+	if analytics.FocusSessions7D != 1 {
+		t.Fatalf("expected one completed focus session, got %+v", analytics)
+	}
+	if analytics.FocusMinutes7D < 20 {
+		t.Fatalf("expected focus minutes to reflect the completed block, got %+v", analytics)
+	}
+	if analytics.CurrentStreak != 1 {
+		t.Fatalf("expected focus session to count toward streak, got %+v", analytics)
+	}
+	if len(analytics.RecentSessions) != 1 {
+		t.Fatalf("expected focus session to appear in recent sessions, got %+v", analytics.RecentSessions)
+	}
+	if analytics.RecentSessions[0].Mode != "focus" || analytics.RecentSessions[0].Protocol != "pomodoro" {
+		t.Fatalf("expected recent session to include focus metadata, got %+v", analytics.RecentSessions[0])
+	}
+	if analytics.RecentSessions[0].TargetMinutes != 25 || analytics.RecentSessions[0].BreakMinutes != 5 {
+		t.Fatalf("expected recent focus session timing metadata, got %+v", analytics.RecentSessions[0])
 	}
 }
 
@@ -1308,8 +1500,9 @@ func TestAPI_StudyGroupsUsePublishedVersionsAndPersonalInstalls(t *testing.T) {
 		t.Fatalf("expected updated install copy to reflect version 2 content, got notes=%d cards=%d", newNotes, newCards)
 	}
 
+	forkedName := "Forked Personal Copy"
 	renameInstallDeck := doJSONRequest(t, memberClient.router, http.MethodPatch, fmt.Sprintf("/api/decks/%d", memberInstallV2.InstalledDeckID), UpdateDeckRequest{
-		Name: "Forked Personal Copy",
+		Name: &forkedName,
 	})
 	if renameInstallDeck.Code != http.StatusOK {
 		t.Fatalf("expected renaming installed deck to succeed, got %d (%s)", renameInstallDeck.Code, renameInstallDeck.Body.String())

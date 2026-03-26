@@ -11,6 +11,7 @@ import { Layout } from "#/layouts/root-layout";
 import { DecksPage } from "#/pages/DecksPage";
 import { HomePage } from "#/pages/HomePage";
 import { StatsPage } from "#/pages/StatsPage";
+import { FocusPage } from "#/pages/FocusPage";
 import { NotesPage } from "#/pages/NotesPage";
 import {
   MarketplaceDetailPage,
@@ -90,6 +91,7 @@ export default function App() {
           <Route index element={<HomePage />} />
           <Route path="onboarding/plan" element={<OnboardingPlanPage />} />
           <Route path="stats" element={<StatsPage />} />
+          <Route path="focus" element={<FocusPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="team" element={<TeamPage />} />
           <Route path="notes/view" element={<NotesPage />} />

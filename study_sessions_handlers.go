@@ -19,6 +19,24 @@ func validStudySessionStatus(status string) bool {
 	}
 }
 
+func validStudySessionMode(mode string) bool {
+	switch mode {
+	case "review", "focus":
+		return true
+	default:
+		return false
+	}
+}
+
+func validFocusProtocol(protocol string) bool {
+	switch protocol {
+	case "", "pomodoro", "deep-focus", "custom":
+		return true
+	default:
+		return false
+	}
+}
+
 func (h *APIHandler) CreateStudySession(w http.ResponseWriter, r *http.Request) {
 	session := h.sessionFromRequest(r)
 	if session == nil || strings.TrimSpace(session.UserID) == "" {
@@ -42,6 +60,49 @@ func (h *APIHandler) CreateStudySession(w http.ResponseWriter, r *http.Request) 
 	if req.Mode == "" {
 		req.Mode = "review"
 	}
+	if !validStudySessionMode(req.Mode) {
+		respondAPIError(w, http.StatusBadRequest, "invalid_study_session_mode", "Mode must be review or focus.")
+		return
+	}
+
+	req.Protocol = strings.TrimSpace(req.Protocol)
+	if req.Mode == "focus" {
+		if !validFocusProtocol(req.Protocol) {
+			respondAPIError(w, http.StatusBadRequest, "invalid_focus_protocol", "Protocol must be pomodoro, deep-focus, or custom.")
+			return
+		}
+		if req.Protocol == "" {
+			req.Protocol = "pomodoro"
+		}
+		if req.TargetMinutes < 0 || req.BreakMinutes < 0 {
+			respondAPIError(w, http.StatusBadRequest, "invalid_focus_minutes", "Focus and break durations must be zero or greater.")
+			return
+		}
+		if req.TargetMinutes == 0 {
+			switch req.Protocol {
+			case "deep-focus":
+				req.TargetMinutes = 50
+			default:
+				req.TargetMinutes = 25
+			}
+		}
+		if req.BreakMinutes == 0 {
+			switch req.Protocol {
+			case "deep-focus":
+				req.BreakMinutes = 10
+			default:
+				req.BreakMinutes = 5
+			}
+		}
+		if req.DeckID != 0 {
+			respondAPIError(w, http.StatusBadRequest, "invalid_focus_deck", "Focus sessions do not attach to a deck.")
+			return
+		}
+	} else {
+		req.Protocol = ""
+		req.TargetMinutes = 0
+		req.BreakMinutes = 0
+	}
 
 	if req.DeckID != 0 {
 		deckCollectionID, err := h.store.GetDeckCollectionID(req.DeckID)
@@ -57,15 +118,18 @@ func (h *APIHandler) CreateStudySession(w http.ResponseWriter, r *http.Request) 
 
 	now := time.Now()
 	studySession := &StudySession{
-		ID:          newID("sts"),
-		UserID:      session.UserID,
-		WorkspaceID: workspace.ID,
-		DeckID:      req.DeckID,
-		Mode:        req.Mode,
-		Status:      "active",
-		StartedAt:   now,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:            newID("sts"),
+		UserID:        session.UserID,
+		WorkspaceID:   workspace.ID,
+		DeckID:        req.DeckID,
+		Mode:          req.Mode,
+		Protocol:      req.Protocol,
+		TargetMinutes: req.TargetMinutes,
+		BreakMinutes:  req.BreakMinutes,
+		Status:        "active",
+		StartedAt:     now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 
 	if err := h.store.CreateStudySessionRecord(studySession); err != nil {

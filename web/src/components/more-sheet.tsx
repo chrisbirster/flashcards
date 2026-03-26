@@ -63,6 +63,13 @@ export function MoreSheet({
             Stats
           </Link>
           <Link
+            to="/focus"
+            onClick={onClose}
+            className="inline-flex min-h-11 items-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
+          >
+            Focus
+          </Link>
+          <Link
             to="/marketplace"
             onClick={onClose}
             className="inline-flex min-h-11 items-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"

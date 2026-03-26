@@ -1,6 +1,6 @@
 # Vutadex Phases
 
-Last updated: 2026-03-22
+Last updated: 2026-03-25
 
 This file tracks delivery status for the current app roadmap. Update it whenever a phase meaningfully changes state.
 
@@ -142,8 +142,16 @@ Status legend:
   - persisted study session lifecycle for review sessions
   - initial Home and Deck analytics surfaces powered by study sessions
   - dedicated Stats page with daily activity, answer mix, recent sessions, and active deck ranking
+  - per-deck workload controls layered on top of FSRS:
+    - configurable `newCardsPerDay`
+    - configurable `reviewsPerDay`
+    - manual `priorityOrder`
+    - automatic pause of new cards when review backlog exceeds the deck review cap
+  - Pomodoro / focus-session support:
+    - dedicated Focus page
+    - persisted focus sessions via the study-session model
+    - focus-session analytics in Stats
 - Follow-on work in this lane:
-  - Pomodoro/focus-session support
   - richer group analytics surfaces
   - richer study-event persistence beyond session rollups
 

@@ -7,6 +7,7 @@ export interface AppNavigationItem {
 export const appNavigation: AppNavigationItem[] = [
   { to: "/", label: "Home", description: "Overview and usage" },
   { to: "/stats", label: "Stats", description: "Study analytics and trends" },
+  { to: "/focus", label: "Focus", description: "Pomodoro and timed sessions" },
   { to: "/notes/view", label: "Notes", description: "Browse and edit notes" },
   {
     to: "/marketplace",
@@ -30,6 +31,7 @@ export function pageTitleForPath(pathname: string): string {
   if (pathname === "/") return "Home";
   if (pathname.startsWith("/onboarding/plan")) return "Choose Plan";
   if (pathname.startsWith("/stats")) return "Stats";
+  if (pathname.startsWith("/focus")) return "Focus";
   if (pathname.startsWith("/settings")) return "User Settings";
   if (pathname.startsWith("/team")) return "Team";
   if (pathname.startsWith("/notes/view")) return "Notes";

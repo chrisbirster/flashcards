@@ -64,6 +64,11 @@ type DeckResponse struct {
 	ParentID            *int64             `json:"parentId,omitempty"`
 	CardIDs             []int64            `json:"cardIds"`
 	DueToday            int                `json:"dueToday"`
+	DueReviewBacklog    int                `json:"dueReviewBacklog"`
+	NewCardsPerDay      int                `json:"newCardsPerDay"`
+	ReviewsPerDay       int                `json:"reviewsPerDay"`
+	PriorityOrder       int                `json:"priorityOrder"`
+	NewCardsPaused      bool               `json:"newCardsPaused"`
 	NoteCount           int                `json:"noteCount"`
 	CardCount           int                `json:"cardCount"`
 	CanDelete           bool               `json:"canDelete"`
@@ -304,6 +309,9 @@ func (h *APIHandler) deckDeleteBlockedReason(deck *Deck, cardCount int, col *Col
 
 func (h *APIHandler) deckResponse(userID string, deck *Deck, col *Collection, analyticsByDeck map[int64]DeckStudyAnalytics) DeckResponse {
 	dueToday := 0
+	dueReviewBacklog := 0
+	newCardsPerDay := defaultNewCardsPerDay
+	reviewsPerDay := defaultReviewsPerDay
 	noteIDs := make(map[int64]struct{})
 	cardCount := 0
 
@@ -318,6 +326,11 @@ func (h *APIHandler) deckResponse(userID string, deck *Deck, col *Collection, an
 
 	if stats, err := h.store.GetDeckStatsForUser(userID, deck.ID); err == nil {
 		dueToday = stats.DueToday
+		dueReviewBacklog = stats.DueReviewBacklog
+	}
+	if configuredNew, configuredReview, err := h.store.getDeckDailyLimits(deck.ID); err == nil {
+		newCardsPerDay = configuredNew
+		reviewsPerDay = configuredReview
 	}
 
 	deleteBlockedReason := h.deckDeleteBlockedReason(deck, cardCount, col)
@@ -332,6 +345,11 @@ func (h *APIHandler) deckResponse(userID string, deck *Deck, col *Collection, an
 		ParentID:            deck.ParentID,
 		CardIDs:             deck.Cards,
 		DueToday:            dueToday,
+		DueReviewBacklog:    dueReviewBacklog,
+		NewCardsPerDay:      newCardsPerDay,
+		ReviewsPerDay:       reviewsPerDay,
+		PriorityOrder:       deck.PriorityOrder,
+		NewCardsPaused:      dueReviewBacklog > reviewsPerDay,
 		NoteCount:           len(noteIDs),
 		CardCount:           cardCount,
 		CanDelete:           deleteBlockedReason == "",

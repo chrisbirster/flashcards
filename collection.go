@@ -91,11 +91,12 @@ type CardReviewState struct {
 }
 
 type Deck struct {
-	ID        int64 `json:"id"`
-	Name      string
-	Cards     []int64 // card IDs
-	ParentID  *int64  // for deck hierarchy (nil if root deck)
-	OptionsID *int64  // reference to DeckOptions preset (nil = use default)
+	ID            int64 `json:"id"`
+	Name          string
+	Cards         []int64 // card IDs
+	ParentID      *int64  // for deck hierarchy (nil if root deck)
+	OptionsID     *int64  // reference to DeckOptions preset (nil = use default)
+	PriorityOrder int     // lower numbers are surfaced first
 }
 
 // DeckOptions represents scheduling/behavior presets that can be shared across decks.
@@ -131,15 +132,16 @@ type Profile struct {
 
 // DeckStats represents card counts for a deck by state.
 type DeckStats struct {
-	DeckID     int64 `json:"deckId"`
-	NewCards   int   `json:"newCards"`
-	Learning   int   `json:"learning"`
-	Review     int   `json:"review"`
-	Relearning int   `json:"relearning"`
-	Suspended  int   `json:"suspended"`
-	Buried     int   `json:"buried"`
-	TotalCards int   `json:"totalCards"`
-	DueToday   int   `json:"dueToday"`
+	DeckID           int64 `json:"deckId"`
+	NewCards         int   `json:"newCards"`
+	Learning         int   `json:"learning"`
+	Review           int   `json:"review"`
+	Relearning       int   `json:"relearning"`
+	Suspended        int   `json:"suspended"`
+	Buried           int   `json:"buried"`
+	TotalCards       int   `json:"totalCards"`
+	DueToday         int   `json:"dueToday"`
+	DueReviewBacklog int   `json:"dueReviewBacklog"`
 }
 
 type Collection struct {
@@ -191,7 +193,7 @@ func NewCollection() *Collection {
 func (c *Collection) NewDeck(name string) *Deck {
 	id := c.nextDeckID
 	c.nextDeckID++
-	d := &Deck{ID: id, Name: name, Cards: []int64{}}
+	d := &Deck{ID: id, Name: name, Cards: []int64{}, PriorityOrder: int(id)}
 	c.Decks[id] = d
 	return d
 }

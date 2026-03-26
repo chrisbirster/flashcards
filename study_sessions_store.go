@@ -8,15 +8,18 @@ import (
 func (s *SQLiteStore) CreateStudySessionRecord(session *StudySession) error {
 	_, err := s.db.Exec(`
 		INSERT INTO study_sessions (
-			id, user_id, workspace_id, deck_id, mode, status, started_at, ended_at,
+			id, user_id, workspace_id, deck_id, mode, protocol, target_minutes, break_minutes, status, started_at, ended_at,
 			cards_reviewed, again_count, hard_count, good_count, easy_count, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		session.ID,
 		session.UserID,
 		session.WorkspaceID,
 		nullIfZeroInt64(session.DeckID),
 		session.Mode,
+		session.Protocol,
+		session.TargetMinutes,
+		session.BreakMinutes,
 		session.Status,
 		session.StartedAt.Unix(),
 		nullIfZeroTime(session.EndedAt),
@@ -33,7 +36,7 @@ func (s *SQLiteStore) CreateStudySessionRecord(session *StudySession) error {
 
 func (s *SQLiteStore) GetStudySession(id string) (*StudySession, error) {
 	row := s.db.QueryRow(`
-		SELECT id, user_id, workspace_id, deck_id, mode, status, started_at, ended_at,
+		SELECT id, user_id, workspace_id, deck_id, mode, protocol, target_minutes, break_minutes, status, started_at, ended_at,
 			cards_reviewed, again_count, hard_count, good_count, easy_count, created_at, updated_at
 		FROM study_sessions
 		WHERE id = ?
@@ -43,7 +46,7 @@ func (s *SQLiteStore) GetStudySession(id string) (*StudySession, error) {
 
 func (s *SQLiteStore) GetStudySessionForUser(id, userID string) (*StudySession, error) {
 	row := s.db.QueryRow(`
-		SELECT id, user_id, workspace_id, deck_id, mode, status, started_at, ended_at,
+		SELECT id, user_id, workspace_id, deck_id, mode, protocol, target_minutes, break_minutes, status, started_at, ended_at,
 			cards_reviewed, again_count, hard_count, good_count, easy_count, created_at, updated_at
 		FROM study_sessions
 		WHERE id = ? AND user_id = ?
@@ -87,6 +90,9 @@ func scanStudySession(scanner interface{ Scan(dest ...any) error }) (*StudySessi
 		&session.WorkspaceID,
 		&deckID,
 		&session.Mode,
+		&session.Protocol,
+		&session.TargetMinutes,
+		&session.BreakMinutes,
 		&session.Status,
 		&startedAt,
 		&endedAt,

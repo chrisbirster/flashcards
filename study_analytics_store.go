@@ -49,6 +49,35 @@ func (s *SQLiteStore) GetStudyAnalyticsOverview(userID, workspaceID string) (Stu
 	}
 
 	overview.MinutesStudied7D = int(minutesStudiedSeconds / 60)
+
+	var focusSecondsStudied int64
+	if err := s.db.QueryRow(`
+		SELECT
+			COUNT(*),
+			COALESCE(SUM(CASE
+				WHEN ended_at IS NOT NULL AND ended_at > started_at THEN ended_at - started_at
+				WHEN updated_at > started_at THEN updated_at - started_at
+				ELSE 0
+			END), 0)
+		FROM study_sessions
+		WHERE user_id = ? AND workspace_id = ? AND mode = 'focus' AND status = 'completed' AND COALESCE(ended_at, updated_at, started_at) >= ?
+	`, userID, workspaceID, since).Scan(
+		&overview.FocusSessions7D,
+		&focusSecondsStudied,
+	); err != nil {
+		return overview, err
+	}
+	overview.FocusMinutes7D = int(focusSecondsStudied / 60)
+
+	if err := s.db.QueryRow(`
+		SELECT MAX(COALESCE(ended_at, updated_at, started_at))
+		FROM study_sessions
+		WHERE user_id = ? AND workspace_id = ? AND (
+			cards_reviewed > 0 OR (mode = 'focus' AND status = 'completed')
+		)
+	`, userID, workspaceID).Scan(&lastStudiedAt); err != nil {
+		return overview, err
+	}
 	overview.LastStudiedAt = unixTimeOrZero(lastStudiedAt)
 
 	streak, err := s.currentStudyStreak(userID, workspaceID, now)
@@ -190,6 +219,9 @@ func (s *SQLiteStore) getRecentStudySessionSummaries(userID, workspaceID string,
 			id,
 			deck_id,
 			mode,
+			protocol,
+			target_minutes,
+			break_minutes,
 			status,
 			started_at,
 			ended_at,
@@ -200,7 +232,7 @@ func (s *SQLiteStore) getRecentStudySessionSummaries(userID, workspaceID string,
 			easy_count,
 			updated_at
 		FROM study_sessions
-		WHERE user_id = ? AND workspace_id = ? AND cards_reviewed > 0
+		WHERE user_id = ? AND workspace_id = ? AND (cards_reviewed > 0 OR mode = 'focus')
 		ORDER BY COALESCE(ended_at, updated_at, started_at) DESC
 		LIMIT ?
 	`, userID, workspaceID, limit)
@@ -222,6 +254,9 @@ func (s *SQLiteStore) getRecentStudySessionSummaries(userID, workspaceID string,
 			&summary.ID,
 			&deckID,
 			&summary.Mode,
+			&summary.Protocol,
+			&summary.TargetMinutes,
+			&summary.BreakMinutes,
 			&summary.Status,
 			&startedAt,
 			&endedAt,
@@ -251,7 +286,9 @@ func (s *SQLiteStore) currentStudyStreak(userID, workspaceID string, now time.Ti
 	rows, err := s.db.Query(`
 		SELECT DISTINCT date(COALESCE(ended_at, updated_at, started_at), 'unixepoch') AS study_day
 		FROM study_sessions
-		WHERE user_id = ? AND workspace_id = ? AND cards_reviewed > 0
+		WHERE user_id = ? AND workspace_id = ? AND (
+			cards_reviewed > 0 OR (mode = 'focus' AND status = 'completed')
+		)
 		ORDER BY study_day DESC
 	`, userID, workspaceID)
 	if err != nil {

@@ -40,6 +40,10 @@ export function HomePage() {
     queryKey: ["dashboard"],
     queryFn: () => repository.fetchDashboard(),
   });
+  const decksQuery = useQuery({
+    queryKey: ["decks"],
+    queryFn: () => repository.fetchDecks(),
+  });
 
   const plan = dashboardQuery.data?.plan?.toUpperCase() ?? "FREE";
   const noteUsage = dashboardQuery.data?.usage.notes ?? 0;
@@ -50,6 +54,8 @@ export function HomePage() {
   const totalNotes = dashboardQuery.data?.totalNotes ?? 0;
   const dueToday = dashboardQuery.data?.dueToday ?? 0;
   const studyAnalytics = dashboardQuery.data?.studyAnalytics;
+  const dueDecks = (decksQuery.data ?? []).filter((deck) => deck.dueToday > 0);
+  const recommendedDeck = dueDecks[0];
 
   return (
     <div className="space-y-6">
@@ -191,6 +197,123 @@ export function HomePage() {
           value={studyAnalytics?.minutesStudied7d ?? 0}
           detail="Time accumulated from completed sessions this week."
         />
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+        <div className="rounded-[2rem] border border-[var(--app-line)] bg-[var(--app-card)] p-6 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xl font-semibold tracking-tight text-[var(--app-text)]">
+                Focus next
+              </h3>
+              <p className="mt-1 text-sm text-[var(--app-text-soft)]">
+                Deck recommendations follow your manual deck priority, not a mixed global queue.
+              </p>
+            </div>
+            <Link
+              to="/decks"
+              className="text-sm font-medium text-[var(--app-accent)] hover:brightness-110"
+            >
+              Open decks
+            </Link>
+          </div>
+
+          {decksQuery.isLoading ? (
+            <p className="mt-6 text-sm text-[var(--app-text-soft)]">
+              Loading deck priority...
+            </p>
+          ) : null}
+
+          {!decksQuery.isLoading && !recommendedDeck ? (
+            <p className="mt-6 text-sm text-[var(--app-text-soft)]">
+              No decks are due right now. Your highest-priority due deck will appear here once review work is waiting.
+            </p>
+          ) : null}
+
+          {recommendedDeck ? (
+            <div className="mt-6 rounded-[1.5rem] border border-[var(--app-line)] bg-[var(--app-card-strong)] p-5">
+              <p className="text-xs uppercase tracking-[0.2em] text-[var(--app-muted)]">
+                Priority {recommendedDeck.priorityOrder}
+              </p>
+              <h4 className="mt-3 text-2xl font-semibold text-[var(--app-text)]">
+                {recommendedDeck.name}
+              </h4>
+              <div className="mt-4 flex flex-wrap gap-2 text-sm">
+                <span className="rounded-full bg-[var(--app-muted-surface)] px-3 py-1 text-[var(--app-text-soft)]">
+                  {recommendedDeck.dueToday} due today
+                </span>
+                <span className="rounded-full bg-[var(--app-muted-surface)] px-3 py-1 text-[var(--app-text-soft)]">
+                  {recommendedDeck.dueReviewBacklog} review backlog
+                </span>
+                <span className="rounded-full bg-[var(--app-muted-surface)] px-3 py-1 text-[var(--app-text-soft)]">
+                  {recommendedDeck.newCardsPerDay} new/day
+                </span>
+                <span className="rounded-full bg-[var(--app-muted-surface)] px-3 py-1 text-[var(--app-text-soft)]">
+                  {recommendedDeck.reviewsPerDay} reviews/day
+                </span>
+              </div>
+              <p className="mt-4 text-sm leading-6 text-[var(--app-text-soft)]">
+                {recommendedDeck.newCardsPaused
+                  ? "New cards are paused for this deck until its review backlog falls back under the review cap."
+                  : "New cards are still available for this deck because its review backlog is within the review cap."}
+              </p>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Link
+                  to={`/study/${recommendedDeck.id}`}
+                  className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-5 text-sm font-semibold text-[var(--app-accent-ink)] transition hover:brightness-105"
+                >
+                  Study this deck
+                </Link>
+                <Link
+                  to="/decks"
+                  className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] px-5 text-sm font-medium text-[var(--app-text)] hover:border-[var(--app-accent)] hover:bg-[var(--app-card)]"
+                >
+                  Reorder deck priority
+                </Link>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="rounded-[2rem] border border-[var(--app-line)] bg-[var(--app-card)] p-6 shadow-sm">
+          <h3 className="text-xl font-semibold tracking-tight text-[var(--app-text)]">
+            Due decks by priority
+          </h3>
+          <p className="mt-1 text-sm text-[var(--app-text-soft)]">
+            Lower priority numbers surface first when several decks all need attention.
+          </p>
+          {dueDecks.length === 0 ? (
+            <p className="mt-6 text-sm text-[var(--app-text-soft)]">
+              Nothing due across your decks right now.
+            </p>
+          ) : (
+            <ul className="mt-6 space-y-3">
+              {dueDecks.slice(0, 4).map((deck) => (
+                <li
+                  key={deck.id}
+                  className="rounded-2xl border border-[var(--app-line)] bg-[var(--app-muted-surface)] p-4"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[var(--app-text)]">
+                        {deck.name}
+                      </p>
+                      <p className="mt-1 text-sm text-[var(--app-text-soft)]">
+                        Priority {deck.priorityOrder} • {deck.dueToday} due • {deck.dueReviewBacklog} review backlog
+                      </p>
+                    </div>
+                    <Link
+                      to={`/study/${deck.id}`}
+                      className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-medium text-[var(--app-accent-ink)]"
+                    >
+                      Study
+                    </Link>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">

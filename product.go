@@ -252,6 +252,9 @@ type StudySession struct {
 	WorkspaceID   string    `json:"workspaceId"`
 	DeckID        int64     `json:"deckId,omitempty"`
 	Mode          string    `json:"mode"`
+	Protocol      string    `json:"protocol,omitempty"`
+	TargetMinutes int       `json:"targetMinutes,omitempty"`
+	BreakMinutes  int       `json:"breakMinutes,omitempty"`
 	Status        string    `json:"status"`
 	StartedAt     time.Time `json:"startedAt"`
 	EndedAt       time.Time `json:"endedAt,omitempty"`
@@ -265,8 +268,11 @@ type StudySession struct {
 }
 
 type CreateStudySessionRequest struct {
-	DeckID int64  `json:"deckId,omitempty"`
-	Mode   string `json:"mode,omitempty"`
+	DeckID        int64  `json:"deckId,omitempty"`
+	Mode          string `json:"mode,omitempty"`
+	Protocol      string `json:"protocol,omitempty"`
+	TargetMinutes int    `json:"targetMinutes,omitempty"`
+	BreakMinutes  int    `json:"breakMinutes,omitempty"`
 }
 
 type UpdateStudySessionRequest struct {
@@ -283,6 +289,8 @@ type StudyAnalyticsOverview struct {
 	Sessions7D       int                   `json:"sessions7d"`
 	CardsReviewed7D  int                   `json:"cardsReviewed7d"`
 	MinutesStudied7D int                   `json:"minutesStudied7d"`
+	FocusSessions7D  int                   `json:"focusSessions7d"`
+	FocusMinutes7D   int                   `json:"focusMinutes7d"`
 	CurrentStreak    int                   `json:"currentStreak"`
 	LastStudiedAt    time.Time             `json:"lastStudiedAt,omitempty"`
 	AnswerBreakdown  StudyAnswerBreakdown  `json:"answerBreakdown"`
@@ -321,6 +329,9 @@ type StudySessionSummary struct {
 	DeckID         int64     `json:"deckId,omitempty"`
 	DeckName       string    `json:"deckName,omitempty"`
 	Mode           string    `json:"mode"`
+	Protocol       string    `json:"protocol,omitempty"`
+	TargetMinutes  int       `json:"targetMinutes,omitempty"`
+	BreakMinutes   int       `json:"breakMinutes,omitempty"`
 	Status         string    `json:"status"`
 	CardsReviewed  int       `json:"cardsReviewed"`
 	MinutesStudied int       `json:"minutesStudied"`

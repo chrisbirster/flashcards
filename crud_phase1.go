@@ -53,7 +53,10 @@ type UpdateNoteRequest struct {
 }
 
 type UpdateDeckRequest struct {
-	Name string `json:"name"`
+	Name           *string `json:"name,omitempty"`
+	NewCardsPerDay *int    `json:"newCardsPerDay,omitempty"`
+	ReviewsPerDay  *int    `json:"reviewsPerDay,omitempty"`
+	PriorityOrder  *int    `json:"priorityOrder,omitempty"`
 }
 
 type CreateTemplateRequest struct {
@@ -592,8 +595,8 @@ func (h *APIHandler) UpdateDeck(w http.ResponseWriter, r *http.Request) {
 		respondAPIError(w, http.StatusBadRequest, "invalid_request", "Invalid request body")
 		return
 	}
-	if strings.TrimSpace(req.Name) == "" {
-		respondAPIError(w, http.StatusBadRequest, "invalid_name", "Deck name is required")
+	if req.Name == nil && req.NewCardsPerDay == nil && req.ReviewsPerDay == nil && req.PriorityOrder == nil {
+		respondAPIError(w, http.StatusBadRequest, "invalid_request", "At least one deck field is required")
 		return
 	}
 
@@ -603,13 +606,56 @@ func (h *APIHandler) UpdateDeck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deck.Name = sanitizeHTML(strings.TrimSpace(req.Name))
+	if req.Name != nil {
+		trimmed := strings.TrimSpace(*req.Name)
+		if trimmed == "" {
+			respondAPIError(w, http.StatusBadRequest, "invalid_name", "Deck name is required")
+			return
+		}
+		deck.Name = sanitizeHTML(trimmed)
+	}
+	if req.PriorityOrder != nil {
+		if *req.PriorityOrder <= 0 {
+			respondAPIError(w, http.StatusBadRequest, "invalid_priority_order", "Priority must be 1 or greater")
+			return
+		}
+		deck.PriorityOrder = *req.PriorityOrder
+	}
+	if req.NewCardsPerDay != nil || req.ReviewsPerDay != nil {
+		if req.NewCardsPerDay != nil && *req.NewCardsPerDay < 0 {
+			respondAPIError(w, http.StatusBadRequest, "invalid_new_cards_per_day", "New cards per day must be 0 or greater")
+			return
+		}
+		if req.ReviewsPerDay != nil && *req.ReviewsPerDay < 0 {
+			respondAPIError(w, http.StatusBadRequest, "invalid_reviews_per_day", "Reviews per day must be 0 or greater")
+			return
+		}
+
+		options, err := h.store.EnsureDeckOptionsForDeck(deck)
+		if err != nil {
+			respondAPIError(w, http.StatusInternalServerError, "deck_options_failed", err.Error())
+			return
+		}
+		if req.NewCardsPerDay != nil {
+			options.NewCardsPerDay = *req.NewCardsPerDay
+		}
+		if req.ReviewsPerDay != nil {
+			options.ReviewsPerDay = *req.ReviewsPerDay
+		}
+		options.Name = fmt.Sprintf("%s settings", deck.Name)
+		if err := h.store.UpdateDeckOptions(options); err != nil {
+			respondAPIError(w, http.StatusInternalServerError, "deck_options_failed", err.Error())
+			return
+		}
+	}
 	if err := h.store.UpdateDeck(deck); err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "deck_update_failed", err.Error())
 		return
 	}
 	if existing, ok := col.Decks[id]; ok {
 		existing.Name = deck.Name
+		existing.OptionsID = deck.OptionsID
+		existing.PriorityOrder = deck.PriorityOrder
 	}
 	h.markStudyGroupInstallsForkedByDeckIDs(id)
 

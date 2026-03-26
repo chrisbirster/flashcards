@@ -303,24 +303,29 @@ func (s *SQLiteStore) CreateDeck(d *Deck) error {
 
 func (s *SQLiteStore) CreateDeckInCollection(collectionID string, d *Deck) error {
 	query := `
-		INSERT INTO decks (id, collection_id, name, parent_id, options_id)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO decks (id, collection_id, name, parent_id, options_id, priority_order)
+		VALUES (?, ?, ?, ?, ?, ?)
 	`
 	if strings.TrimSpace(collectionID) == "" {
 		collectionID = "default"
 	}
-	_, err := s.db.Exec(query, d.ID, collectionID, d.Name, d.ParentID, d.OptionsID)
+	priorityOrder := d.PriorityOrder
+	if priorityOrder <= 0 {
+		priorityOrder = int(d.ID)
+	}
+	_, err := s.db.Exec(query, d.ID, collectionID, d.Name, d.ParentID, d.OptionsID, priorityOrder)
 	return err
 }
 
 func (s *SQLiteStore) GetDeck(id int64) (*Deck, error) {
-	query := `SELECT id, name, parent_id, options_id FROM decks WHERE id = ?`
+	query := `SELECT id, name, parent_id, options_id, priority_order FROM decks WHERE id = ?`
 	row := s.db.QueryRow(query, id)
 
 	var deck Deck
 	var parentID, optionsID sql.NullInt64
+	var priorityOrder sql.NullInt64
 
-	err := row.Scan(&deck.ID, &deck.Name, &parentID, &optionsID)
+	err := row.Scan(&deck.ID, &deck.Name, &parentID, &optionsID, &priorityOrder)
 	if err != nil {
 		return nil, err
 	}
@@ -332,6 +337,11 @@ func (s *SQLiteStore) GetDeck(id int64) (*Deck, error) {
 	if optionsID.Valid {
 		oid := optionsID.Int64
 		deck.OptionsID = &oid
+	}
+	if priorityOrder.Valid && priorityOrder.Int64 > 0 {
+		deck.PriorityOrder = int(priorityOrder.Int64)
+	} else {
+		deck.PriorityOrder = int(deck.ID)
 	}
 
 	// Load card IDs for this deck
@@ -355,8 +365,12 @@ func (s *SQLiteStore) GetDeck(id int64) (*Deck, error) {
 }
 
 func (s *SQLiteStore) UpdateDeck(d *Deck) error {
-	query := `UPDATE decks SET name = ?, parent_id = ?, options_id = ? WHERE id = ?`
-	_, err := s.db.Exec(query, d.Name, d.ParentID, d.OptionsID, d.ID)
+	priorityOrder := d.PriorityOrder
+	if priorityOrder <= 0 {
+		priorityOrder = int(d.ID)
+	}
+	query := `UPDATE decks SET name = ?, parent_id = ?, options_id = ?, priority_order = ? WHERE id = ?`
+	_, err := s.db.Exec(query, d.Name, d.ParentID, d.OptionsID, priorityOrder, d.ID)
 	return err
 }
 
@@ -368,7 +382,7 @@ func (s *SQLiteStore) DeleteDeck(id int64) error {
 }
 
 func (s *SQLiteStore) ListDecks(collectionID string) ([]*Deck, error) {
-	query := `SELECT id FROM decks WHERE collection_id = ? ORDER BY name`
+	query := `SELECT id FROM decks WHERE collection_id = ? ORDER BY priority_order ASC, id ASC`
 	rows, err := s.db.Query(query, collectionID)
 	if err != nil {
 		return nil, err
@@ -389,6 +403,98 @@ func (s *SQLiteStore) ListDecks(collectionID string) ([]*Deck, error) {
 	}
 
 	return decks, nil
+}
+
+func (s *SQLiteStore) GetDeckOptions(id int64) (*DeckOptions, error) {
+	row := s.db.QueryRow(`
+		SELECT id, name, new_cards_per_day, reviews_per_day, learning_steps, graduating_interval, easy_interval
+		FROM deck_options
+		WHERE id = ?
+	`, id)
+
+	var (
+		options       DeckOptions
+		learningSteps sql.NullString
+	)
+	if err := row.Scan(
+		&options.ID,
+		&options.Name,
+		&options.NewCardsPerDay,
+		&options.ReviewsPerDay,
+		&learningSteps,
+		&options.GraduatingInterval,
+		&options.EasyInterval,
+	); err != nil {
+		return nil, err
+	}
+
+	if learningSteps.Valid && strings.TrimSpace(learningSteps.String) != "" {
+		_ = json.Unmarshal([]byte(learningSteps.String), &options.LearningSteps)
+	}
+
+	return &options, nil
+}
+
+func (s *SQLiteStore) CreateDeckOptions(options *DeckOptions) error {
+	stepsJSON := "[]"
+	if len(options.LearningSteps) > 0 {
+		if encoded, err := json.Marshal(options.LearningSteps); err == nil {
+			stepsJSON = string(encoded)
+		}
+	}
+
+	_, err := s.db.Exec(`
+		INSERT INTO deck_options (id, name, new_cards_per_day, reviews_per_day, learning_steps, graduating_interval, easy_interval)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, options.ID, options.Name, options.NewCardsPerDay, options.ReviewsPerDay, stepsJSON, options.GraduatingInterval, options.EasyInterval)
+	return err
+}
+
+func (s *SQLiteStore) UpdateDeckOptions(options *DeckOptions) error {
+	stepsJSON := "[]"
+	if len(options.LearningSteps) > 0 {
+		if encoded, err := json.Marshal(options.LearningSteps); err == nil {
+			stepsJSON = string(encoded)
+		}
+	}
+
+	_, err := s.db.Exec(`
+		UPDATE deck_options
+		SET name = ?, new_cards_per_day = ?, reviews_per_day = ?, learning_steps = ?, graduating_interval = ?, easy_interval = ?
+		WHERE id = ?
+	`, options.Name, options.NewCardsPerDay, options.ReviewsPerDay, stepsJSON, options.GraduatingInterval, options.EasyInterval, options.ID)
+	return err
+}
+
+func (s *SQLiteStore) EnsureDeckOptionsForDeck(deck *Deck) (*DeckOptions, error) {
+	if deck.OptionsID != nil {
+		options, err := s.GetDeckOptions(*deck.OptionsID)
+		if err == nil {
+			return options, nil
+		}
+		if err != sql.ErrNoRows {
+			return nil, err
+		}
+	}
+
+	nextID := time.Now().UnixNano()
+	options := &DeckOptions{
+		ID:                 nextID,
+		Name:               fmt.Sprintf("%s settings", strings.TrimSpace(deck.Name)),
+		NewCardsPerDay:     defaultNewCardsPerDay,
+		ReviewsPerDay:      defaultReviewsPerDay,
+		LearningSteps:      []int{},
+		GraduatingInterval: 1,
+		EasyInterval:       4,
+	}
+	if err := s.CreateDeckOptions(options); err != nil {
+		return nil, err
+	}
+	deck.OptionsID = &options.ID
+	if err := s.UpdateDeck(deck); err != nil {
+		return nil, err
+	}
+	return options, nil
 }
 
 // Note Type methods
@@ -1227,6 +1333,9 @@ func (s *SQLiteStore) GetDueCards(deckID int64, limit int) ([]*Card, error) {
 	if reviewRemaining < 0 {
 		reviewRemaining = 0
 	}
+	if stats, err := s.GetDeckStats(deckID); err == nil && stats.DueReviewBacklog > reviewLimit {
+		newRemaining = 0
+	}
 
 	remaining := limit
 	cardIDs := make([]int64, 0, limit)
@@ -1303,6 +1412,9 @@ func (s *SQLiteStore) GetDueCardsForUser(userID string, deckID int64, limit int)
 	reviewRemaining := reviewLimit - reviewedToday
 	if reviewRemaining < 0 {
 		reviewRemaining = 0
+	}
+	if stats, err := s.GetDeckStatsForUser(userID, deckID); err == nil && stats.DueReviewBacklog > reviewLimit {
+		newRemaining = 0
 	}
 
 	remaining := limit
@@ -1499,11 +1611,13 @@ func (s *SQLiteStore) GetDeckStats(deckID int64) (*DeckStats, error) {
 			stats.Review++
 			if due <= now {
 				stats.DueToday++
+				stats.DueReviewBacklog++
 			}
 		case 3: // Relearning
 			stats.Relearning++
 			if due <= now {
 				stats.DueToday++
+				stats.DueReviewBacklog++
 			}
 		}
 	}
@@ -1563,11 +1677,13 @@ func (s *SQLiteStore) GetDeckStatsForUser(userID string, deckID int64) (*DeckSta
 			stats.Review++
 			if due <= now {
 				stats.DueToday++
+				stats.DueReviewBacklog++
 			}
 		case int(fsrs.Relearning):
 			stats.Relearning++
 			if due <= now {
 				stats.DueToday++
+				stats.DueReviewBacklog++
 			}
 		}
 	}

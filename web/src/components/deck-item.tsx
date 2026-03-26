@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Deck } from "#/lib/api";
@@ -33,6 +33,17 @@ export function DeckItem({ deck }: { deck: Deck }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [newCardsPerDay, setNewCardsPerDay] = useState(String(deck.newCardsPerDay));
+  const [reviewsPerDay, setReviewsPerDay] = useState(String(deck.reviewsPerDay));
+  const [priorityOrder, setPriorityOrder] = useState(String(deck.priorityOrder));
+
+  useEffect(() => {
+    setDraftName(deck.name);
+    setNewCardsPerDay(String(deck.newCardsPerDay));
+    setReviewsPerDay(String(deck.reviewsPerDay));
+    setPriorityOrder(String(deck.priorityOrder));
+  }, [deck.id, deck.name, deck.newCardsPerDay, deck.priorityOrder, deck.reviewsPerDay]);
 
   const renameMutation = useMutation({
     mutationFn: (name: string) => repository.updateDeck(deck.id, { name }),
@@ -56,10 +67,45 @@ export function DeckItem({ deck }: { deck: Deck }) {
     onError: (error: Error) => setActionError(error.message),
   });
 
+  const settingsMutation = useMutation({
+    mutationFn: (payload: {
+      newCardsPerDay: number;
+      reviewsPerDay: number;
+      priorityOrder: number;
+    }) => repository.updateDeck(deck.id, payload),
+    onSuccess: () => {
+      setActionError(null);
+      setSettingsOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["decks"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+    },
+    onError: (error: Error) => setActionError(error.message),
+  });
+
   const canStudy = deck.dueToday > 0;
 
   const runDelete = () => {
     deleteMutation.mutate();
+  };
+
+  const submitSettings = (event: React.FormEvent) => {
+    event.preventDefault();
+    const parsedNew = Number(newCardsPerDay);
+    const parsedReviews = Number(reviewsPerDay);
+    const parsedPriority = Number(priorityOrder);
+    if (
+      !Number.isFinite(parsedNew) ||
+      !Number.isFinite(parsedReviews) ||
+      !Number.isFinite(parsedPriority)
+    ) {
+      setActionError("Workload settings must be valid numbers.");
+      return;
+    }
+    settingsMutation.mutate({
+      newCardsPerDay: Math.max(0, Math.floor(parsedNew)),
+      reviewsPerDay: Math.max(0, Math.floor(parsedReviews)),
+      priorityOrder: Math.max(1, Math.floor(parsedPriority)),
+    });
   };
 
   return (
@@ -119,6 +165,10 @@ export function DeckItem({ deck }: { deck: Deck }) {
                   <StatPill label="notes" value={deck.noteCount} />
                   <StatPill label="cards" value={deck.cardCount} />
                   <StatPill label="due" value={deck.dueToday} />
+                  <StatPill label="review backlog" value={deck.dueReviewBacklog} />
+                  <StatPill label="new/day" value={deck.newCardsPerDay} />
+                  <StatPill label="reviews/day" value={deck.reviewsPerDay} />
+                  <StatPill label="priority" value={deck.priorityOrder} />
                   <StatPill
                     label="sessions (7d)"
                     value={deck.analytics.sessions7d}
@@ -135,6 +185,15 @@ export function DeckItem({ deck }: { deck: Deck }) {
                     : deck.deleteBlockedReason ||
                       "Delete is disabled until this deck is empty."}
                 </p>
+                {deck.newCardsPaused ? (
+                  <p className="mt-2 text-sm leading-6 text-[var(--app-warning-text)]">
+                    New cards paused until review backlog drops below your review cap.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+                    New cards stay available while review backlog is at or below your review cap.
+                  </p>
+                )}
                 <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
                   {formatLastStudiedAt(deck.analytics.lastStudiedAt)}
                 </p>
@@ -187,6 +246,15 @@ export function DeckItem({ deck }: { deck: Deck }) {
               onClick={() => navigate(`/notes/add?deckId=${deck.id}`)}
             >
               Add Note
+            </button>
+            <button
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
+              onClick={() => {
+                setActionError(null);
+                setSettingsOpen(true);
+              }}
+            >
+              Workload
             </button>
             <button
               className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text-soft)]"
@@ -242,6 +310,17 @@ export function DeckItem({ deck }: { deck: Deck }) {
             type="button"
             onClick={() => {
               setActionError(null);
+              setSettingsOpen(true);
+              setActionsOpen(false);
+            }}
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
+          >
+            Workload
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActionError(null);
               setIsEditing(true);
               setActionsOpen(false);
             }}
@@ -266,6 +345,76 @@ export function DeckItem({ deck }: { deck: Deck }) {
             </p>
           ) : null}
         </div>
+      </Sheet>
+
+      <Sheet
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        title={`Deck workload: ${deck.name}`}
+      >
+        <form onSubmit={submitSettings} className="space-y-4">
+          <p className="text-sm leading-6 text-[var(--app-text-soft)]">
+            Tune how many new and review cards this deck can surface each day,
+            and decide where it sits in your manual deck order.
+          </p>
+          <label className="block space-y-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--app-muted)]">
+              New cards / day
+            </span>
+            <input
+              type="number"
+              min={0}
+              value={newCardsPerDay}
+              onChange={(event) => setNewCardsPerDay(event.target.value)}
+              className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 py-3 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
+            />
+          </label>
+          <label className="block space-y-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--app-muted)]">
+              Reviews / day
+            </span>
+            <input
+              type="number"
+              min={0}
+              value={reviewsPerDay}
+              onChange={(event) => setReviewsPerDay(event.target.value)}
+              className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 py-3 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
+            />
+          </label>
+          <label className="block space-y-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--app-muted)]">
+              Priority
+            </span>
+            <input
+              type="number"
+              min={1}
+              value={priorityOrder}
+              onChange={(event) => setPriorityOrder(event.target.value)}
+              className="w-full rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 py-3 text-sm text-[var(--app-text)] outline-none focus:border-[var(--app-accent)]"
+            />
+          </label>
+          <div className="rounded-2xl border border-[var(--app-line)] bg-[var(--app-muted-surface)] p-4 text-sm text-[var(--app-text-soft)]">
+            {deck.newCardsPaused
+              ? "New cards are currently paused for this deck because review backlog is above the review cap."
+              : "New cards stay available while review backlog remains at or below the review cap."}
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              type="submit"
+              disabled={settingsMutation.isPending}
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-semibold text-[var(--app-accent-ink)] disabled:opacity-60"
+            >
+              {settingsMutation.isPending ? "Saving..." : "Save workload"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(false)}
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-sm font-medium text-[var(--app-text)]"
+            >
+              Close
+            </button>
+          </div>
+        </form>
       </Sheet>
 
       <ConfirmSheet

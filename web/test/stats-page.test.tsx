@@ -39,6 +39,8 @@ describe("StatsPage", () => {
         sessions7d: 3,
         cardsReviewed7d: 47,
         minutesStudied7d: 62,
+        focusSessions7d: 2,
+        focusMinutes7d: 40,
         currentStreak: 4,
         lastStudiedAt: "2026-03-22T15:00:00.000Z",
         answerBreakdown: {
@@ -114,10 +116,15 @@ describe("StatsPage", () => {
         {
           id: 1,
           name: "Biology",
-          cardIds: [1, 2],
-          dueToday: 6,
-          noteCount: 10,
-          cardCount: 20,
+            cardIds: [1, 2],
+            dueToday: 6,
+            dueReviewBacklog: 3,
+            newCardsPerDay: 20,
+            reviewsPerDay: 200,
+            priorityOrder: 1,
+            newCardsPaused: false,
+            noteCount: 10,
+            cardCount: 20,
           canDelete: false,
           deleteBlockedReason: "Deck is not empty.",
           analytics: {
@@ -135,10 +142,15 @@ describe("StatsPage", () => {
         {
           id: 2,
           name: "Chemistry",
-          cardIds: [3],
-          dueToday: 2,
-          noteCount: 3,
-          cardCount: 5,
+            cardIds: [3],
+            dueToday: 2,
+            dueReviewBacklog: 1,
+            newCardsPerDay: 10,
+            reviewsPerDay: 100,
+            priorityOrder: 2,
+            newCardsPaused: false,
+            noteCount: 3,
+            cardCount: 5,
           canDelete: false,
           deleteBlockedReason: "Deck is not empty.",
           analytics: {
@@ -160,6 +172,7 @@ describe("StatsPage", () => {
 
     expect(await screen.findByText("Study analytics")).toBeInTheDocument();
     expect(await screen.findByText("Current Streak")).toBeInTheDocument();
+    expect(await screen.findByText("Focus Blocks (7d)")).toBeInTheDocument();
     expect(await screen.findByText("Daily activity")).toBeInTheDocument();
     expect(await screen.findByText("Recent sessions")).toBeInTheDocument();
     expect(await screen.findAllByText("Biology")).toHaveLength(3);

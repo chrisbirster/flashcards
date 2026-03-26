@@ -165,23 +165,25 @@ export function OnboardingPlanPage() {
                 ))}
               </ul>
 
-              <button
-                type="button"
-                onClick={() => selectPlanMutation.mutate(option.plan)}
-                disabled={selectPlanMutation.isPending}
-                className={[
-                  "mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-2xl px-4 text-sm font-semibold transition disabled:opacity-60",
-                  isCurrent
-                    ? "border border-[var(--app-line-strong)] bg-[var(--app-card)] text-[var(--app-text)]"
-                    : "bg-[var(--app-accent)] text-[var(--app-accent-ink)] hover:brightness-105",
-                ].join(" ")}
-              >
-                {isPending
-                  ? "Saving..."
-                  : isCurrent
-                    ? "Continue with this plan"
-                    : `Choose ${option.title}`}
-              </button>
+              <div className="mt-auto pt-6">
+                <button
+                  type="button"
+                  onClick={() => selectPlanMutation.mutate(option.plan)}
+                  disabled={selectPlanMutation.isPending}
+                  className={[
+                    "inline-flex min-h-11 w-full items-center justify-center rounded-2xl px-4 text-center text-sm font-semibold transition disabled:opacity-60",
+                    isCurrent
+                      ? "border border-[var(--app-line-strong)] bg-[var(--app-card)] text-[var(--app-text)]"
+                      : "bg-[var(--app-accent)] text-[var(--app-accent-ink)] hover:brightness-105",
+                  ].join(" ")}
+                >
+                  {isPending
+                    ? "Saving..."
+                    : isCurrent
+                      ? "Continue with this plan"
+                      : `Choose ${option.title}`}
+                </button>
+              </div>
             </SurfaceCard>
           );
         })}

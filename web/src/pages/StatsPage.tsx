@@ -42,6 +42,31 @@ function formatMinutes(value: number) {
   return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
 }
 
+function formatSessionModeLabel(mode: string, protocol?: string) {
+  if (mode !== "focus") {
+    return mode;
+  }
+  switch (protocol) {
+    case "deep-focus":
+      return "deep focus";
+    case "custom":
+      return "custom focus";
+    default:
+      return "pomodoro";
+  }
+}
+
+function formatSessionTitle(session: {
+  deckName?: string;
+  mode: string;
+  protocol?: string;
+}) {
+  if (session.mode === "focus") {
+    return `${formatSessionModeLabel(session.mode, session.protocol)} block`;
+  }
+  return session.deckName || "Workspace study session";
+}
+
 function ActivityBars({
   dailyActivity,
 }: {
@@ -218,7 +243,7 @@ export function StatsPage() {
       <PageContainer className="space-y-4">
         <EmptyState
           title="No analytics yet"
-          description="Complete a few study sessions and Vutadex will start surfacing streaks, answer mix, and deck trends here."
+          description="Complete a few review or focus sessions and Vutadex will start surfacing streaks, answer mix, and deck trends here."
           action={
             <Link
               to="/decks"
@@ -271,7 +296,7 @@ export function StatsPage() {
           {analytics.recentSessions.length > 0 ? (
             <div className="mt-5 rounded-[1.5rem] border border-[var(--app-line)] bg-[var(--app-muted-surface)] p-5">
               <p className="text-lg font-semibold text-[var(--app-text)]">
-                {analytics.recentSessions[0].deckName || "Study session"}
+                {formatSessionTitle(analytics.recentSessions[0])}
               </p>
               <p className="mt-2 text-sm text-[var(--app-text-soft)]">
                 {formatRelativeDateTime(
@@ -281,13 +306,18 @@ export function StatsPage() {
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card)] px-3 py-1 text-xs font-medium text-[var(--app-text-soft)]">
-                  {analytics.recentSessions[0].cardsReviewed} cards reviewed
+                  {analytics.recentSessions[0].mode === "focus"
+                    ? `${analytics.recentSessions[0].targetMinutes || 0}m target`
+                    : `${analytics.recentSessions[0].cardsReviewed} cards reviewed`}
                 </span>
                 <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card)] px-3 py-1 text-xs font-medium text-[var(--app-text-soft)]">
                   {formatMinutes(analytics.recentSessions[0].minutesStudied)}
                 </span>
                 <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card)] px-3 py-1 text-xs font-medium text-[var(--app-text-soft)]">
-                  {analytics.recentSessions[0].mode}
+                  {formatSessionModeLabel(
+                    analytics.recentSessions[0].mode,
+                    analytics.recentSessions[0].protocol,
+                  )}
                 </span>
               </div>
             </div>
@@ -297,13 +327,13 @@ export function StatsPage() {
             </p>
           )}
           <p className="mt-5 text-sm leading-6 text-[var(--app-text-soft)]">
-            Current streak only advances on days with completed review activity,
-            so the signal stays honest.
+            Current streak advances on days with completed review work or focus
+            blocks, so the signal reflects both memory reps and deep-work rhythm.
           </p>
         </PageSection>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <StatCard
           label="Current Streak"
           value={analytics.currentStreak}
@@ -316,7 +346,7 @@ export function StatsPage() {
         <StatCard
           label="Sessions (7d)"
           value={analytics.sessions7d}
-          detail="Completed sessions captured this week."
+          detail="Completed review sessions captured this week."
         />
         <StatCard
           label="Cards Reviewed (7d)"
@@ -326,7 +356,17 @@ export function StatsPage() {
         <StatCard
           label="Minutes Studied (7d)"
           value={analytics.minutesStudied7d}
-          detail="Estimated time spent inside completed sessions."
+          detail="Estimated time spent inside completed review sessions."
+        />
+        <StatCard
+          label="Focus Blocks (7d)"
+          value={analytics.focusSessions7d}
+          detail="Completed pomodoro and focus sessions this week."
+        />
+        <StatCard
+          label="Focus Minutes (7d)"
+          value={analytics.focusMinutes7d}
+          detail="Estimated time spent inside completed focus blocks."
         />
       </section>
 
@@ -371,7 +411,7 @@ export function StatsPage() {
                 Recent sessions
               </h3>
               <p className="mt-1 text-sm text-[var(--app-text-soft)]">
-                The last few completed study runs captured by Vutadex.
+                The last few completed or active study runs captured by Vutadex.
               </p>
             </div>
           </div>
@@ -390,7 +430,7 @@ export function StatsPage() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold text-[var(--app-text)]">
-                        {session.deckName || "Workspace study session"}
+                        {formatSessionTitle(session)}
                       </p>
                       <p className="mt-1 text-sm text-[var(--app-text-soft)]">
                         {formatRelativeDateTime(
@@ -399,19 +439,27 @@ export function StatsPage() {
                       </p>
                     </div>
                     <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card)] px-3 py-1 text-xs font-medium text-[var(--app-text-soft)]">
-                      {session.mode}
+                      {formatSessionModeLabel(session.mode, session.protocol)}
                     </span>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card)] px-3 py-1 text-xs font-medium text-[var(--app-text-soft)]">
-                      {session.cardsReviewed} cards
-                    </span>
+                    {session.mode === "focus" ? (
+                      <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card)] px-3 py-1 text-xs font-medium text-[var(--app-text-soft)]">
+                        {session.targetMinutes || 0}m target / {session.breakMinutes || 0}m break
+                      </span>
+                    ) : (
+                      <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card)] px-3 py-1 text-xs font-medium text-[var(--app-text-soft)]">
+                        {session.cardsReviewed} cards
+                      </span>
+                    )}
                     <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card)] px-3 py-1 text-xs font-medium text-[var(--app-text-soft)]">
                       {formatMinutes(session.minutesStudied)}
                     </span>
-                    <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card)] px-3 py-1 text-xs font-medium text-[var(--app-text-soft)]">
-                      {session.goodCount} good / {session.againCount} again
-                    </span>
+                    {session.mode === "focus" ? null : (
+                      <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card)] px-3 py-1 text-xs font-medium text-[var(--app-text-soft)]">
+                        {session.goodCount} good / {session.againCount} again
+                      </span>
+                    )}
                   </div>
                 </li>
               ))}

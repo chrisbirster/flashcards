@@ -7,6 +7,9 @@
   --app-card: #0d120d;
   --app-card-strong: #101610;
   --app-muted-surface: #141a14;
+  --app-stat-surface: rgba(112, 214, 108, 0.1);
+  --app-stat-surface-strong: rgba(112, 214, 108, 0.16);
+  --app-stat-line: rgba(112, 214, 108, 0.24);
   --app-text: #f3f5f2;
   --app-text-soft: #cad3c7;
   --app-muted: #8f9d8f;
@@ -27,12 +30,15 @@
 }
 
 :root[data-theme="light"] {
-  --app-bg: #f5faf4;
-  --app-panel: #eef6ed;
-  --app-header: rgba(245, 250, 244, 0.86);
-  --app-card: #ffffff;
-  --app-card-strong: #f8fcf7;
-  --app-muted-surface: #edf4eb;
+  --app-bg: #f7f3ec;
+  --app-panel: #f1ece4;
+  --app-header: rgba(247, 243, 236, 0.88);
+  --app-card: #fffdfa;
+  --app-card-strong: #faf6ee;
+  --app-muted-surface: #f2ede5;
+  --app-stat-surface: #ebf6e7;
+  --app-stat-surface-strong: #e3f1de;
+  --app-stat-line: rgba(79, 191, 90, 0.22);
   --app-text: #132014;
   --app-text-soft: #516152;
   --app-muted: #748175;

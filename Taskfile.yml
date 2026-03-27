@@ -1,6 +1,38 @@
 version: '3'
 
 tasks:
+  env:init:local:
+    desc: Create a local SQLite env file with sane defaults
+    cmds:
+      - bash ./scripts/env/init-local.sh "${ENV_FILE:-.env.local}"
+
+  env:hydrate:turso:
+    desc: Populate an env file with Turso URL/token and remote app origins
+    cmds:
+      - bash ./scripts/env/hydrate-turso.sh "${ENV_FILE:-.env.staging}" "${TURSO_DB:?set TURSO_DB}" "${APP_ORIGIN:-https://app.vutadex.com}" "${MARKETING_ORIGIN:-https://vutadex.com}" "${VUTADEX_ENV:-staging}"
+
+  secrets:fly:import:
+    desc: Push VUTADEX_* values from an env file into Fly secrets
+    cmds:
+      - bash ./scripts/env/fly-secrets-import.sh "${ENV_FILE:?set ENV_FILE}" "${FLY_APP:-vutadex-app}"
+
+  stripe:billing:bootstrap:
+    desc: Create or find the Stripe subscription product and monthly prices, then write price IDs into ENV_FILE
+    cmds:
+      - |
+        ENV_FILE="${ENV_FILE:-.env.staging}"
+        if [ -f "$ENV_FILE" ]; then
+          set -a
+          . "$ENV_FILE"
+          set +a
+        fi
+        python3 ./scripts/stripe/bootstrap_billing.py --env-file "$ENV_FILE"
+
+  stripe:billing:listen:
+    desc: Forward Stripe billing webhook events to the local backend
+    cmds:
+      - stripe listen --events checkout.session.completed,customer.subscription.created,customer.subscription.updated,customer.subscription.deleted --forward-to "${BILLING_WEBHOOK_FORWARD_URL:-http://localhost:8000/api/billing/webhook}"
+
   _ports:check:sqlite:
     internal: true
     desc: Ensure local sqlite dev ports are available
@@ -43,27 +75,48 @@ tasks:
     desc: Run the Go app locally against ./data/microdote.db
     cmds:
       - |
-        set -a
-        . ./.env
-        set +a
+        ENV_FILE="${ENV_FILE:-.env}"
+        if [ -f "$ENV_FILE" ]; then
+          set -a
+          . "$ENV_FILE"
+          set +a
+        elif [ -f ./.env ]; then
+          set -a
+          . ./.env
+          set +a
+        fi
         env VUTADEX_DATABASE_URL= VUTADEX_DATABASE_AUTH_TOKEN= go run .
 
   web:dev:
     desc: Run the Vite app shell at http://localhost:3000
     cmds:
       - |
-        set -a
-        . ./.env
-        set +a
+        ENV_FILE="${ENV_FILE:-.env}"
+        if [ -f "$ENV_FILE" ]; then
+          set -a
+          . "$ENV_FILE"
+          set +a
+        elif [ -f ./.env ]; then
+          set -a
+          . ./.env
+          set +a
+        fi
         cd web && bun run dev
 
   marketing:dev:
     desc: Run the marketing site at http://localhost:4173
     cmds:
       - |
-        set -a
-        . ./.env
-        set +a
+        ENV_FILE="${ENV_FILE:-.env}"
+        if [ -f "$ENV_FILE" ]; then
+          set -a
+          . "$ENV_FILE"
+          set +a
+        elif [ -f ./.env ]; then
+          set -a
+          . ./.env
+          set +a
+        fi
         cd marketing && bun run dev
 
   dev:sqlite:app:
@@ -72,9 +125,16 @@ tasks:
       - task: _ports:check:sqlite:app
       - task: build:app-web
       - |
-        set -a
-        . ./.env
-        set +a
+        ENV_FILE="${ENV_FILE:-.env}"
+        if [ -f "$ENV_FILE" ]; then
+          set -a
+          . "$ENV_FILE"
+          set +a
+        elif [ -f ./.env ]; then
+          set -a
+          . ./.env
+          set +a
+        fi
         trap 'kill 0' EXIT
         env VUTADEX_DATABASE_URL= VUTADEX_DATABASE_AUTH_TOKEN= go run . &
         (cd web && bun run dev) &
@@ -86,11 +146,57 @@ tasks:
       - task: _ports:check:sqlite
       - task: build:app-web
       - |
-        set -a
-        . ./.env
-        set +a
+        ENV_FILE="${ENV_FILE:-.env}"
+        if [ -f "$ENV_FILE" ]; then
+          set -a
+          . "$ENV_FILE"
+          set +a
+        elif [ -f ./.env ]; then
+          set -a
+          . ./.env
+          set +a
+        fi
         trap 'kill 0' EXIT
         env VUTADEX_DATABASE_URL= VUTADEX_DATABASE_AUTH_TOKEN= go run . &
+        (cd web && bun run dev) &
+        (cd marketing && bun run dev) &
+        wait
+
+  dev:turso:app:
+    desc: Run the Go app and app frontend locally against Turso using ENV_FILE
+    cmds:
+      - task: _ports:check:sqlite:app
+      - task: build:app-web
+      - |
+        ENV_FILE="${ENV_FILE:-.env.staging}"
+        if [ ! -f "$ENV_FILE" ]; then
+          echo "Env file not found: $ENV_FILE"
+          exit 1
+        fi
+        set -a
+        . "$ENV_FILE"
+        set +a
+        trap 'kill 0' EXIT
+        go run . &
+        (cd web && bun run dev) &
+        wait
+
+  dev:turso:
+    desc: Run backend, app frontend, and marketing locally against Turso using ENV_FILE
+    cmds:
+      - task: _ports:check:sqlite
+      - task: build:app-web
+      - |
+        ENV_FILE="${ENV_FILE:-.env.staging}"
+        if [ ! -f "$ENV_FILE" ]; then
+          echo "Env file not found: $ENV_FILE"
+          exit 1
+        fi
+        set -a
+        . "$ENV_FILE"
+        set +a
+        trap 'kill 0' EXIT
+        go run . &
         (cd web && bun run dev) &
         (cd marketing && bun run dev) &
         wait
@@ -143,9 +249,16 @@ tasks:
     desc: Call the session endpoint with a cookie jar for local debugging
     cmds:
       - |
-        set -a
-        . ./.env
-        set +a
+        ENV_FILE="${ENV_FILE:-.env}"
+        if [ -f "$ENV_FILE" ]; then
+          set -a
+          . "$ENV_FILE"
+          set +a
+        elif [ -f ./.env ]; then
+          set -a
+          . ./.env
+          set +a
+        fi
         mkdir -p .tasktmp
         curl -i --cookie-jar .tasktmp/session.cookies "${VUTADEX_APP_ORIGIN:-http://localhost:8000}/api/auth/session"
 
@@ -153,6 +266,12 @@ tasks:
     desc: Deploy the app server to Fly.io
     cmds:
       - fly deploy --remote-only --app ${FLY_APP:-vutadex-app}
+
+  deploy:fly:sync:
+    desc: Import Fly secrets from ENV_FILE and deploy the app server
+    cmds:
+      - task: secrets:fly:import
+      - task: deploy:fly
 
   deploy:marketing:
     desc: Build and push the marketing site to Cloudflare Pages via Wrangler

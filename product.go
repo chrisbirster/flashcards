@@ -127,17 +127,22 @@ type OTPChallenge struct {
 }
 
 type Subscription struct {
-	ID                     string    `json:"id"`
-	WorkspaceID            string    `json:"workspaceId,omitempty"`
-	OrganizationID         string    `json:"organizationId,omitempty"`
-	Plan                   Plan      `json:"plan"`
-	Status                 string    `json:"status"`
-	Provider               string    `json:"provider,omitempty"`
-	ProviderCustomerID     string    `json:"providerCustomerId,omitempty"`
-	ProviderSubscriptionID string    `json:"providerSubscriptionId,omitempty"`
-	CurrentPeriodEnd       time.Time `json:"currentPeriodEnd,omitempty"`
-	CreatedAt              time.Time `json:"createdAt"`
-	UpdatedAt              time.Time `json:"updatedAt"`
+	ID                         string    `json:"id"`
+	WorkspaceID                string    `json:"workspaceId,omitempty"`
+	OrganizationID             string    `json:"organizationId,omitempty"`
+	Plan                       Plan      `json:"plan"`
+	ScheduledPlan              Plan      `json:"scheduledPlan,omitempty"`
+	Status                     string    `json:"status"`
+	Provider                   string    `json:"provider,omitempty"`
+	ProviderCustomerID         string    `json:"providerCustomerId,omitempty"`
+	ProviderSubscriptionID     string    `json:"providerSubscriptionId,omitempty"`
+	ProviderSubscriptionItemID string    `json:"providerSubscriptionItemId,omitempty"`
+	ProviderCheckoutSessionID  string    `json:"providerCheckoutSessionId,omitempty"`
+	CurrentPeriodEnd           time.Time `json:"currentPeriodEnd,omitempty"`
+	CancelAtPeriodEnd          bool      `json:"cancelAtPeriodEnd,omitempty"`
+	BilledQuantity             int       `json:"billedQuantity"`
+	CreatedAt                  time.Time `json:"createdAt"`
+	UpdatedAt                  time.Time `json:"updatedAt"`
 }
 
 type SubscriptionEvent struct {
@@ -167,7 +172,32 @@ type AuthSessionResponse struct {
 	Workspace            *Workspace          `json:"workspace,omitempty"`
 	Organization         *Organization       `json:"organization,omitempty"`
 	OrganizationMember   *OrganizationMember `json:"organizationMember,omitempty"`
+	Subscription         *Subscription       `json:"subscription,omitempty"`
 	Entitlements         Entitlements        `json:"entitlements"`
+}
+
+type BillingCheckoutResponse struct {
+	Provider     string               `json:"provider"`
+	Plan         Plan                 `json:"plan"`
+	CheckoutURL  string               `json:"checkoutUrl,omitempty"`
+	Completed    bool                 `json:"completed"`
+	Message      string               `json:"message,omitempty"`
+	Session      *AuthSessionResponse `json:"session,omitempty"`
+	Subscription *Subscription        `json:"subscription,omitempty"`
+}
+
+type BillingPortalResponse struct {
+	Provider string `json:"provider"`
+	URL      string `json:"url"`
+	Message  string `json:"message,omitempty"`
+}
+
+type BillingCheckoutSyncResponse struct {
+	Provider     string               `json:"provider"`
+	Completed    bool                 `json:"completed"`
+	Message      string               `json:"message,omitempty"`
+	Session      *AuthSessionResponse `json:"session,omitempty"`
+	Subscription *Subscription        `json:"subscription,omitempty"`
 }
 
 type RecentDeckNoteSummary struct {
@@ -411,16 +441,24 @@ type StudyGroupLeaderboardEntry struct {
 	UserID      string `json:"userId,omitempty"`
 	Email       string `json:"email"`
 	DisplayName string `json:"displayName,omitempty"`
+	Sessions7D  int    `json:"sessions7d"`
+	Minutes7D   int    `json:"minutes7d"`
 	Reviews7D   int    `json:"reviews7d"`
 }
 
 type StudyGroupDashboard struct {
-	MemberCount           int                          `json:"memberCount"`
-	ActiveMembers7D       int                          `json:"activeMembers7d"`
-	Reviews7D             int                          `json:"reviews7d"`
-	LatestVersionNumber   int                          `json:"latestVersionNumber"`
-	LatestVersionAdoption int                          `json:"latestVersionAdoption"`
-	Leaderboard           []StudyGroupLeaderboardEntry `json:"leaderboard"`
+	MemberCount                  int                          `json:"memberCount"`
+	ActiveMembers7D              int                          `json:"activeMembers7d"`
+	ActiveInstalls               int                          `json:"activeInstalls"`
+	ReviewsToday                 int                          `json:"reviewsToday"`
+	Reviews7D                    int                          `json:"reviews7d"`
+	Sessions7D                   int                          `json:"sessions7d"`
+	MinutesStudied7D             int                          `json:"minutesStudied7d"`
+	LatestVersionNumber          int                          `json:"latestVersionNumber"`
+	LatestVersionAdoption        int                          `json:"latestVersionAdoption"`
+	LatestVersionAdoptionPercent int                          `json:"latestVersionAdoptionPercent"`
+	DailyActivity                []StudyAnalyticsDay          `json:"dailyActivity"`
+	Leaderboard                  []StudyGroupLeaderboardEntry `json:"leaderboard"`
 }
 
 type StudyGroupSummary struct {

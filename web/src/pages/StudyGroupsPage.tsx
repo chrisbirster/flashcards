@@ -11,6 +11,13 @@ function formatDateTime(value?: string) {
   return Number.isNaN(date.getTime()) ? 'Unknown' : date.toLocaleString()
 }
 
+function formatShortDay(value: string) {
+  const date = new Date(`${value}T00:00:00Z`)
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleDateString(undefined, { weekday: 'short' })
+}
+
 function SectionHeader({
   eyebrow,
   title,
@@ -292,6 +299,10 @@ export function StudyGroupDetailPage() {
   const activeMembers = useMemo(
     () => (detail?.members ?? []).filter((member) => member.status === 'active'),
     [detail?.members]
+  )
+  const activityScaleMax = useMemo(
+    () => Math.max(...(detail?.dashboard.dailyActivity ?? []).map((day) => day.cardsReviewed), 1),
+    [detail?.dashboard.dailyActivity]
   )
 
   useEffect(() => {
@@ -585,7 +596,7 @@ export function StudyGroupDetailPage() {
         <div className="space-y-4">
           <PageSection className="p-5 sm:p-6">
             <p className="text-[11px] uppercase tracking-[0.2em] text-[var(--app-muted)]">Dashboard</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <SurfaceCard className="border-none bg-[var(--app-card-strong)] p-4">
                 <p className="text-xs uppercase tracking-[0.18em] text-[var(--app-muted)]">Members</p>
                 <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">{detail.dashboard.memberCount}</p>
@@ -595,26 +606,100 @@ export function StudyGroupDetailPage() {
                 <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">{detail.dashboard.activeMembers7d}</p>
               </SurfaceCard>
               <SurfaceCard className="border-none bg-[var(--app-card-strong)] p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-[var(--app-muted)]">Active installs</p>
+                <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">{detail.dashboard.activeInstalls}</p>
+              </SurfaceCard>
+              <SurfaceCard className="border-none bg-[var(--app-card-strong)] p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-[var(--app-muted)]">Reviews today</p>
+                <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">{detail.dashboard.reviewsToday}</p>
+              </SurfaceCard>
+              <SurfaceCard className="border-none bg-[var(--app-card-strong)] p-4">
                 <p className="text-xs uppercase tracking-[0.18em] text-[var(--app-muted)]">Reviews 7d</p>
                 <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">{detail.dashboard.reviews7d}</p>
               </SurfaceCard>
               <SurfaceCard className="border-none bg-[var(--app-card-strong)] p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-[var(--app-muted)]">Sessions 7d</p>
+                <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">{detail.dashboard.sessions7d}</p>
+              </SurfaceCard>
+              <SurfaceCard className="border-none bg-[var(--app-card-strong)] p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-[var(--app-muted)]">Minutes 7d</p>
+                <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">{detail.dashboard.minutesStudied7d}</p>
+              </SurfaceCard>
+              <SurfaceCard className="border-none bg-[var(--app-card-strong)] p-4 sm:col-span-2 xl:col-span-2">
                 <p className="text-xs uppercase tracking-[0.18em] text-[var(--app-muted)]">Latest adoption</p>
-                <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">{detail.dashboard.latestVersionAdoption}</p>
+                <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">
+                  {detail.dashboard.latestVersionAdoption}
+                  <span className="ml-2 text-sm font-medium text-[var(--app-text-soft)]">
+                    ({detail.dashboard.latestVersionAdoptionPercent}%)
+                  </span>
+                </p>
+                <p className="mt-2 text-sm text-[var(--app-text-soft)]">
+                  Active installs already on v{detail.dashboard.latestVersionNumber || '—'}.
+                </p>
               </SurfaceCard>
             </div>
-            <div className="mt-4 space-y-3">
-              {(detail.dashboard.leaderboard ?? []).map((entry) => (
-                <SurfaceCard key={`${entry.email}-${entry.reviews7d}`} className="border-none bg-[var(--app-card-strong)] p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-[var(--app-text)]">{entry.displayName || entry.email}</p>
-                      <p className="mt-1 text-xs text-[var(--app-muted)]">{entry.email}</p>
+            <SurfaceCard className="mt-4 border-none bg-[var(--app-card-strong)] p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--app-muted)]">Weekly activity</p>
+                  <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+                    Session-backed study trend across installed group decks for the last 7 days.
+                  </p>
+                </div>
+                <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card)] px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-[var(--app-muted)]">
+                  {detail.dashboard.reviews7d} reviews
+                </span>
+              </div>
+              <div className="mt-5 grid grid-cols-7 gap-2">
+                {detail.dashboard.dailyActivity.map((day) => {
+                  const height =
+                    day.cardsReviewed > 0
+                      ? Math.max(16, Math.round((day.cardsReviewed / activityScaleMax) * 100))
+                      : 8
+                  return (
+                    <div key={day.date} className="flex min-w-0 flex-col items-center gap-2">
+                      <div className="flex h-28 w-full items-end rounded-2xl bg-[var(--app-card)] p-1">
+                        <div
+                          className="w-full rounded-xl bg-[var(--app-accent)]/85"
+                          style={{ height: `${height}%` }}
+                        />
+                      </div>
+                      <div className="space-y-1 text-center">
+                        <p className="text-[11px] uppercase tracking-[0.12em] text-[var(--app-muted)]">
+                          {formatShortDay(day.date)}
+                        </p>
+                        <p className="text-xs font-semibold text-[var(--app-text)]">{day.cardsReviewed}</p>
+                        <p className="text-[11px] text-[var(--app-text-soft)]">{day.minutesStudied}m</p>
+                      </div>
                     </div>
-                    <span className="text-sm font-semibold text-[var(--app-accent)]">{entry.reviews7d} reviews</span>
-                  </div>
-                </SurfaceCard>
-              ))}
+                  )
+                })}
+              </div>
+            </SurfaceCard>
+            <div className="mt-4 space-y-3">
+              {(detail.dashboard.leaderboard ?? []).length > 0 ? (
+                detail.dashboard.leaderboard.map((entry) => (
+                  <SurfaceCard key={`${entry.email}-${entry.reviews7d}`} className="border-none bg-[var(--app-card-strong)] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-[var(--app-text)]">{entry.displayName || entry.email}</p>
+                        <p className="mt-1 text-xs text-[var(--app-muted)]">{entry.email}</p>
+                      </div>
+                      <span className="text-sm font-semibold text-[var(--app-accent)]">{entry.reviews7d} reviews</span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--app-text-soft)]">
+                      <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card)] px-3 py-1">
+                        {entry.sessions7d} sessions
+                      </span>
+                      <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-card)] px-3 py-1">
+                        {entry.minutes7d} min
+                      </span>
+                    </div>
+                  </SurfaceCard>
+                ))
+              ) : (
+                <p className="text-sm text-[var(--app-text-soft)]">No study sessions yet.</p>
+              )}
             </div>
           </PageSection>
 

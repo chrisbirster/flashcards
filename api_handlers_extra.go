@@ -34,16 +34,8 @@ type billingCheckoutRequest struct {
 	Plan Plan `json:"plan"`
 }
 
-type billingWebhookRequest struct {
-	WorkspaceID        string `json:"workspaceId,omitempty"`
-	OrganizationID     string `json:"organizationId,omitempty"`
-	Plan               Plan   `json:"plan"`
-	Status             string `json:"status"`
-	Provider           string `json:"provider,omitempty"`
-	ProviderCustomerID string `json:"providerCustomerId,omitempty"`
-	ProviderSubID      string `json:"providerSubscriptionId,omitempty"`
-	ProviderEventID    string `json:"providerEventId,omitempty"`
-	CurrentPeriodEnd   string `json:"currentPeriodEnd,omitempty"`
+type billingPortalRequest struct {
+	Plan Plan `json:"plan,omitempty"`
 }
 
 type googleUserInfo struct {
@@ -116,6 +108,7 @@ func registerAPIRoutes(r chi.Router, handler *APIHandler) {
 
 		r.Post("/billing/checkout", handler.BillingCheckout)
 		r.Post("/billing/portal", handler.BillingPortal)
+		r.Post("/billing/checkout/sessions/{sessionId}/sync", handler.BillingCheckoutSync)
 		r.Post("/billing/webhook", handler.BillingWebhook)
 
 		r.Post("/orgs", handler.CreateOrganization)
@@ -273,19 +266,27 @@ func (h *APIHandler) RequireAuthenticatedUser(next http.Handler) http.Handler {
 }
 
 func (h *APIHandler) planForRequest(r *http.Request, session *SessionRecord) Plan {
-	if session != nil && session.WorkspaceID != "" {
-		subscription, err := h.store.GetSubscriptionForWorkspace(session.WorkspaceID)
-		if err == nil && subscription.Status == "active" {
-			return subscription.Plan
-		}
-		if workspace, err := h.store.GetWorkspaceRecord(session.WorkspaceID); err == nil && workspace.OrganizationID != "" {
-			subscription, err := h.store.GetSubscriptionForOrganization(workspace.OrganizationID)
-			if err == nil && subscription.Status == "active" {
-				return subscription.Plan
-			}
-		}
+	if subscription := h.subscriptionForSession(session); subscriptionGrantsPlan(subscription, time.Now()) {
+		return subscription.Plan
 	}
 	return resolvePlanFromRequest(r, session)
+}
+
+func (h *APIHandler) subscriptionForSession(session *SessionRecord) *Subscription {
+	if session == nil || strings.TrimSpace(session.WorkspaceID) == "" {
+		return nil
+	}
+	if subscription, err := h.store.GetSubscriptionForWorkspace(session.WorkspaceID); err == nil && subscription != nil {
+		return subscription
+	}
+	workspace, err := h.store.GetWorkspaceRecord(session.WorkspaceID)
+	if err != nil || workspace == nil || strings.TrimSpace(workspace.OrganizationID) == "" {
+		return nil
+	}
+	if subscription, err := h.store.GetSubscriptionForOrganization(workspace.OrganizationID); err == nil {
+		return subscription
+	}
+	return nil
 }
 
 func (h *APIHandler) workspaceForSession(session *SessionRecord) (*Workspace, error) {
@@ -368,6 +369,8 @@ func (h *APIHandler) buildSessionResponse(r *http.Request) AuthSessionResponse {
 	if session == nil {
 		return response
 	}
+
+	response.Subscription = h.subscriptionForSession(session)
 
 	if user, err := h.store.GetUserByID(session.UserID); err == nil {
 		response.User = user
@@ -861,96 +864,19 @@ func (h *APIHandler) DeleteDeckShare(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) BillingCheckout(w http.ResponseWriter, r *http.Request) {
-	session := h.sessionFromRequest(r)
-	if session == nil || session.UserID == "" {
-		respondAPIError(w, http.StatusUnauthorized, "auth_required", "You must be signed in to start checkout")
-		return
-	}
-
-	var req billingCheckoutRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondAPIError(w, http.StatusBadRequest, "invalid_request", "Invalid checkout request")
-		return
-	}
-
-	if strings.TrimSpace(os.Getenv("VUTADEX_STRIPE_SECRET_KEY")) == "" {
-		respondAPIError(w, http.StatusNotImplemented, "billing_not_configured", "Stripe checkout is not configured")
-		return
-	}
-
-	respondJSON(w, http.StatusOK, map[string]string{
-		"message": "Stripe checkout is configured but the hosted checkout handoff still needs provider wiring.",
-		"plan":    string(parsePlan(string(req.Plan))),
-	})
+	h.handleBillingCheckout(w, r)
 }
 
 func (h *APIHandler) BillingPortal(w http.ResponseWriter, r *http.Request) {
-	session := h.sessionFromRequest(r)
-	if session == nil || session.UserID == "" {
-		respondAPIError(w, http.StatusUnauthorized, "auth_required", "You must be signed in to open billing portal")
-		return
-	}
-	if strings.TrimSpace(os.Getenv("VUTADEX_STRIPE_SECRET_KEY")) == "" {
-		respondAPIError(w, http.StatusNotImplemented, "billing_not_configured", "Stripe billing portal is not configured")
-		return
-	}
+	h.handleBillingPortal(w, r)
+}
 
-	respondJSON(w, http.StatusOK, map[string]string{
-		"message": "Stripe billing portal is configured but provider handoff still needs wiring.",
-	})
+func (h *APIHandler) BillingCheckoutSync(w http.ResponseWriter, r *http.Request) {
+	h.handleBillingCheckoutSync(w, r)
 }
 
 func (h *APIHandler) BillingWebhook(w http.ResponseWriter, r *http.Request) {
-	expectedSecret := strings.TrimSpace(os.Getenv("VUTADEX_BILLING_WEBHOOK_SECRET"))
-	if expectedSecret != "" && strings.TrimSpace(r.Header.Get("X-Vutadex-Billing-Secret")) != expectedSecret {
-		respondAPIError(w, http.StatusUnauthorized, "webhook_unauthorized", "Invalid billing webhook secret")
-		return
-	}
-
-	var req billingWebhookRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondAPIError(w, http.StatusBadRequest, "invalid_request", "Invalid billing webhook payload")
-		return
-	}
-
-	now := time.Now()
-	subscription := &Subscription{
-		ID:                     newID("sub"),
-		WorkspaceID:            req.WorkspaceID,
-		OrganizationID:         req.OrganizationID,
-		Plan:                   parsePlan(string(req.Plan)),
-		Status:                 firstNonEmpty(strings.TrimSpace(req.Status), "active"),
-		Provider:               firstNonEmpty(strings.TrimSpace(req.Provider), "stripe"),
-		ProviderCustomerID:     req.ProviderCustomerID,
-		ProviderSubscriptionID: req.ProviderSubID,
-		CreatedAt:              now,
-		UpdatedAt:              now,
-	}
-	if req.CurrentPeriodEnd != "" {
-		if parsed, err := time.Parse(time.RFC3339, req.CurrentPeriodEnd); err == nil {
-			subscription.CurrentPeriodEnd = parsed
-		}
-	}
-
-	if err := h.store.UpsertSubscription(subscription); err != nil {
-		respondAPIError(w, http.StatusInternalServerError, "billing_subscription_failed", err.Error())
-		return
-	}
-
-	event := &SubscriptionEvent{
-		ID:              newID("subevt"),
-		SubscriptionID:  subscription.ID,
-		EventType:       "billing.webhook",
-		ProviderEventID: req.ProviderEventID,
-		Payload:         string(mustJSON(req)),
-		CreatedAt:       now,
-	}
-	if err := h.store.CreateSubscriptionEvent(event); err != nil {
-		respondAPIError(w, http.StatusInternalServerError, "billing_event_failed", err.Error())
-		return
-	}
-
-	respondJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	h.handleBillingWebhook(w, r)
 }
 
 func mustJSON(value interface{}) []byte {

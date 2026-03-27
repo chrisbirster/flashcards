@@ -113,6 +113,7 @@ export function RecentDeckNotesPanel({ deckId }: {deckId?: number }) {
     queryFn: () => repository.fetchDeckNotes(deckId!, 10),
     enabled,
   })
+  const notes = Array.isArray(data?.notes) ? data.notes : []
 
   const deleteMutation = useMutation({
     mutationFn: (noteId: number) => repository.deleteNote(noteId),
@@ -149,12 +150,12 @@ export function RecentDeckNotesPanel({ deckId }: {deckId?: number }) {
 
       {isLoading && <p className="text-sm text-[var(--app-text-soft)]">Loading recent notes...</p>}
       {isError && <p className="text-sm text-[var(--app-danger-text)]">Failed to load recent notes.</p>}
-      {!isLoading && !isError && data?.notes.length === 0 && (
+      {!isLoading && !isError && notes.length === 0 && (
         <p className="text-sm text-[var(--app-text-soft)]">No notes in this deck yet.</p>
       )}
-      {!isLoading && !isError && data?.notes.length ? (
+      {!isLoading && !isError && notes.length > 0 ? (
         <ul className="space-y-3">
-          {data.notes.map((note) => (
+          {notes.map((note) => (
             <RecentDeckNoteItem
               key={note.noteId}
               note={note}

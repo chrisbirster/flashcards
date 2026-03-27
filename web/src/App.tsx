@@ -31,6 +31,7 @@ import { LoginPage } from "#/pages/LoginPage";
 import { SettingsPage } from "#/pages/SettingsPage";
 import { OnboardingPlanPage } from "#/pages/OnboardingPlanPage";
 import { TeamPage } from "#/pages/TeamPage";
+import { BillingCompletePage } from "#/pages/BillingCompletePage";
 import { useAppRepository } from "#/lib/app-repository";
 import {
   AddNoteFieldEditorRoutePage,
@@ -66,8 +67,9 @@ function RequireAuthLayout() {
 
   const onboarding = sessionQuery.data.user?.onboarding ?? false;
   const isOnboardingPath = location.pathname.startsWith("/onboarding/plan");
+  const isBillingCompletionPath = location.pathname.startsWith("/billing/complete");
 
-  if (onboarding && !isOnboardingPath) {
+  if (onboarding && !isOnboardingPath && !isBillingCompletionPath) {
     return <Navigate to="/onboarding/plan" replace />;
   }
 
@@ -90,6 +92,7 @@ export default function App() {
         <Route path="/" element={<RequireAuthLayout />}>
           <Route index element={<HomePage />} />
           <Route path="onboarding/plan" element={<OnboardingPlanPage />} />
+          <Route path="billing/complete" element={<BillingCompletePage />} />
           <Route path="stats" element={<StatsPage />} />
           <Route path="focus" element={<FocusPage />} />
           <Route path="settings" element={<SettingsPage />} />

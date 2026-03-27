@@ -1409,12 +1409,33 @@ func TestAPI_StudyGroupsUsePublishedVersionsAndPersonalInstalls(t *testing.T) {
 		t.Fatalf("expected member installed deck due count to start at 1, got %d", len(cards))
 	}
 
+	memberSessionCreateRR := doJSONRequest(t, memberClient.router, http.MethodPost, "/api/study-sessions", CreateStudySessionRequest{
+		DeckID: memberInstall.InstalledDeckID,
+		Mode:   "review",
+	})
+	if memberSessionCreateRR.Code != http.StatusCreated {
+		t.Fatalf("expected member study session create 201, got %d (%s)", memberSessionCreateRR.Code, memberSessionCreateRR.Body.String())
+	}
+	memberSession := decodeJSON[StudySession](t, memberSessionCreateRR)
+
 	memberAnswer := doJSONRequest(t, memberClient.router, http.MethodPost, fmt.Sprintf("/api/cards/%d/answer", memberCardID), AnswerCardRequest{
 		Rating:      3,
 		TimeTakenMs: 850,
 	})
 	if memberAnswer.Code != http.StatusOK {
 		t.Fatalf("expected member answer 200, got %d (%s)", memberAnswer.Code, memberAnswer.Body.String())
+	}
+	memberCardsReviewed := 1
+	memberGoodCount := 1
+	memberEndedAt := time.Now().UTC().Add(2 * time.Minute)
+	memberSessionCompleteRR := doJSONRequest(t, memberClient.router, http.MethodPatch, fmt.Sprintf("/api/study-sessions/%s", memberSession.ID), UpdateStudySessionRequest{
+		Status:        "completed",
+		CardsReviewed: &memberCardsReviewed,
+		GoodCount:     &memberGoodCount,
+		EndedAt:       memberEndedAt,
+	})
+	if memberSessionCompleteRR.Code != http.StatusOK {
+		t.Fatalf("expected member study session completion 200, got %d (%s)", memberSessionCompleteRR.Code, memberSessionCompleteRR.Body.String())
 	}
 
 	ownerDueAfterMemberAnswer := doRawRequest(env.router, http.MethodGet, fmt.Sprintf("/api/decks/%d/due?limit=10", ownerInstall.InstalledDeckID), "")
@@ -1425,12 +1446,33 @@ func TestAPI_StudyGroupsUsePublishedVersionsAndPersonalInstalls(t *testing.T) {
 		t.Fatalf("expected owner due queue to stay unchanged after member studies personal copy, got %d", len(cards))
 	}
 
+	ownerSessionCreateRR := doJSONRequest(t, env.router, http.MethodPost, "/api/study-sessions", CreateStudySessionRequest{
+		DeckID: ownerInstall.InstalledDeckID,
+		Mode:   "review",
+	})
+	if ownerSessionCreateRR.Code != http.StatusCreated {
+		t.Fatalf("expected owner study session create 201, got %d (%s)", ownerSessionCreateRR.Code, ownerSessionCreateRR.Body.String())
+	}
+	ownerSession := decodeJSON[StudySession](t, ownerSessionCreateRR)
+
 	ownerAnswer := doJSONRequest(t, env.router, http.MethodPost, fmt.Sprintf("/api/cards/%d/answer", ownerCardID), AnswerCardRequest{
 		Rating:      3,
 		TimeTakenMs: 900,
 	})
 	if ownerAnswer.Code != http.StatusOK {
 		t.Fatalf("expected owner answer 200, got %d (%s)", ownerAnswer.Code, ownerAnswer.Body.String())
+	}
+	ownerCardsReviewed := 1
+	ownerGoodCount := 1
+	ownerEndedAt := time.Now().UTC().Add(3 * time.Minute)
+	ownerSessionCompleteRR := doJSONRequest(t, env.router, http.MethodPatch, fmt.Sprintf("/api/study-sessions/%s", ownerSession.ID), UpdateStudySessionRequest{
+		Status:        "completed",
+		CardsReviewed: &ownerCardsReviewed,
+		GoodCount:     &ownerGoodCount,
+		EndedAt:       ownerEndedAt,
+	})
+	if ownerSessionCompleteRR.Code != http.StatusOK {
+		t.Fatalf("expected owner study session completion 200, got %d (%s)", ownerSessionCompleteRR.Code, ownerSessionCompleteRR.Body.String())
 	}
 
 	createNoteForTest(t, env, CreateNoteRequest{
@@ -1531,11 +1573,35 @@ func TestAPI_StudyGroupsUsePublishedVersionsAndPersonalInstalls(t *testing.T) {
 	if dashboard.Reviews7D != 2 {
 		t.Fatalf("expected dashboard reviews7d=2 after two answers, got %d", dashboard.Reviews7D)
 	}
+	if dashboard.ReviewsToday != 2 {
+		t.Fatalf("expected dashboard reviewsToday=2 after two same-day answers, got %d", dashboard.ReviewsToday)
+	}
+	if dashboard.Sessions7D != 2 {
+		t.Fatalf("expected dashboard sessions7d=2 after two completed sessions, got %d", dashboard.Sessions7D)
+	}
+	if dashboard.MinutesStudied7D < 4 {
+		t.Fatalf("expected dashboard minutesStudied7d to include explicit session durations, got %d", dashboard.MinutesStudied7D)
+	}
 	if dashboard.LatestVersionNumber != 2 {
 		t.Fatalf("expected dashboard latestVersionNumber=2, got %d", dashboard.LatestVersionNumber)
 	}
+	if dashboard.ActiveInstalls != 2 {
+		t.Fatalf("expected dashboard activeInstalls=2 with owner v1 and member v2 active, got %d", dashboard.ActiveInstalls)
+	}
 	if dashboard.LatestVersionAdoption != 1 {
 		t.Fatalf("expected dashboard latestVersionAdoption=1 with one active v2 install, got %d", dashboard.LatestVersionAdoption)
+	}
+	if dashboard.LatestVersionAdoptionPercent != 50 {
+		t.Fatalf("expected dashboard latestVersionAdoptionPercent=50, got %d", dashboard.LatestVersionAdoptionPercent)
+	}
+	if len(dashboard.DailyActivity) != 7 {
+		t.Fatalf("expected dashboard dailyActivity to contain 7 days, got %+v", dashboard.DailyActivity)
+	}
+	if len(dashboard.Leaderboard) < 2 {
+		t.Fatalf("expected dashboard leaderboard to contain both active members, got %+v", dashboard.Leaderboard)
+	}
+	if dashboard.Leaderboard[0].Reviews7D < 1 || dashboard.Leaderboard[0].Sessions7D < 1 {
+		t.Fatalf("expected dashboard leaderboard entry to include study session rollups, got %+v", dashboard.Leaderboard[0])
 	}
 
 	removeInstallRR := doJSONRequest(t, memberClient.router, http.MethodDelete, fmt.Sprintf("/api/study-groups/%s/installs/%s", groupID, memberInstallV2.ID), struct{}{})

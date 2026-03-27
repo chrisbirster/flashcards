@@ -245,6 +245,18 @@ func (h *APIHandler) CompleteOnboardingPlanSelection(w http.ResponseWriter, r *h
 		respondAPIError(w, http.StatusBadRequest, "invalid_plan", "Choose free, pro, team, or enterprise.")
 		return
 	}
+	if _, disabled := h.subscriptionBilling.(*disabledSubscriptionBillingProvider); !disabled {
+		switch req.Plan {
+		case PlanFree:
+			// Free onboarding remains local and immediate.
+		case PlanPro, PlanTeam:
+			respondAPIError(w, http.StatusConflict, "billing_checkout_required", "Paid onboarding uses Stripe checkout. Start checkout from the billing API instead.")
+			return
+		case PlanEnterprise:
+			respondAPIError(w, http.StatusConflict, "enterprise_sales_required", "Enterprise onboarding is handled manually. Contact sales to continue.")
+			return
+		}
+	}
 
 	if (req.Plan == PlanTeam || req.Plan == PlanEnterprise) && workspace.OrganizationID == "" {
 		org := &Organization{
@@ -343,6 +355,20 @@ func (h *APIHandler) UpdateWorkspacePlan(w http.ResponseWriter, r *http.Request)
 	if !validManagedPlan(req.Plan) {
 		respondAPIError(w, http.StatusBadRequest, "invalid_plan", "Choose free, pro, team, or enterprise.")
 		return
+	}
+	if _, disabled := h.subscriptionBilling.(*disabledSubscriptionBillingProvider); !disabled {
+		currentPlan := h.planForRequest(r, session)
+		switch {
+		case req.Plan == PlanEnterprise:
+			respondAPIError(w, http.StatusConflict, "enterprise_sales_required", "Enterprise plan changes are handled manually. Contact sales to continue.")
+			return
+		case (currentPlan == PlanFree || currentPlan == PlanGuest) && (req.Plan == PlanPro || req.Plan == PlanTeam):
+			respondAPIError(w, http.StatusConflict, "billing_checkout_required", "Use Stripe checkout to upgrade this workspace to a paid plan.")
+			return
+		case currentPlan != PlanFree && currentPlan != PlanGuest && currentPlan != req.Plan:
+			respondAPIError(w, http.StatusConflict, "billing_portal_required", "Use the billing portal to manage an existing paid subscription.")
+			return
+		}
 	}
 
 	if workspace.OrganizationID == "" {
@@ -606,6 +632,14 @@ func (h *APIHandler) UpdateOrganizationMember(w http.ResponseWriter, r *http.Req
 		respondAPIError(w, http.StatusInternalServerError, "organization_member_update_failed", err.Error())
 		return
 	}
+	workspaceID := ""
+	if workspace, err := h.store.GetWorkspaceForOrganization(orgID); err == nil {
+		workspaceID = workspace.ID
+	}
+	if err := h.reconcileOrganizationSeatBilling(r.Context(), orgID, workspaceID); err != nil {
+		respondAPIError(w, http.StatusInternalServerError, "organization_billing_failed", err.Error())
+		return
+	}
 	respondJSON(w, http.StatusOK, map[string]any{"member": target})
 }
 
@@ -638,6 +672,14 @@ func (h *APIHandler) DeleteOrganizationMember(w http.ResponseWriter, r *http.Req
 	target.RemovedAt = time.Now()
 	if err := h.store.UpdateOrganizationMember(target); err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "organization_member_update_failed", err.Error())
+		return
+	}
+	workspaceID := ""
+	if workspace, err := h.store.GetWorkspaceForOrganization(orgID); err == nil {
+		workspaceID = workspace.ID
+	}
+	if err := h.reconcileOrganizationSeatBilling(r.Context(), orgID, workspaceID); err != nil {
+		respondAPIError(w, http.StatusInternalServerError, "organization_billing_failed", err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -692,6 +734,10 @@ func (h *APIHandler) JoinOrganization(w http.ResponseWriter, r *http.Request) {
 	member.InviteExpiresAt = time.Time{}
 	if err := h.store.UpdateOrganizationMember(member); err != nil {
 		respondAPIError(w, http.StatusInternalServerError, "organization_join_failed", err.Error())
+		return
+	}
+	if err := h.reconcileOrganizationSeatBilling(r.Context(), member.OrganizationID, orgWorkspace.ID); err != nil {
+		respondAPIError(w, http.StatusInternalServerError, "organization_billing_failed", err.Error())
 		return
 	}
 	if err := h.store.UpdateSessionWorkspace(session.ID, orgWorkspace.ID); err != nil {

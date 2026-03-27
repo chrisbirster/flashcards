@@ -18,11 +18,22 @@ const planOptions: Array<{
   plan: UpdateWorkspacePlanRequest["plan"];
   label: string;
   detail: string;
+  price: string;
 }> = [
-  { plan: "free", label: "Free", detail: "Solo starter limits" },
-  { plan: "pro", label: "Pro", detail: "Larger solo workflow" },
-  { plan: "team", label: "Team", detail: "Roles and team workspace" },
-  { plan: "enterprise", label: "Enterprise", detail: "Enterprise controls" },
+  { plan: "free", label: "Free", detail: "Solo starter limits", price: "$0" },
+  { plan: "pro", label: "Pro", detail: "Larger solo workflow", price: "$12/mo" },
+  {
+    plan: "team",
+    label: "Team",
+    detail: "Roles and team workspace",
+    price: "$8/user/mo",
+  },
+  {
+    plan: "enterprise",
+    label: "Enterprise",
+    detail: "Enterprise controls",
+    price: "Custom",
+  },
 ];
 
 const memberRoleOptions: Array<OrganizationMember["role"]> = [
@@ -36,6 +47,12 @@ function formatDateTime(value?: string) {
   if (!value) return "Unknown";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Unknown" : date.toLocaleString();
+}
+
+function formatDate(value?: string) {
+  if (!value) return "Not set";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Not set" : date.toLocaleDateString();
 }
 
 export function TeamPage() {
@@ -129,11 +146,62 @@ export function TeamPage() {
   });
 
   const updatePlanMutation = useMutation({
-    mutationFn: (plan: UpdateWorkspacePlanRequest["plan"]) =>
-      repository.updateWorkspacePlan(sessionQuery.data!.workspace!.id, { plan }),
-    onSuccess: async (session) => {
-      queryClient.setQueryData(["auth-session"], session);
-      await refresh();
+    mutationFn: async (plan: UpdateWorkspacePlanRequest["plan"]) => {
+      const session = sessionQuery.data!;
+      const provider = session.subscription?.provider ?? "";
+      const currentPlan = session.entitlements.plan;
+
+      if (plan === "enterprise") {
+        window.location.assign(
+          "mailto:sales@vutadex.com?subject=Vutadex%20Enterprise",
+        );
+        return { mode: "external" as const };
+      }
+
+      if (provider === "manual") {
+        const nextSession = await repository.updateWorkspacePlan(
+          session.workspace!.id,
+          { plan },
+        );
+        return { mode: "session" as const, session: nextSession };
+      }
+
+      if (currentPlan === "free" || currentPlan === "guest") {
+        const response = await repository.startBillingCheckout({ plan });
+        return { mode: "checkout" as const, response };
+      }
+
+      const response = await repository.openBillingPortal({ plan });
+      return { mode: "portal" as const, response };
+    },
+    onSuccess: async (result) => {
+      if (result.mode === "session") {
+        queryClient.setQueryData(["auth-session"], result.session);
+        await refresh();
+        return;
+      }
+      if (result.mode === "checkout") {
+        if (result.response.completed && result.response.session) {
+          queryClient.setQueryData(["auth-session"], result.response.session);
+          await refresh();
+          return;
+        }
+        if (result.response.checkoutUrl) {
+          window.location.assign(result.response.checkoutUrl);
+          return;
+        }
+        throw new Error("Billing checkout did not return a redirect URL.");
+      }
+      if (result.mode === "portal") {
+        window.location.assign(result.response.url);
+      }
+    },
+  });
+
+  const billingPortalMutation = useMutation({
+    mutationFn: () => repository.openBillingPortal(),
+    onSuccess: (result) => {
+      window.location.assign(result.url);
     },
   });
 
@@ -155,11 +223,16 @@ export function TeamPage() {
     sessionQuery.data?.entitlements.plan ??
     team?.subscription?.plan ??
     "free";
+  const subscription = sessionQuery.data?.subscription ?? team?.subscription;
 
   const activeMembers = useMemo(
     () => (team?.members ?? []).filter((member) => member.status === "active"),
     [team?.members],
   );
+  const canOpenBillingPortal =
+    canManagePlan &&
+    subscription?.provider === "stripe" &&
+    Boolean(subscription?.providerCustomerId);
 
   if (sessionQuery.isLoading || (orgId && teamQuery.isLoading)) {
     return (
@@ -342,41 +415,113 @@ export function TeamPage() {
                   <p className="text-sm font-semibold text-[var(--app-text)]">
                     {option.label}
                   </p>
+                  <p className="mt-2 text-2xl font-semibold tracking-tight text-[var(--app-text)]">
+                    {option.price}
+                  </p>
                   <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
                     {option.detail}
                   </p>
+                  {option.plan === "team" ? (
+                    <p className="mt-2 text-xs text-[var(--app-muted)]">
+                      3-seat minimum. Active members are the billable seats.
+                    </p>
+                  ) : null}
                   <div className="mt-auto pt-6">
-                    <button
-                      type="button"
-                      onClick={() => updatePlanMutation.mutate(option.plan)}
-                      disabled={isCurrent || !canManagePlan || updatePlanMutation.isPending}
-                      className={[
-                        "inline-flex min-h-11 w-full items-center justify-center rounded-2xl px-4 text-center text-sm font-semibold transition disabled:opacity-60",
-                        isCurrent
-                          ? "border border-[var(--app-line-strong)] bg-[var(--app-card)] text-[var(--app-text)]"
-                          : "bg-[var(--app-accent)] text-[var(--app-accent-ink)] hover:brightness-105",
-                      ].join(" ")}
-                    >
-                      {isPending
-                        ? "Updating..."
-                        : isCurrent
-                          ? "Current plan"
-                          : `Switch to ${option.label}`}
-                    </button>
+                    {option.plan === "enterprise" ? (
+                      <a
+                        href="mailto:sales@vutadex.com?subject=Vutadex%20Enterprise"
+                        className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-center text-sm font-semibold text-[var(--app-text)] transition hover:border-[var(--app-accent)]"
+                      >
+                        Contact sales
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => updatePlanMutation.mutate(option.plan)}
+                        disabled={
+                          isCurrent ||
+                          !canManagePlan ||
+                          updatePlanMutation.isPending ||
+                          billingPortalMutation.isPending
+                        }
+                        className={[
+                          "inline-flex min-h-11 w-full items-center justify-center rounded-2xl px-4 text-center text-sm font-semibold transition disabled:opacity-60",
+                          isCurrent
+                            ? "border border-[var(--app-line-strong)] bg-[var(--app-card)] text-[var(--app-text)]"
+                            : "bg-[var(--app-accent)] text-[var(--app-accent-ink)] hover:brightness-105",
+                        ].join(" ")}
+                      >
+                        {isPending
+                          ? "Updating..."
+                          : isCurrent
+                            ? "Current plan"
+                            : currentPlan === "free" || currentPlan === "guest"
+                              ? option.plan === "team"
+                                ? "Start Team checkout"
+                                : `Start ${option.label}`
+                              : `Manage ${option.label} in billing`}
+                      </button>
+                    )}
                   </div>
                 </SurfaceCard>
               );
             })}
           </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <SurfaceCard className="border-none bg-[var(--app-card-strong)] p-4">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--app-muted)]">
+                Billing provider
+              </p>
+              <p className="mt-2 text-sm font-medium text-[var(--app-text)]">
+                {subscription?.provider?.toUpperCase() || "LOCAL"}
+              </p>
+            </SurfaceCard>
+            <SurfaceCard className="border-none bg-[var(--app-card-strong)] p-4">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--app-muted)]">
+                Current period end
+              </p>
+              <p className="mt-2 text-sm font-medium text-[var(--app-text)]">
+                {formatDate(subscription?.currentPeriodEnd)}
+              </p>
+            </SurfaceCard>
+            <SurfaceCard className="border-none bg-[var(--app-card-strong)] p-4">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--app-muted)]">
+                Billed seats
+              </p>
+              <p className="mt-2 text-sm font-medium text-[var(--app-text)]">
+                {subscription?.billedQuantity || Math.max(activeMembers.length, 3)}
+              </p>
+            </SurfaceCard>
+          </div>
+          {canOpenBillingPortal ? (
+            <div className="mt-5">
+              <button
+                type="button"
+                onClick={() => billingPortalMutation.mutate()}
+                disabled={
+                  billingPortalMutation.isPending || updatePlanMutation.isPending
+                }
+                className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-5 text-sm font-medium text-[var(--app-text)] transition hover:border-[var(--app-accent)] hover:bg-[var(--app-muted-surface)] disabled:opacity-60"
+              >
+                {billingPortalMutation.isPending
+                  ? "Opening billing..."
+                  : "Manage billing, invoices, and payment methods"}
+              </button>
+            </div>
+          ) : null}
           {!canManagePlan ? (
             <p className="mt-4 text-sm text-[var(--app-muted)]">
               Plan changes are limited to team admins and owners.
             </p>
           ) : null}
-          {updatePlanMutation.isError ? (
+          {(updatePlanMutation.isError || billingPortalMutation.isError) ? (
             <p className="mt-4 text-sm text-[var(--app-danger-text)]">
-              {updatePlanMutation.error instanceof Error
-                ? updatePlanMutation.error.message
+              {(
+                updatePlanMutation.error || billingPortalMutation.error
+              ) instanceof Error
+                ? (
+                    updatePlanMutation.error || billingPortalMutation.error
+                  )!.message
                 : "Failed to update the team plan."}
             </p>
           ) : null}

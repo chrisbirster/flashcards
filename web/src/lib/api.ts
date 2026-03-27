@@ -460,7 +460,12 @@ export interface Subscription {
   provider?: string;
   providerCustomerId?: string;
   providerSubscriptionId?: string;
+  providerSubscriptionItemId?: string;
+  providerCheckoutSessionId?: string;
+  scheduledPlan?: Entitlements["plan"];
   currentPeriodEnd?: string;
+  cancelAtPeriodEnd?: boolean;
+  billedQuantity?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -484,7 +489,32 @@ export interface AuthSessionResponse {
   workspace?: WorkspaceSession;
   organization?: Organization;
   organizationMember?: OrganizationMember;
+  subscription?: Subscription;
   entitlements: Entitlements;
+}
+
+export interface BillingCheckoutResponse {
+  provider: string;
+  plan: UpdateWorkspacePlanRequest["plan"];
+  checkoutUrl?: string;
+  completed: boolean;
+  message?: string;
+  session?: AuthSessionResponse;
+  subscription?: Subscription;
+}
+
+export interface BillingPortalResponse {
+  provider: string;
+  url: string;
+  message?: string;
+}
+
+export interface BillingCheckoutSyncResponse {
+  provider: string;
+  completed: boolean;
+  message?: string;
+  session?: AuthSessionResponse;
+  subscription?: Subscription;
 }
 
 export interface OTPRequestResponse {
@@ -540,15 +570,23 @@ export interface StudyGroupLeaderboardEntry {
   userId?: string;
   email: string;
   displayName?: string;
+  sessions7d: number;
+  minutes7d: number;
   reviews7d: number;
 }
 
 export interface StudyGroupDashboard {
   memberCount: number;
   activeMembers7d: number;
+  activeInstalls: number;
+  reviewsToday: number;
   reviews7d: number;
+  sessions7d: number;
+  minutesStudied7d: number;
   latestVersionNumber: number;
   latestVersionAdoption: number;
+  latestVersionAdoptionPercent: number;
+  dailyActivity: StudyAnalyticsDay[];
   leaderboard: StudyGroupLeaderboardEntry[];
 }
 
@@ -1512,6 +1550,37 @@ export async function completeOnboardingPlan(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });
+}
+
+export async function startBillingCheckout(req: {
+  plan: UpdateWorkspacePlanRequest["plan"];
+}): Promise<BillingCheckoutResponse> {
+  return requestJSON(`${API_BASE}/billing/checkout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+}
+
+export async function openBillingPortal(req?: {
+  plan?: UpdateWorkspacePlanRequest["plan"];
+}): Promise<BillingPortalResponse> {
+  return requestJSON(`${API_BASE}/billing/portal`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req ?? {}),
+  });
+}
+
+export async function syncBillingCheckoutSession(
+  sessionId: string,
+): Promise<BillingCheckoutSyncResponse> {
+  return requestJSON(
+    `${API_BASE}/billing/checkout/sessions/${encodeURIComponent(sessionId)}/sync`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export async function fetchMarketplaceListings(

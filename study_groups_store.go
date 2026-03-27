@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
@@ -620,47 +621,98 @@ func (s *SQLiteStore) GetStudyGroupDashboard(groupID string) (StudyGroupDashboar
 		return dashboard, err
 	}
 
-	since := time.Now().Add(-7 * 24 * time.Hour).Unix()
-	if err := s.db.QueryRow(`
-		SELECT COUNT(DISTINCT i.study_group_member_id)
-		FROM revlog r
-		JOIN cards c ON c.id = r.card_id
-		JOIN study_group_installs i ON i.installed_deck_id = c.deck_id
-		WHERE i.study_group_id = ? AND i.status != 'removed' AND r.reviewed_at >= ?
-	`, groupID, since).Scan(&dashboard.ActiveMembers7D); err != nil {
-		return dashboard, err
-	}
 	if err := s.db.QueryRow(`
 		SELECT COUNT(*)
-		FROM revlog r
-		JOIN cards c ON c.id = r.card_id
-		JOIN study_group_installs i ON i.installed_deck_id = c.deck_id
-		WHERE i.study_group_id = ? AND i.status != 'removed' AND r.reviewed_at >= ?
-	`, groupID, since).Scan(&dashboard.Reviews7D); err != nil {
+		FROM study_group_installs i
+		JOIN study_group_members m ON m.id = i.study_group_member_id
+		WHERE i.study_group_id = ? AND i.status = 'active' AND m.status = 'active'
+	`, groupID).Scan(&dashboard.ActiveInstalls); err != nil {
 		return dashboard, err
 	}
+
+	now := time.Now().UTC()
+	windowStart := startOfUTCDay(now).AddDate(0, 0, -6)
+	since := windowStart.Unix()
+	todayStart := startOfUTCDay(now).Unix()
+
+	var minutesStudiedSeconds int64
+	if err := s.db.QueryRow(`
+		SELECT
+			COUNT(DISTINCT i.study_group_member_id),
+			COUNT(*),
+			COALESCE(SUM(ss.cards_reviewed), 0),
+			COALESCE(SUM(CASE
+				WHEN COALESCE(ss.ended_at, ss.updated_at, ss.started_at) >= ? THEN ss.cards_reviewed
+				ELSE 0
+			END), 0),
+			COALESCE(SUM(CASE
+				WHEN ss.ended_at IS NOT NULL AND ss.ended_at > ss.started_at THEN ss.ended_at - ss.started_at
+				WHEN ss.updated_at > ss.started_at THEN ss.updated_at - ss.started_at
+				ELSE 0
+			END), 0)
+		FROM study_sessions ss
+		JOIN study_group_installs i ON i.installed_deck_id = ss.deck_id
+		JOIN study_group_members m ON m.id = i.study_group_member_id
+		WHERE i.study_group_id = ?
+		  AND i.status != 'removed'
+		  AND m.status = 'active'
+		  AND ss.cards_reviewed > 0
+		  AND COALESCE(ss.ended_at, ss.updated_at, ss.started_at) >= ?
+	`, todayStart, groupID, since).Scan(
+		&dashboard.ActiveMembers7D,
+		&dashboard.Sessions7D,
+		&dashboard.Reviews7D,
+		&dashboard.ReviewsToday,
+		&minutesStudiedSeconds,
+	); err != nil {
+		return dashboard, err
+	}
+	dashboard.MinutesStudied7D = int(minutesStudiedSeconds / 60)
 
 	if latestVersion, err := s.GetLatestStudyGroupVersion(groupID); err == nil {
 		dashboard.LatestVersionNumber = latestVersion.VersionNumber
 		if err := s.db.QueryRow(`
 			SELECT COUNT(*)
-			FROM study_group_installs
-			WHERE study_group_id = ? AND source_version_number = ? AND status = 'active'
+			FROM study_group_installs i
+			JOIN study_group_members m ON m.id = i.study_group_member_id
+			WHERE i.study_group_id = ? AND i.source_version_number = ? AND i.status = 'active' AND m.status = 'active'
 		`, groupID, latestVersion.VersionNumber).Scan(&dashboard.LatestVersionAdoption); err != nil {
 			return dashboard, err
 		}
+		if dashboard.ActiveInstalls > 0 {
+			dashboard.LatestVersionAdoptionPercent = int(math.Round((float64(dashboard.LatestVersionAdoption) / float64(dashboard.ActiveInstalls)) * 100))
+		}
 	}
 
+	dailyActivity, err := s.getStudyGroupDailyActivity(groupID, windowStart, 7)
+	if err != nil {
+		return dashboard, err
+	}
+	dashboard.DailyActivity = dailyActivity
+
 	rows, err := s.db.Query(`
-		SELECT m.user_id, m.email, COALESCE(u.display_name, ''), COUNT(*)
-		FROM revlog r
-		JOIN cards c ON c.id = r.card_id
-		JOIN study_group_installs i ON i.installed_deck_id = c.deck_id
+		SELECT
+			m.user_id,
+			m.email,
+			COALESCE(u.display_name, ''),
+			COUNT(*),
+			COALESCE(SUM(ss.cards_reviewed), 0),
+			COALESCE(SUM(CASE
+				WHEN ss.ended_at IS NOT NULL AND ss.ended_at > ss.started_at THEN ss.ended_at - ss.started_at
+				WHEN ss.updated_at > ss.started_at THEN ss.updated_at - ss.started_at
+				ELSE 0
+			END), 0)
+		FROM study_sessions ss
+		JOIN study_group_installs i ON i.installed_deck_id = ss.deck_id
 		JOIN study_group_members m ON m.id = i.study_group_member_id
 		LEFT JOIN users u ON u.id = m.user_id
-		WHERE i.study_group_id = ? AND i.status != 'removed' AND r.reviewed_at >= ?
+		WHERE i.study_group_id = ?
+		  AND i.status != 'removed'
+		  AND m.status = 'active'
+		  AND ss.cards_reviewed > 0
+		  AND COALESCE(ss.ended_at, ss.updated_at, ss.started_at) >= ?
 		GROUP BY m.id, m.user_id, m.email, u.display_name
-		ORDER BY COUNT(*) DESC, lower(m.email) ASC
+		ORDER BY COALESCE(SUM(ss.cards_reviewed), 0) DESC, COUNT(*) DESC, lower(m.email) ASC
 		LIMIT 10
 	`, groupID, since)
 	if err != nil {
@@ -670,12 +722,77 @@ func (s *SQLiteStore) GetStudyGroupDashboard(groupID string) (StudyGroupDashboar
 
 	for rows.Next() {
 		var entry StudyGroupLeaderboardEntry
-		if err := rows.Scan(&entry.UserID, &entry.Email, &entry.DisplayName, &entry.Reviews7D); err != nil {
+		var minutesStudied int64
+		if err := rows.Scan(
+			&entry.UserID,
+			&entry.Email,
+			&entry.DisplayName,
+			&entry.Sessions7D,
+			&entry.Reviews7D,
+			&minutesStudied,
+		); err != nil {
 			return dashboard, err
 		}
+		entry.Minutes7D = int(minutesStudied / 60)
 		dashboard.Leaderboard = append(dashboard.Leaderboard, entry)
 	}
 	return dashboard, rows.Err()
+}
+
+func (s *SQLiteStore) getStudyGroupDailyActivity(groupID string, windowStart time.Time, days int) ([]StudyAnalyticsDay, error) {
+	rows, err := s.db.Query(`
+		SELECT
+			date(COALESCE(ss.ended_at, ss.updated_at, ss.started_at), 'unixepoch') AS study_day,
+			COUNT(*),
+			COALESCE(SUM(ss.cards_reviewed), 0),
+			COALESCE(SUM(CASE
+				WHEN ss.ended_at IS NOT NULL AND ss.ended_at > ss.started_at THEN ss.ended_at - ss.started_at
+				WHEN ss.updated_at > ss.started_at THEN ss.updated_at - ss.started_at
+				ELSE 0
+			END), 0)
+		FROM study_sessions ss
+		JOIN study_group_installs i ON i.installed_deck_id = ss.deck_id
+		JOIN study_group_members m ON m.id = i.study_group_member_id
+		WHERE i.study_group_id = ?
+		  AND i.status != 'removed'
+		  AND m.status = 'active'
+		  AND ss.cards_reviewed > 0
+		  AND COALESCE(ss.ended_at, ss.updated_at, ss.started_at) >= ?
+		GROUP BY study_day
+	`, groupID, windowStart.Unix())
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	byDay := make(map[string]StudyAnalyticsDay, days)
+	for rows.Next() {
+		var (
+			day            string
+			summary        StudyAnalyticsDay
+			secondsStudied int64
+		)
+		if err := rows.Scan(&day, &summary.Sessions, &summary.CardsReviewed, &secondsStudied); err != nil {
+			return nil, err
+		}
+		summary.Date = day
+		summary.MinutesStudied = int(secondsStudied / 60)
+		byDay[day] = summary
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	dailyActivity := make([]StudyAnalyticsDay, 0, days)
+	for offset := 0; offset < days; offset++ {
+		currentDay := windowStart.AddDate(0, 0, offset).Format("2006-01-02")
+		summary, ok := byDay[currentDay]
+		if !ok {
+			summary = StudyAnalyticsDay{Date: currentDay}
+		}
+		dailyActivity = append(dailyActivity, summary)
+	}
+	return dailyActivity, nil
 }
 
 func (s *SQLiteStore) ListStudyGroupSummariesForUser(userID string) ([]StudyGroupSummary, error) {

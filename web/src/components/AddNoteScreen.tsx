@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type CSSProperties } from 'react'
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { DeckNotesResponse, NoteBrief, FieldOptions, RecentDeckNoteSummary } from '#/lib/api'
@@ -120,6 +120,8 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
   const isDesktopAI = useMediaQuery('(min-width: 768px)')
+  const lastDuplicateCheckKeyRef = useRef('')
+  const duplicateCheckRequestIdRef = useRef(0)
 
   // Check if current note type is Cloze
   const isClozeType = selectedNoteType === 'Cloze'
@@ -182,6 +184,8 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
   // Get current note type
   const currentNoteType = noteTypes?.find(nt => nt.name === selectedNoteType)
   const aiInitialSource = currentNoteType ? buildAISourceText(currentNoteType.fields, fieldValues) : ''
+  const primaryFieldName = currentNoteType?.fields[0] || ''
+  const primaryFieldValue = primaryFieldName ? fieldValues[primaryFieldName] || '' : ''
 
   // Reset field values when note type changes
   useEffect(() => {
@@ -205,44 +209,60 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
 
   // Debounced duplicate check for the first field
   const checkForDuplicates = useCallback(async (fieldName: string, value: string) => {
-    if (!value.trim() || !selectedNoteType) {
+    const normalizedValue = value.trim()
+
+    if (!normalizedValue || !selectedNoteType) {
+      lastDuplicateCheckKeyRef.current = ''
+      duplicateCheckRequestIdRef.current += 1
       setDuplicates([])
       setShowDuplicateWarning(false)
+      setIsCheckingDuplicate(false)
       return
     }
 
+    const requestKey = `${selectedNoteType}:${selectedDeckId || 0}:${fieldName}:${normalizedValue}`
+    if (lastDuplicateCheckKeyRef.current === requestKey) {
+      return
+    }
+
+    lastDuplicateCheckKeyRef.current = requestKey
+    const requestId = ++duplicateCheckRequestIdRef.current
     setIsCheckingDuplicate(true)
     try {
       const result = await repository.checkDuplicate({
         typeId: selectedNoteType,
         fieldName,
-        value,
+        value: normalizedValue,
         deckId: selectedDeckId || undefined,
       })
+      if (requestId !== duplicateCheckRequestIdRef.current) {
+        return
+      }
       setDuplicates(result.duplicates || [])
       setShowDuplicateWarning(result.isDuplicate)
     } catch {
+      if (requestId !== duplicateCheckRequestIdRef.current) {
+        return
+      }
       // Silently fail duplicate check - not critical
       setDuplicates([])
       setShowDuplicateWarning(false)
     } finally {
-      setIsCheckingDuplicate(false)
+      if (requestId === duplicateCheckRequestIdRef.current) {
+        setIsCheckingDuplicate(false)
+      }
     }
   }, [repository, selectedNoteType, selectedDeckId])
 
   // Debounce duplicate check when first field changes
   useEffect(() => {
-    if (!currentNoteType) return
-    const firstField = currentNoteType.fields[0]
-    if (!firstField) return
-
-    const firstFieldValue = fieldValues[firstField]
+    if (!primaryFieldName) return
     const timeoutId = setTimeout(() => {
-      checkForDuplicates(firstField, firstFieldValue || '')
+      checkForDuplicates(primaryFieldName, primaryFieldValue)
     }, 500)
 
     return () => clearTimeout(timeoutId)
-  }, [fieldValues, currentNoteType, checkForDuplicates])
+  }, [primaryFieldName, primaryFieldValue, checkForDuplicates])
 
   // Keyboard shortcut for cloze (Ctrl/Cmd+Shift+C)
   useEffect(() => {
@@ -343,6 +363,7 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
     })
     setFieldValues(nextFieldValues)
     setActiveField(currentNoteType.fields[0] || '')
+    lastDuplicateCheckKeyRef.current = ''
     setShowDuplicateWarning(false)
     setDuplicates([])
     setAiOpen(false)
@@ -459,6 +480,11 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
               <p className="mt-1 text-sm text-[var(--app-text-soft)]">
                 Mobile uses a single-column editor so each field stays readable while typing.
               </p>
+              {isCheckingDuplicate ? (
+                <p className="mt-2 text-xs font-medium uppercase tracking-[0.16em] text-[var(--app-muted)]">
+                  Checking duplicates…
+                </p>
+              ) : null}
             </div>
             {isClozeType && (
               <div className="flex flex-wrap items-center gap-2">
@@ -545,18 +571,6 @@ function AddNoteScreenContent({ onClose, onSuccess }: Omit<AddNoteScreenProps, '
                   )}
                 </div>
               </div>
-            </div>
-          </PageSection>
-        )}
-
-        {isCheckingDuplicate && (
-          <PageSection className="p-4 sm:p-5">
-            <div className="flex items-center gap-2 text-sm text-[var(--app-text-soft)]">
-              <svg className="h-4 w-4 animate-spin text-[var(--app-muted)]" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              Checking for duplicates...
             </div>
           </PageSection>
         )}

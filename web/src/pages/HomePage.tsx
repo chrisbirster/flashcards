@@ -1,8 +1,67 @@
 import { Link } from "react-router";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { EmptyState, PageContainer, PageSection, SurfaceCard } from "#/components/page-layout";
 import { useAppRepository } from "#/lib/app-repository";
+import type { Deck, NoteListItem, StudySessionSummary } from "#/lib/api";
 
-function StatCard({
+function formatPlanLabel(plan: "guest" | "free" | "pro" | "team" | "enterprise") {
+  return plan.charAt(0).toUpperCase() + plan.slice(1);
+}
+
+function formatMinutes(value: number) {
+  if (value <= 0) {
+    return "0m";
+  }
+  if (value < 60) {
+    return `${value}m`;
+  }
+  const hours = Math.floor(value / 60);
+  const minutes = value % 60;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
+function formatDateTime(value?: string) {
+  if (!value) {
+    return "No study sessions yet";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "No study sessions yet";
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatUsage(used: number, limit: number) {
+  return `${used.toLocaleString()} / ${limit.toLocaleString()}`;
+}
+
+function usagePercent(used: number, limit: number) {
+  if (limit <= 0) {
+    return 0;
+  }
+  return Math.min(100, Math.max(0, Math.round((used / limit) * 100)));
+}
+
+function sessionLabel(session: StudySessionSummary) {
+  if (session.mode === "focus") {
+    if (session.protocol === "deep-focus") return "Deep focus";
+    if (session.protocol === "custom") return "Custom focus";
+    return "Pomodoro";
+  }
+  return session.deckName || "Study session";
+}
+
+function notePreview(note: NoteListItem) {
+  return note.fieldPreview || Object.values(note.fieldVals ?? {})[0] || "Untitled note";
+}
+
+function OverviewStat({
   label,
   value,
   detail,
@@ -12,30 +71,149 @@ function StatCard({
   detail: string;
 }) {
   return (
-    <div className="rounded-3xl border border-[var(--app-line)] bg-[var(--app-card)] p-5 shadow-sm">
-      <p className="text-xs uppercase tracking-[0.24em] text-[var(--app-muted)]">
-        {label}
-      </p>
-      <p className="mt-4 text-3xl font-semibold tracking-tight text-[var(--app-text)]">
-        {value}
-      </p>
-      <p className="mt-2 text-sm text-[var(--app-text-soft)]">{detail}</p>
+    <div className="rounded-[1.5rem] border border-[var(--app-stat-line)] bg-[var(--app-stat-surface)] p-5 shadow-sm">
+      <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-muted)]">{label}</p>
+      <p className="mt-4 text-3xl font-semibold tracking-tight text-[var(--app-text)]">{value}</p>
+      <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">{detail}</p>
     </div>
   );
 }
 
-function formatLastStudiedAt(value?: string) {
-  if (!value) {
-    return "No completed study sessions yet.";
-  }
-  return `Last studied ${new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-  }).format(new Date(value))}.`;
+function UsageMeter({
+  label,
+  used,
+  limit,
+}: {
+  label: string;
+  used: number;
+  limit: number;
+}) {
+  const percent = usagePercent(used, limit);
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-medium text-[var(--app-text)]">{label}</p>
+        <p className="text-xs uppercase tracking-[0.16em] text-[var(--app-muted)]">
+          {formatUsage(used, limit)}
+        </p>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-[var(--app-muted-surface)]">
+        <div
+          className="h-full rounded-full bg-[var(--app-accent)] transition-[width]"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DueDeckRow({
+  deck,
+  recommended,
+}: {
+  deck: Deck;
+  recommended?: boolean;
+}) {
+  return (
+    <div className="rounded-[1.4rem] border border-[var(--app-line)] bg-[var(--app-card)] p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-base font-semibold text-[var(--app-text)]">{deck.name}</p>
+            {recommended ? (
+              <span className="rounded-full bg-[var(--app-accent)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--app-accent-ink)]">
+                Recommended
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+            Priority {deck.priorityOrder + 1} • {deck.noteCount} note{deck.noteCount === 1 ? "" : "s"} •{" "}
+            {deck.cardCount} card{deck.cardCount === 1 ? "" : "s"}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-muted-surface)] px-3 py-1 text-xs font-medium text-[var(--app-text)]">
+              {deck.dueToday} due today
+            </span>
+            <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-muted-surface)] px-3 py-1 text-xs font-medium text-[var(--app-text)]">
+              backlog {deck.dueReviewBacklog}
+            </span>
+            <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-muted-surface)] px-3 py-1 text-xs font-medium text-[var(--app-text)]">
+              {deck.newCardsPerDay} new / {deck.reviewsPerDay} reviews
+            </span>
+          </div>
+          {deck.newCardsPaused ? (
+            <p className="mt-3 text-sm leading-6 text-[var(--app-warning-text)]">
+              New cards paused until backlog drops below your review cap.
+            </p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Link
+            to={`/study/${deck.id}`}
+            className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-5 text-sm font-semibold text-[var(--app-accent-ink)]"
+          >
+            Study deck
+          </Link>
+          <Link
+            to="/decks"
+            className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-5 text-sm font-semibold text-[var(--app-text)]"
+          >
+            Manage
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuickAction({
+  to,
+  title,
+  description,
+}: {
+  to: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <Link
+      to={to}
+      className="group rounded-[1.4rem] border border-[var(--app-line)] bg-[var(--app-card)] p-4 transition hover:border-[var(--app-line-strong)] hover:bg-[var(--app-card-strong)]"
+    >
+      <p className="text-base font-semibold text-[var(--app-text)]">{title}</p>
+      <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">{description}</p>
+      <p className="mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--app-accent)]">
+        Open
+      </p>
+    </Link>
+  );
+}
+
+function RecentNoteRow({ note }: { note: NoteListItem }) {
+  return (
+    <Link
+      to={`/notes/view?noteId=${note.id}`}
+      className="block rounded-[1.3rem] border border-[var(--app-line)] bg-[var(--app-card)] p-4 transition hover:border-[var(--app-line-strong)] hover:bg-[var(--app-card-strong)]"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-muted-surface)] px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-[var(--app-muted)]">
+          {note.deckName || "No deck"}
+        </span>
+        <span className="rounded-full border border-[var(--app-line)] bg-[var(--app-muted-surface)] px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-[var(--app-muted)]">
+          {note.typeId}
+        </span>
+      </div>
+      <p className="mt-3 line-clamp-2 text-base font-semibold text-[var(--app-text)]">{notePreview(note)}</p>
+      <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+        {note.cardCount} card{note.cardCount === 1 ? "" : "s"} • updated {formatDateTime(note.modifiedAt)}
+      </p>
+    </Link>
+  );
 }
 
 export function HomePage() {
   const repository = useAppRepository();
+
   const dashboardQuery = useQuery({
     queryKey: ["dashboard"],
     queryFn: () => repository.fetchDashboard(),
@@ -44,377 +222,401 @@ export function HomePage() {
     queryKey: ["decks"],
     queryFn: () => repository.fetchDecks(),
   });
+  const sessionQuery = useQuery({
+    queryKey: ["auth-session"],
+    queryFn: () => repository.fetchSession(),
+  });
 
-  const plan = dashboardQuery.data?.plan?.toUpperCase() ?? "FREE";
-  const noteUsage = dashboardQuery.data?.usage.notes ?? 0;
-  const noteLimit = dashboardQuery.data?.limits.maxNotes ?? 0;
-  const cardUsage = dashboardQuery.data?.usage.cardsTotal ?? 0;
-  const cardLimit = dashboardQuery.data?.limits.maxCardsTotal ?? 0;
-  const totalDecks = dashboardQuery.data?.totalDecks ?? 0;
-  const totalNotes = dashboardQuery.data?.totalNotes ?? 0;
-  const dueToday = dashboardQuery.data?.dueToday ?? 0;
-  const studyAnalytics = dashboardQuery.data?.studyAnalytics;
-  const dueDecks = (decksQuery.data ?? []).filter((deck) => deck.dueToday > 0);
-  const recommendedDeck = dueDecks[0];
+  const isLoading =
+    dashboardQuery.isLoading || decksQuery.isLoading || sessionQuery.isLoading;
+  const error =
+    (dashboardQuery.error as Error | null) ??
+    (decksQuery.error as Error | null) ??
+    (sessionQuery.error as Error | null);
 
-  return (
-    <div className="space-y-6">
-      <section className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.9fr)]">
-        <div className="rounded-[2rem] bg-[var(--app-card-strong)] px-6 py-8 text-[var(--app-text)] shadow-sm md:px-8 md:py-10">
-          <p className="text-xs uppercase tracking-[0.3em] text-[var(--app-accent)]">
-            Workspace overview
-          </p>
-          <h2 className="mt-4 max-w-3xl text-4xl font-semibold tracking-tight md:text-5xl">
-            Keep deck building, review, and template tuning in one browser-first
-            workspace.
-          </h2>
-          <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--app-text-soft)] md:text-base">
-            Use the dashboard to watch plan usage, jump into notes management,
-            and keep new cards moving into study without losing structure.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
+  const dashboard = dashboardQuery.data;
+  const workspaceName = sessionQuery.data?.workspace?.name || "Workspace";
+
+  const sortedDecks = useMemo(
+    () =>
+      [...(decksQuery.data ?? [])].sort((left, right) => {
+        if (left.priorityOrder !== right.priorityOrder) {
+          return left.priorityOrder - right.priorityOrder;
+        }
+        if (right.dueToday !== left.dueToday) {
+          return right.dueToday - left.dueToday;
+        }
+        return left.name.localeCompare(right.name);
+      }),
+    [decksQuery.data],
+  );
+
+  const dueDecks = sortedDecks.filter((deck) => deck.dueToday > 0);
+  const recommendedDeck = dueDecks[0] ?? sortedDecks[0];
+  const recentNotes = (dashboard?.recentNotes ?? []).slice(0, 5);
+  const recentSessions = (dashboard?.studyAnalytics.recentSessions ?? []).slice(0, 3);
+
+  if (isLoading) {
+    return (
+      <PageContainer className="space-y-4">
+        <PageSection className="p-5 text-sm text-[var(--app-text-soft)]">
+          Loading workspace overview...
+        </PageSection>
+      </PageContainer>
+    );
+  }
+
+  if (error) {
+    return (
+      <PageContainer className="space-y-4">
+        <PageSection className="border-[var(--app-danger-line)] bg-[var(--app-danger-surface)] p-5 text-sm text-[var(--app-danger-text)]">
+          {error.message || "Failed to load the dashboard."}
+        </PageSection>
+      </PageContainer>
+    );
+  }
+
+  if (!dashboard) {
+    return (
+      <PageContainer className="space-y-4">
+        <EmptyState
+          title="No dashboard data yet"
+          description="Create a deck or add a few notes and Vutadex will start surfacing your study queue, usage, and momentum here."
+          action={
             <Link
               to="/notes/add"
-              className="inline-flex items-center rounded-2xl bg-[var(--app-accent)] px-4 py-2.5 text-sm font-medium text-[var(--app-accent-ink)] transition hover:brightness-105"
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-5 text-sm font-semibold text-[var(--app-accent-ink)]"
             >
-              Add note
+              Add your first note
             </Link>
-            <Link
-              to="/notes/view"
-              className="inline-flex items-center rounded-2xl border border-[var(--app-line-strong)] px-4 py-2.5 text-sm font-medium text-[var(--app-text)] hover:border-[var(--app-accent)] hover:bg-[var(--app-card)]"
-            >
-              Open notes
-            </Link>
-            <Link
-              to="/templates"
-              className="inline-flex items-center rounded-2xl border border-[var(--app-line-strong)] px-4 py-2.5 text-sm font-medium text-[var(--app-text)] hover:border-[var(--app-accent)] hover:bg-[var(--app-card)]"
-            >
-              Open templates
-            </Link>
-            <Link
-              to="/stats"
-              className="inline-flex items-center rounded-2xl border border-[var(--app-line-strong)] px-4 py-2.5 text-sm font-medium text-[var(--app-text)] hover:border-[var(--app-accent)] hover:bg-[var(--app-card)]"
-            >
-              Open analytics
-            </Link>
+          }
+        />
+      </PageContainer>
+    );
+  }
+
+  return (
+    <PageContainer className="space-y-6">
+      <PageSection className="overflow-hidden bg-[var(--app-card-strong)] p-6 sm:p-8">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.28em] text-[var(--app-accent)]">Overview</p>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--app-text)] sm:text-4xl">
+              {workspaceName}
+            </h1>
+            <p className="mt-4 max-w-3xl text-sm leading-7 text-[var(--app-text-soft)] sm:text-base">
+              A calmer view of what matters today: what is due, where your study time is going,
+              and the next deck worth opening.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+            <SurfaceCard className="border-[var(--app-line-strong)] bg-[var(--app-card)]">
+              <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-muted)]">Today</p>
+              <p className="mt-3 text-lg font-semibold text-[var(--app-text)]">
+                {dashboard.dueToday > 0
+                  ? `${dashboard.dueToday} cards waiting across ${dueDecks.length || 1} deck${dueDecks.length === 1 ? "" : "s"}`
+                  : "You are caught up for now"}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+                Review cards come first. New cards pause automatically when a deck backlog runs past its review cap.
+              </p>
+            </SurfaceCard>
+            <SurfaceCard className="border-[var(--app-line-strong)] bg-[var(--app-card)]">
+              <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-muted)]">Plan</p>
+              <p className="mt-3 text-lg font-semibold text-[var(--app-text)]">
+                {formatPlanLabel(dashboard.plan)}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+                {dashboard.features.studyGroups
+                  ? "Collaboration and published installs are available in this workspace."
+                  : "Upgrade when you want collaboration and publishing features unlocked."}
+              </p>
+            </SurfaceCard>
           </div>
         </div>
+      </PageSection>
 
-        <div className="rounded-[2rem] border border-[var(--app-line)] bg-[var(--app-card)] p-6 shadow-sm">
-          <p className="text-xs uppercase tracking-[0.28em] text-[var(--app-muted)]">
-            Plan usage
-          </p>
-          <div className="mt-5 space-y-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <OverviewStat
+          label="Total decks"
+          value={dashboard.totalDecks}
+          detail="Organized by deck priority so the home queue stays predictable."
+        />
+        <OverviewStat
+          label="Total notes"
+          value={dashboard.totalNotes}
+          detail="Your note count tracks the source material feeding card creation."
+        />
+        <OverviewStat
+          label="Due today"
+          value={dashboard.dueToday}
+          detail="Review and relearning cards stay visible even if you skip a day."
+        />
+        <OverviewStat
+          label="Current streak"
+          value={dashboard.studyAnalytics.currentStreak}
+          detail={`Last study activity ${formatDateTime(dashboard.studyAnalytics.lastStudiedAt)}.`}
+        />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+        <PageSection className="p-5 sm:p-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <div className="flex items-center justify-between text-sm text-[var(--app-text-soft)]">
-                <span>Notes</span>
-                <span>
-                  {noteUsage} / {noteLimit}
-                </span>
-              </div>
-              <div className="mt-2 h-2 rounded-full bg-[var(--app-muted-surface)]">
-                <div
-                  className="h-2 rounded-full bg-[var(--app-accent)]"
-                  style={{
-                    width: `${noteLimit > 0 ? Math.min((noteUsage / noteLimit) * 100, 100) : 0}%`,
-                  }}
-                />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center justify-between text-sm text-[var(--app-text-soft)]">
-                <span>Total cards</span>
-                <span>
-                  {cardUsage} / {cardLimit}
-                </span>
-              </div>
-              <div className="mt-2 h-2 rounded-full bg-[var(--app-muted-surface)]">
-                <div
-                  className="h-2 rounded-full bg-[var(--app-accent-strong)]"
-                  style={{
-                    width: `${cardLimit > 0 ? Math.min((cardUsage / cardLimit) * 100, 100) : 0}%`,
-                  }}
-                />
-              </div>
-            </div>
-            <div className="rounded-2xl bg-[var(--app-muted-surface)] p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-[var(--app-muted)]">
-                Current plan
-              </p>
-              <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">
-                {plan}
-              </p>
-              <p className="mt-2 text-sm text-[var(--app-text-soft)]">
-                Study Groups creation unlocks on Team. Marketplace publishing
-                arrives in a later tranche for eligible plans.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Total Decks"
-          value={totalDecks}
-          detail="Active decks in this workspace."
-        />
-        <StatCard
-          label="Total Notes"
-          value={totalNotes}
-          detail="Structured notes powering all generated cards."
-        />
-        <StatCard
-          label="Due Today"
-          value={dueToday}
-          detail="Cards currently scheduled for review."
-        />
-        <StatCard
-          label="Plan"
-          value={plan}
-          detail="Workspace entitlements and limits."
-        />
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Current Streak"
-          value={studyAnalytics?.currentStreak ?? 0}
-          detail={formatLastStudiedAt(studyAnalytics?.lastStudiedAt)}
-        />
-        <StatCard
-          label="Sessions (7d)"
-          value={studyAnalytics?.sessions7d ?? 0}
-          detail="Completed review sessions from the last week."
-        />
-        <StatCard
-          label="Cards Reviewed (7d)"
-          value={studyAnalytics?.cardsReviewed7d ?? 0}
-          detail="Answered cards captured through persisted study sessions."
-        />
-        <StatCard
-          label="Minutes Studied (7d)"
-          value={studyAnalytics?.minutesStudied7d ?? 0}
-          detail="Time accumulated from completed sessions this week."
-        />
-      </section>
-
-      <section className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-        <div className="rounded-[2rem] border border-[var(--app-line)] bg-[var(--app-card)] p-6 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-xl font-semibold tracking-tight text-[var(--app-text)]">
-                Focus next
-              </h3>
-              <p className="mt-1 text-sm text-[var(--app-text-soft)]">
-                Deck recommendations follow your manual deck priority, not a mixed global queue.
+              <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-muted)]">Study queue</p>
+              <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--app-text)]">
+                Start with the highest-priority due deck.
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+                Deck priority now controls the order here. Each deck still respects its own new-card and review caps.
               </p>
             </div>
             <Link
               to="/decks"
-              className="text-sm font-medium text-[var(--app-accent)] hover:brightness-110"
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-5 text-sm font-semibold text-[var(--app-text)]"
             >
-              Open decks
+              Reorder decks
             </Link>
           </div>
 
-          {decksQuery.isLoading ? (
-            <p className="mt-6 text-sm text-[var(--app-text-soft)]">
-              Loading deck priority...
-            </p>
-          ) : null}
+          <div className="mt-5 space-y-4">
+            {recommendedDeck ? (
+              <DueDeckRow deck={recommendedDeck} recommended />
+            ) : (
+              <SurfaceCard className="border-[var(--app-line-strong)] bg-[var(--app-card-strong)]">
+                <p className="text-lg font-semibold text-[var(--app-text)]">Nothing is due right now.</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+                  Use this window to add notes, tune deck caps, or start a focus block before the next review wave lands.
+                </p>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Link
+                    to="/notes/add"
+                    className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-5 text-sm font-semibold text-[var(--app-accent-ink)]"
+                  >
+                    Add note
+                  </Link>
+                  <Link
+                    to="/focus"
+                    className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-5 text-sm font-semibold text-[var(--app-text)]"
+                  >
+                    Start focus block
+                  </Link>
+                </div>
+              </SurfaceCard>
+            )}
 
-          {!decksQuery.isLoading && !recommendedDeck ? (
-            <p className="mt-6 text-sm text-[var(--app-text-soft)]">
-              No decks are due right now. Your highest-priority due deck will appear here once review work is waiting.
-            </p>
-          ) : null}
+            {dueDecks.length > 1 ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--app-muted)]">
+                    Next in line
+                  </h3>
+                  <span className="text-sm text-[var(--app-text-soft)]">
+                    {dueDecks.length - 1} more deck{dueDecks.length - 1 === 1 ? "" : "s"} with work ready
+                  </span>
+                </div>
+                {dueDecks.slice(1, 5).map((deck) => (
+                  <DueDeckRow key={deck.id} deck={deck} />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </PageSection>
 
-          {recommendedDeck ? (
-            <div className="mt-6 rounded-[1.5rem] border border-[var(--app-line)] bg-[var(--app-card-strong)] p-5">
-              <p className="text-xs uppercase tracking-[0.2em] text-[var(--app-muted)]">
-                Priority {recommendedDeck.priorityOrder}
-              </p>
-              <h4 className="mt-3 text-2xl font-semibold text-[var(--app-text)]">
-                {recommendedDeck.name}
-              </h4>
-              <div className="mt-4 flex flex-wrap gap-2 text-sm">
-                <span className="rounded-full bg-[var(--app-muted-surface)] px-3 py-1 text-[var(--app-text-soft)]">
-                  {recommendedDeck.dueToday} due today
-                </span>
-                <span className="rounded-full bg-[var(--app-muted-surface)] px-3 py-1 text-[var(--app-text-soft)]">
-                  {recommendedDeck.dueReviewBacklog} review backlog
-                </span>
-                <span className="rounded-full bg-[var(--app-muted-surface)] px-3 py-1 text-[var(--app-text-soft)]">
-                  {recommendedDeck.newCardsPerDay} new/day
-                </span>
-                <span className="rounded-full bg-[var(--app-muted-surface)] px-3 py-1 text-[var(--app-text-soft)]">
-                  {recommendedDeck.reviewsPerDay} reviews/day
-                </span>
-              </div>
-              <p className="mt-4 text-sm leading-6 text-[var(--app-text-soft)]">
-                {recommendedDeck.newCardsPaused
-                  ? "New cards are paused for this deck until its review backlog falls back under the review cap."
-                  : "New cards are still available for this deck because its review backlog is within the review cap."}
-              </p>
-              <div className="mt-5 flex flex-wrap gap-3">
-                <Link
-                  to={`/study/${recommendedDeck.id}`}
-                  className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-5 text-sm font-semibold text-[var(--app-accent-ink)] transition hover:brightness-105"
-                >
-                  Study this deck
-                </Link>
-                <Link
-                  to="/decks"
-                  className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] px-5 text-sm font-medium text-[var(--app-text)] hover:border-[var(--app-accent)] hover:bg-[var(--app-card)]"
-                >
-                  Reorder deck priority
-                </Link>
-              </div>
+        <div className="grid gap-4">
+          <PageSection className="p-5 sm:p-6">
+            <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-muted)]">Plan & usage</p>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--app-text)]">
+              Capacity at a glance.
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+              This workspace is on {formatPlanLabel(dashboard.plan)}. Study Groups and Marketplace installs still keep private review history per user.
+            </p>
+            <div className="mt-5 space-y-4">
+              <UsageMeter label="Decks" used={dashboard.usage.decks} limit={dashboard.limits.maxDecks} />
+              <UsageMeter label="Notes" used={dashboard.usage.notes} limit={dashboard.limits.maxNotes} />
+              <UsageMeter
+                label="Cards"
+                used={dashboard.usage.cardsTotal}
+                limit={dashboard.limits.maxCardsTotal}
+              />
             </div>
-          ) : null}
-        </div>
-
-        <div className="rounded-[2rem] border border-[var(--app-line)] bg-[var(--app-card)] p-6 shadow-sm">
-          <h3 className="text-xl font-semibold tracking-tight text-[var(--app-text)]">
-            Due decks by priority
-          </h3>
-          <p className="mt-1 text-sm text-[var(--app-text-soft)]">
-            Lower priority numbers surface first when several decks all need attention.
-          </p>
-          {dueDecks.length === 0 ? (
-            <p className="mt-6 text-sm text-[var(--app-text-soft)]">
-              Nothing due across your decks right now.
-            </p>
-          ) : (
-            <ul className="mt-6 space-y-3">
-              {dueDecks.slice(0, 4).map((deck) => (
-                <li
-                  key={deck.id}
-                  className="rounded-2xl border border-[var(--app-line)] bg-[var(--app-muted-surface)] p-4"
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Link
+                to="/settings"
+                className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-5 text-sm font-semibold text-[var(--app-accent-ink)]"
+              >
+                Manage plan
+              </Link>
+              {sessionQuery.data?.workspace?.organizationId ? (
+                <Link
+                  to="/team"
+                  className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-5 text-sm font-semibold text-[var(--app-text)]"
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-[var(--app-text)]">
-                        {deck.name}
-                      </p>
-                      <p className="mt-1 text-sm text-[var(--app-text-soft)]">
-                        Priority {deck.priorityOrder} • {deck.dueToday} due • {deck.dueReviewBacklog} review backlog
-                      </p>
-                    </div>
-                    <Link
-                      to={`/study/${deck.id}`}
-                      className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-4 text-sm font-medium text-[var(--app-accent-ink)]"
-                    >
-                      Study
-                    </Link>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
+                  Open team
+                </Link>
+              ) : null}
+            </div>
+          </PageSection>
 
-      <section className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-        <div className="rounded-[2rem] border border-[var(--app-line)] bg-[var(--app-card)] p-6 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
+          <PageSection className="p-5 sm:p-6">
+            <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-muted)]">Weekly momentum</p>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--app-text)]">
+              Stay steady instead of spiky.
+            </h2>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <SurfaceCard className="border-[var(--app-line-strong)] bg-[var(--app-card-strong)] p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-[var(--app-muted)]">Sessions</p>
+                <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">
+                  {dashboard.studyAnalytics.sessions7d}
+                </p>
+              </SurfaceCard>
+              <SurfaceCard className="border-[var(--app-line-strong)] bg-[var(--app-card-strong)] p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-[var(--app-muted)]">Cards reviewed</p>
+                <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">
+                  {dashboard.studyAnalytics.cardsReviewed7d}
+                </p>
+              </SurfaceCard>
+              <SurfaceCard className="border-[var(--app-line-strong)] bg-[var(--app-card-strong)] p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-[var(--app-muted)]">Minutes</p>
+                <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">
+                  {formatMinutes(dashboard.studyAnalytics.minutesStudied7d)}
+                </p>
+              </SurfaceCard>
+              <SurfaceCard className="border-[var(--app-line-strong)] bg-[var(--app-card-strong)] p-4">
+                <p className="text-xs uppercase tracking-[0.16em] text-[var(--app-muted)]">Focus blocks</p>
+                <p className="mt-2 text-2xl font-semibold text-[var(--app-text)]">
+                  {dashboard.studyAnalytics.focusSessions7d}
+                </p>
+              </SurfaceCard>
+            </div>
+
+            {recentSessions.length > 0 ? (
+              <div className="mt-5 space-y-3">
+                <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-[var(--app-muted)]">
+                  Recent sessions
+                </h3>
+                {recentSessions.map((session) => (
+                  <div
+                    key={session.id}
+                    className="rounded-[1.25rem] border border-[var(--app-line)] bg-[var(--app-card)] px-4 py-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-[var(--app-text)]">{sessionLabel(session)}</p>
+                      <span className="text-xs uppercase tracking-[0.16em] text-[var(--app-muted)]">
+                        {session.status}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+                      {session.cardsReviewed} cards • {formatMinutes(session.minutesStudied)} •{" "}
+                      {formatDateTime(session.endedAt || session.updatedAt)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </PageSection>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+        <div className="grid gap-4">
+          <PageSection className="p-5 sm:p-6">
+            <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-muted)]">Quick actions</p>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--app-text)]">
+              Keep the next move obvious.
+            </h2>
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <QuickAction
+                to="/notes/add"
+                title="Add note"
+                description="Capture source material and turn it into cards without leaving the app shell."
+              />
+              <QuickAction
+                to="/decks"
+                title="Open decks"
+                description="Adjust caps, reorder priorities, or jump into a specific deck."
+              />
+              <QuickAction
+                to="/focus"
+                title="Start focus block"
+                description="Use a Pomodoro or deep-focus session when you want time-boxed work."
+              />
+              <QuickAction
+                to="/stats"
+                title="Review stats"
+                description="Check streaks, answer mix, and weekly study volume."
+              />
+            </div>
+          </PageSection>
+
+          <PageSection className="p-5 sm:p-6">
+            <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-muted)]">Collaboration</p>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--app-text)]">
+              Study Groups stay private by design.
+            </h2>
+            <p className="mt-3 text-sm leading-7 text-[var(--app-text-soft)]">
+              Members install workspace-local copies, keep private review history, and opt into source updates when they are ready.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Link
+                to="/study-groups"
+                className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-5 text-sm font-semibold text-[var(--app-accent-ink)]"
+              >
+                Open Study Groups
+              </Link>
+              {dashboard.features.studyGroups ? null : (
+                <Link
+                  to="/settings"
+                  className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-5 text-sm font-semibold text-[var(--app-text)]"
+                >
+                  View plan options
+                </Link>
+              )}
+            </div>
+          </PageSection>
+        </div>
+
+        <PageSection className="p-5 sm:p-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h3 className="text-xl font-semibold tracking-tight text-[var(--app-text)]">
-                Recent note activity
-              </h3>
-              <p className="mt-1 text-sm text-[var(--app-text-soft)]">
-                Jump back into the notes you created or edited most recently.
+              <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-muted)]">Recent notes</p>
+              <h2 className="mt-3 text-2xl font-semibold tracking-tight text-[var(--app-text)]">
+                Recent source material, not just card counts.
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
+                The most recent notes stay close so editing and refinement is only one tap away.
               </p>
             </div>
             <Link
               to="/notes/view"
-              className="text-sm font-medium text-[var(--app-accent)] hover:brightness-110"
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card-strong)] px-5 text-sm font-semibold text-[var(--app-text)]"
             >
-              View all
+              View all notes
             </Link>
           </div>
 
-          {dashboardQuery.isLoading && (
-            <p className="mt-6 text-sm text-[var(--app-text-soft)]">
-              Loading recent notes...
-            </p>
-          )}
-          {!dashboardQuery.isLoading &&
-            (dashboardQuery.data?.recentNotes.length ?? 0) === 0 && (
-              <p className="mt-6 text-sm text-[var(--app-text-soft)]">
-                No notes yet. Start with your first note and the dashboard will
-                reflect it here.
-              </p>
+          <div className="mt-5 space-y-3">
+            {recentNotes.length > 0 ? (
+              recentNotes.map((note) => <RecentNoteRow key={note.id} note={note} />)
+            ) : (
+              <EmptyState
+                title="No recent notes yet"
+                description="Add a note and Vutadex will keep the newest material here for quick editing and review."
+                action={
+                  <Link
+                    to="/notes/add"
+                    className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-[var(--app-accent)] px-5 text-sm font-semibold text-[var(--app-accent-ink)]"
+                  >
+                    Add note
+                  </Link>
+                }
+              />
             )}
-          {(dashboardQuery.data?.recentNotes?.length ?? 0) > 0 && (
-            <ul className="mt-6 space-y-3">
-              {dashboardQuery.data?.recentNotes.map((note) => (
-                <li
-                  key={note.id}
-                  className="rounded-2xl border border-[var(--app-line)] bg-[var(--app-muted-surface)] p-4"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-[var(--app-card)] px-2.5 py-1 text-xs font-medium text-[var(--app-text)] ring-1 ring-[var(--app-line)]">
-                          {note.typeId}
-                        </span>
-                        {note.deckName && (
-                          <span className="text-xs uppercase tracking-[0.16em] text-[var(--app-muted)]">
-                            {note.deckName}
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-2 truncate text-sm font-medium text-[var(--app-text)]">
-                        {note.fieldPreview || "Untitled note"}
-                      </p>
-                      {note.tags.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {note.tags.slice(0, 3).map((tag) => (
-                            <span
-                              key={tag}
-                              className="rounded-full bg-[var(--app-card)] px-2 py-1 text-xs text-[var(--app-text-soft)] ring-1 ring-[var(--app-line)]"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <Link
-                      to={`/notes/view${note.deckId ? `?deckId=${note.deckId}&` : "?"}noteId=${note.id}`}
-                      className="shrink-0 text-sm font-medium text-[var(--app-accent)] hover:brightness-110"
-                    >
-                      Edit
-                    </Link>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="rounded-[2rem] border border-dashed border-[var(--app-line-strong)] bg-[var(--app-card)] p-6 shadow-sm">
-          <p className="text-xs uppercase tracking-[0.28em] text-[var(--app-muted)]">
-            Study Groups
-          </p>
-          <h3 className="mt-4 text-2xl font-semibold tracking-tight text-[var(--app-text)]">
-            Deck-linked collaboration is planned next.
-          </h3>
-          <p className="mt-3 text-sm leading-7 text-[var(--app-text-soft)]">
-            Team and Enterprise workspaces will be able to create study groups,
-            invite members, and manage deck-centric group participation from one
-            place.
-          </p>
-          <Link
-            to="/study-groups"
-            className="mt-6 inline-flex items-center rounded-2xl border border-[var(--app-line-strong)] px-4 py-2.5 text-sm font-medium text-[var(--app-text)] hover:border-[var(--app-accent)] hover:bg-[var(--app-muted-surface)]"
-          >
-            Open Study Groups
-          </Link>
-        </div>
-      </section>
-    </div>
+          </div>
+        </PageSection>
+      </div>
+    </PageContainer>
   );
 }

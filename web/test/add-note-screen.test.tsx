@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
@@ -36,6 +36,10 @@ vi.mock('#/components/ai-suggestion-panel', () => ({
 
 afterEach(() => {
   cleanup()
+})
+
+beforeEach(() => {
+  vi.useRealTimers()
 })
 
 function renderAddNoteScreen(repository: AppRepository) {
@@ -167,5 +171,36 @@ describe('AddNoteScreen recent notes', () => {
     } finally {
       window.matchMedia = originalMatchMedia
     }
+  })
+
+  it('only checks duplicates when the primary field changes', async () => {
+    const checkDuplicate = vi.fn().mockResolvedValue({ isDuplicate: false, duplicates: [] })
+    const repository = {
+      fetchNoteTypes: vi.fn().mockResolvedValue([
+        {
+          name: 'Basic',
+          fields: ['Front', 'Back'],
+          templates: [{ name: 'Card 1', qFmt: '{{Front}}', aFmt: '{{Back}}', styling: '', isCloze: false }],
+          sortFieldIndex: 0,
+          fieldOptions: {},
+        },
+      ]),
+      fetchDecks: vi.fn().mockResolvedValue([{ id: 1, name: 'Deck 1', parentId: null, cardIds: [] }]),
+      fetchDeckNotes: vi.fn().mockResolvedValue({ notes: [] }),
+      checkDuplicate,
+      createNote: vi.fn(),
+    } as unknown as AppRepository
+
+    renderAddNoteScreen(repository)
+
+    fireEvent.change(await screen.findByPlaceholderText('Enter front...'), { target: { value: 'AWS region' } })
+
+    await waitFor(() => expect(checkDuplicate).toHaveBeenCalledTimes(1), { timeout: 1200 })
+
+    fireEvent.change(screen.getByPlaceholderText('Enter back...'), { target: { value: 'A group of data centers' } })
+
+    await new Promise((resolve) => setTimeout(resolve, 700))
+
+    expect(checkDuplicate).toHaveBeenCalledTimes(1)
   })
 })

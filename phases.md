@@ -1,6 +1,6 @@
 # Vutadex Phases
 
-Last updated: 2026-03-25
+Last updated: 2026-03-26
 
 This file tracks delivery status for the current app roadmap. Update it whenever a phase meaningfully changes state.
 
@@ -20,7 +20,7 @@ Status legend:
 | Phase 2 | `done`        | Study Groups foundation: canonical source deck, published versions, invites, personal installs, fork/update state, and cross-collection installs. |
 | Phase 3 | `done`        | Marketplace foundation: listing CRUD, publish flow, listing detail pages, and free versioned installs with source attribution.                    |
 | Phase 4 | `done`        | Paid marketplace commerce: creator onboarding, premium checkout, license grants, payout bookkeeping, and webhook-safe completion.                 |
-| Phase 5 | `in_progress` | Account onboarding, plan management, team administration, Study Group RBAC, and remaining AI/analytics/study protocols.                           |
+| Phase 5 | `in_progress` | Account onboarding, Stripe-backed plan management, team administration, Study Group RBAC, and remaining AI/analytics/study protocols.             |
 | Phase 6 | `later`       | Real-time collaborative editing using Hocuspocus/Yjs.                                                                                             |
 
 ## Completed
@@ -117,7 +117,7 @@ Status legend:
 - Active implementation slice:
   - account-level onboarding flag after sign-in
   - post-auth plan selection gate
-  - plan management from User Settings
+  - Stripe-backed plan management from User Settings and Team
   - dedicated Team view for current org-backed workspace
   - Team roles:
     - `read`
@@ -132,6 +132,14 @@ Status legend:
   - settings cleanup:
     - remove workspace slug
     - remove collection id
+  - launch billing rules:
+    - Free: `$0`
+    - Pro: `$12/month`
+    - Team: `$8/user/month`, 3-seat minimum
+    - Enterprise: manual / sales-led
+    - upgrades happen immediately
+    - downgrades happen at period end
+    - paid access remains enabled through `current_period_end`
 
 ### Phase 5B: AI + Analytics + Study Protocols Follow-on
 
@@ -151,8 +159,11 @@ Status legend:
     - dedicated Focus page
     - persisted focus sessions via the study-session model
     - focus-session analytics in Stats
+  - richer Study Group analytics:
+    - session-backed group dashboard metrics
+    - weekly activity chart on the group detail page
+    - richer leaderboard with reviews, sessions, and minutes
 - Follow-on work in this lane:
-  - richer group analytics surfaces
   - richer study-event persistence beyond session rollups
 
 ## Notes
@@ -498,7 +509,7 @@ Primary scope:
 
 - account-level onboarding flag and post-sign-in plan gate
 - `/onboarding/plan`
-- plan management in `/settings`
+- Stripe-backed plan management in `/settings`
 - `/team` for org-backed workspace administration
 - Settings cleanup:
   - remove workspace slug
@@ -518,6 +529,8 @@ Product rules:
 
 - The `onboarding` flag is account-level and boolean-only for now.
 - Plan selection during onboarding targets the current workspace.
+- Paid onboarding for Pro and Team uses Stripe Checkout.
+- Existing paid workspaces use the Stripe customer portal for billing changes, invoices, and payment methods.
 - Personal workspace owners can change plan.
 - Team admins and owners can change plan for the current org-backed workspace.
 - Team `read` and `edit` roles cannot change plan or manage members.
@@ -526,28 +539,40 @@ Product rules:
 - Study Group `edit` can update group-owned source content through the workspace but cannot manage members or publish versions.
 - Study Group `admin` and `owner` manage members and publish versions.
 - Study Groups and Marketplace continue to rely on workspace-local installs with private per-user review history.
+- Team billing is per-seat with a 3-seat minimum:
+  - active members count as seats
+  - invited-but-not-joined members do not
+  - seat increases apply immediately
+  - seat decreases reconcile at renewal
 
 Current implementation snapshot:
 
-- Partially implemented:
+- Implemented:
   - backend onboarding flag support
   - onboarding plan-selection endpoint
   - workspace plan-management endpoint
+  - Stripe Checkout endpoint for paid onboarding / free-to-paid upgrades
+  - Stripe customer-portal endpoint for existing paid workspaces
+  - Stripe billing webhook + checkout session sync endpoint
+  - subscription persistence with provider ids, checkout ids, billed quantity, and current period end
+  - onboarding plan picker wired to Stripe checkout for paid plans
+  - Settings and Team billing surfaces wired to checkout / portal flows
+  - billing completion route in the web app
   - org/team membership roles and invite lifecycle support
   - Study Group role migration to `read/edit/admin/owner`
   - content write gating for org-backed workspaces
 - Remaining in this slice:
-  - onboarding route and redirect polish
-  - Settings plan-management UI
-  - Team management page
-  - Team links in account menus
-  - Study Group detail/member UI updates for the expanded role model
+  - production Stripe live-key validation in deployed environments
+  - automated billing regression coverage around downgrades and seat reconciliation
+  - final deployment runbook polish for SES + Fly + Stripe secrets
 
 Exit criteria:
 
 - Authenticated users with `onboarding=true` are redirected into plan selection.
 - Choosing a plan updates the current workspace subscription and flips onboarding to false.
 - Users can later change plan from Settings.
+- Paid onboarding and free-to-paid upgrades route through Stripe Checkout.
+- Existing paid plan changes route through Stripe customer portal.
 - Settings no longer show workspace slug or collection id.
 - Team admins and owners can add/remove members.
 - Team roles `read/edit/admin/owner` are enforced.
@@ -596,7 +621,12 @@ Current implementation snapshot:
 - Added initial analytics surfaces:
   - dashboard-level study momentum metrics
   - deck-level recent session and review summaries
-- Deeper user/deck/group analytics and study protocol persistence remain unfinished inside this phase.
+- Added richer analytics follow-on work:
+  - dedicated Focus page for Pomodoro and timed focus blocks
+  - persisted focus-session protocol metadata and Stats rollups
+  - richer Study Group dashboard metrics backed by study sessions
+  - weekly Study Group activity visualization and session-aware leaderboard
+- Richer study-event persistence beyond session rollups remains unfinished inside this phase.
 
 Dependencies:
 

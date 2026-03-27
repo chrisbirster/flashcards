@@ -50,6 +50,16 @@ describe('RecentDeckNotesPanel', () => {
     expect(await screen.findByText('No notes in this deck yet.')).toBeInTheDocument()
   })
 
+  it('treats a null notes payload as empty instead of crashing', async () => {
+    const repository = {
+      fetchDeckNotes: vi.fn().mockResolvedValue({ notes: null }),
+    } as unknown as AppRepository
+
+    renderPanel(repository)
+
+    expect(await screen.findByText('No notes in this deck yet.')).toBeInTheDocument()
+  })
+
   it('renders the latest notes when the deck has existing notes', async () => {
     const repository = {
       fetchDeckNotes: vi.fn().mockResolvedValue({

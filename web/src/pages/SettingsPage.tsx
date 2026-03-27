@@ -21,30 +21,41 @@ function SettingsRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function formatDate(value?: string) {
+  if (!value) return "Not set";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Not set" : date.toLocaleDateString();
+}
+
 const planOptions: Array<{
   plan: UpdateWorkspacePlanRequest["plan"];
   label: string;
   description: string;
+  price: string;
 }> = [
   {
     plan: "free",
     label: "Free",
     description: "Personal starter limits and solo workflow.",
+    price: "$0",
   },
   {
     plan: "pro",
     label: "Pro",
     description: "Higher limits and AI-assisted solo study.",
+    price: "$12/mo",
   },
   {
     plan: "team",
     label: "Team",
     description: "Team roles, member installs, and shared admin surfaces.",
+    price: "$8/user/mo",
   },
   {
     plan: "enterprise",
     label: "Enterprise",
     description: "Enterprise controls, limits, and support posture.",
+    price: "Custom",
   },
 ];
 
@@ -66,15 +77,72 @@ export function SettingsPage() {
   });
 
   const updatePlanMutation = useMutation({
-    mutationFn: (plan: UpdateWorkspacePlanRequest["plan"]) =>
-      repository.updateWorkspacePlan(sessionQuery.data!.workspace!.id, { plan }),
-    onSuccess: async (session) => {
-      queryClient.setQueryData(["auth-session"], session);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["auth-session"] }),
-        queryClient.invalidateQueries({ queryKey: ["entitlements"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-      ]);
+    mutationFn: async (plan: UpdateWorkspacePlanRequest["plan"]) => {
+      const session = sessionQuery.data!;
+      const currentPlan = session.entitlements.plan;
+      const provider = session.subscription?.provider ?? "";
+
+      if (plan === "enterprise") {
+        window.location.assign(
+          "mailto:sales@vutadex.com?subject=Vutadex%20Enterprise",
+        );
+        return { mode: "external" as const };
+      }
+
+      if (provider === "manual") {
+        const nextSession = await repository.updateWorkspacePlan(
+          session.workspace!.id,
+          { plan },
+        );
+        return { mode: "session" as const, session: nextSession };
+      }
+
+      if (currentPlan === "free" || currentPlan === "guest") {
+        const response = await repository.startBillingCheckout({ plan });
+        return { mode: "checkout" as const, response };
+      }
+
+      const response = await repository.openBillingPortal({ plan });
+      return { mode: "portal" as const, response };
+    },
+    onSuccess: async (result) => {
+      if (result.mode === "session") {
+        queryClient.setQueryData(["auth-session"], result.session);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["auth-session"] }),
+          queryClient.invalidateQueries({ queryKey: ["entitlements"] }),
+          queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        ]);
+        return;
+      }
+
+      if (result.mode === "checkout") {
+        if (result.response.completed && result.response.session) {
+          queryClient.setQueryData(["auth-session"], result.response.session);
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["auth-session"] }),
+            queryClient.invalidateQueries({ queryKey: ["entitlements"] }),
+            queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+          ]);
+          return;
+        }
+        if (result.response.checkoutUrl) {
+          window.location.assign(result.response.checkoutUrl);
+          return;
+        }
+        throw new Error("Billing checkout did not return a redirect URL.");
+      }
+
+      if (result.mode === "portal") {
+        window.location.assign(result.response.url);
+      }
+    },
+  });
+
+  const billingPortalMutation = useMutation({
+    mutationFn: () => repository.openBillingPortal(),
+    onSuccess: (result) => {
+      window.location.assign(result.url);
     },
   });
 
@@ -104,10 +172,15 @@ export function SettingsPage() {
   const userLabel = user.displayName || user.email;
   const userInitial = userLabel.trim().charAt(0).toUpperCase() || "U";
   const currentPlan = session.entitlements.plan;
+  const subscription = session.subscription;
   const organizationRole = session.organizationMember?.role;
   const canManagePlan = session.workspace?.organizationId
     ? organizationRole === "admin" || organizationRole === "owner"
     : session.workspace?.ownerUserId === user.id;
+  const canOpenBillingPortal =
+    canManagePlan &&
+    subscription?.provider === "stripe" &&
+    Boolean(subscription?.providerCustomerId);
 
   return (
     <PageContainer className="space-y-6">
@@ -221,32 +294,92 @@ export function SettingsPage() {
                 <p className="text-sm font-semibold text-[var(--app-text)]">
                   {option.label}
                 </p>
+                <p className="mt-2 text-2xl font-semibold tracking-tight text-[var(--app-text)]">
+                  {option.price}
+                </p>
                 <p className="mt-2 text-sm leading-6 text-[var(--app-text-soft)]">
                   {option.description}
                 </p>
+                {option.plan === "team" ? (
+                  <p className="mt-2 text-xs text-[var(--app-muted)]">
+                    3-seat minimum. Seats are billed for active team members.
+                  </p>
+                ) : null}
                 <div className="mt-auto pt-6">
-                  <button
-                    type="button"
-                    onClick={() => updatePlanMutation.mutate(option.plan)}
-                    disabled={isCurrent || !canManagePlan || updatePlanMutation.isPending}
-                    className={[
-                      "inline-flex min-h-11 w-full items-center justify-center rounded-2xl px-4 text-center text-sm font-semibold transition disabled:opacity-60",
-                      isCurrent
-                        ? "border border-[var(--app-line-strong)] bg-[var(--app-card)] text-[var(--app-text)]"
-                        : "bg-[var(--app-accent)] text-[var(--app-accent-ink)] hover:brightness-105",
-                    ].join(" ")}
-                  >
-                    {isPending
-                      ? "Updating..."
-                      : isCurrent
-                        ? "Current plan"
-                        : `Switch to ${option.label}`}
-                  </button>
+                  {option.plan === "enterprise" ? (
+                    <a
+                      href="mailto:sales@vutadex.com?subject=Vutadex%20Enterprise"
+                      className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-center text-sm font-semibold text-[var(--app-text)] transition hover:border-[var(--app-accent)]"
+                    >
+                      Contact sales
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => updatePlanMutation.mutate(option.plan)}
+                      disabled={
+                        isCurrent ||
+                        !canManagePlan ||
+                        updatePlanMutation.isPending ||
+                        billingPortalMutation.isPending
+                      }
+                      className={[
+                        "inline-flex min-h-11 w-full items-center justify-center rounded-2xl px-4 text-center text-sm font-semibold transition disabled:opacity-60",
+                        isCurrent
+                          ? "border border-[var(--app-line-strong)] bg-[var(--app-card)] text-[var(--app-text)]"
+                          : "bg-[var(--app-accent)] text-[var(--app-accent-ink)] hover:brightness-105",
+                      ].join(" ")}
+                    >
+                      {isPending
+                        ? "Updating..."
+                        : isCurrent
+                          ? "Current plan"
+                          : currentPlan === "free" || currentPlan === "guest"
+                            ? option.plan === "team"
+                              ? "Start Team checkout"
+                              : `Start ${option.label}`
+                            : `Manage ${option.label} in billing`}
+                    </button>
+                  )}
                 </div>
               </SurfaceCard>
             );
           })}
         </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <SettingsRow
+            label="Billing provider"
+            value={subscription?.provider?.toUpperCase() || "LOCAL"}
+          />
+          <SettingsRow
+            label="Current period end"
+            value={formatDate(subscription?.currentPeriodEnd)}
+          />
+          <SettingsRow
+            label="Subscription status"
+            value={
+              subscription?.cancelAtPeriodEnd
+                ? `Scheduled to end on ${formatDate(subscription.currentPeriodEnd)}`
+                : subscription?.status || "No paid subscription"
+            }
+          />
+        </div>
+
+        {canOpenBillingPortal ? (
+          <div className="mt-5">
+            <button
+              type="button"
+              onClick={() => billingPortalMutation.mutate()}
+              disabled={billingPortalMutation.isPending || updatePlanMutation.isPending}
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-5 text-sm font-medium text-[var(--app-text)] transition hover:border-[var(--app-accent)] hover:bg-[var(--app-muted-surface)] disabled:opacity-60"
+            >
+              {billingPortalMutation.isPending
+                ? "Opening billing..."
+                : "Manage billing, invoices, and payment methods"}
+            </button>
+          </div>
+        ) : null}
 
         {!canManagePlan ? (
           <p className="mt-4 text-sm text-[var(--app-muted)]">
@@ -256,10 +389,14 @@ export function SettingsPage() {
           </p>
         ) : null}
 
-        {updatePlanMutation.isError ? (
+        {(updatePlanMutation.isError || billingPortalMutation.isError) ? (
           <p className="mt-4 text-sm text-[var(--app-danger-text)]">
-            {updatePlanMutation.error instanceof Error
-              ? updatePlanMutation.error.message
+            {(
+              updatePlanMutation.error || billingPortalMutation.error
+            ) instanceof Error
+              ? (
+                  updatePlanMutation.error || billingPortalMutation.error
+                )!.message
               : "Failed to update plan."}
           </p>
         ) : null}

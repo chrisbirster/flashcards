@@ -26,12 +26,13 @@ func sanitizeHTML(input string) string {
 
 // APIHandler wraps the store and provides HTTP handlers
 type APIHandler struct {
-	store         *SQLiteStore
-	collectionID  string
-	collection    *Collection
-	backupManager *BackupManager
-	config        AppConfig
-	emailSender   EmailSender
+	store               *SQLiteStore
+	collectionID        string
+	collection          *Collection
+	backupManager       *BackupManager
+	config              AppConfig
+	emailSender         EmailSender
+	subscriptionBilling subscriptionBillingProvider
 }
 
 func NewAPIHandler(store *SQLiteStore, collection *Collection, backupMgr *BackupManager) *APIHandler {
@@ -44,12 +45,13 @@ func NewAPIHandler(store *SQLiteStore, collection *Collection, backupMgr *Backup
 
 func NewAPIHandlerWithConfig(store *SQLiteStore, collection *Collection, backupMgr *BackupManager, cfg AppConfig, emailSender EmailSender) *APIHandler {
 	return &APIHandler{
-		store:         store,
-		collectionID:  "default",
-		collection:    collection,
-		backupManager: backupMgr,
-		config:        cfg,
-		emailSender:   emailSender,
+		store:               store,
+		collectionID:        "default",
+		collection:          collection,
+		backupManager:       backupMgr,
+		config:              cfg,
+		emailSender:         emailSender,
+		subscriptionBilling: newSubscriptionBillingProvider(cfg),
 	}
 }
 

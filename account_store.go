@@ -501,19 +501,28 @@ func (s *SQLiteStore) UpdateUserOnboarding(userID string, onboarding bool) error
 }
 
 func (s *SQLiteStore) UpsertSubscription(subscription *Subscription) error {
+	if subscription.BilledQuantity <= 0 {
+		subscription.BilledQuantity = 1
+	}
 	query := `
 		INSERT INTO subscriptions (
 			id, workspace_id, organization_id, plan, status, provider, provider_customer_id,
-			provider_subscription_id, current_period_end, created_at, updated_at
+			provider_subscription_id, provider_subscription_item_id, provider_checkout_session_id,
+			scheduled_plan, current_period_end, cancel_at_period_end, billed_quantity, created_at, updated_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			plan = excluded.plan,
 			status = excluded.status,
 			provider = excluded.provider,
 			provider_customer_id = excluded.provider_customer_id,
 			provider_subscription_id = excluded.provider_subscription_id,
+			provider_subscription_item_id = excluded.provider_subscription_item_id,
+			provider_checkout_session_id = excluded.provider_checkout_session_id,
+			scheduled_plan = excluded.scheduled_plan,
 			current_period_end = excluded.current_period_end,
+			cancel_at_period_end = excluded.cancel_at_period_end,
+			billed_quantity = excluded.billed_quantity,
 			updated_at = excluded.updated_at
 	`
 	_, err := s.db.Exec(
@@ -526,7 +535,12 @@ func (s *SQLiteStore) UpsertSubscription(subscription *Subscription) error {
 		nullIfEmpty(subscription.Provider),
 		nullIfEmpty(subscription.ProviderCustomerID),
 		nullIfEmpty(subscription.ProviderSubscriptionID),
+		nullIfEmpty(subscription.ProviderSubscriptionItemID),
+		nullIfEmpty(subscription.ProviderCheckoutSessionID),
+		nullIfEmpty(string(subscription.ScheduledPlan)),
 		nullIfZeroTime(subscription.CurrentPeriodEnd),
+		boolToInt(subscription.CancelAtPeriodEnd),
+		subscription.BilledQuantity,
 		subscription.CreatedAt.Unix(),
 		subscription.UpdatedAt.Unix(),
 	)
@@ -536,7 +550,8 @@ func (s *SQLiteStore) UpsertSubscription(subscription *Subscription) error {
 func (s *SQLiteStore) GetSubscriptionForWorkspace(workspaceID string) (*Subscription, error) {
 	query := `
 		SELECT id, workspace_id, organization_id, plan, status, provider, provider_customer_id,
-		       provider_subscription_id, current_period_end, created_at, updated_at
+		       provider_subscription_id, provider_subscription_item_id, provider_checkout_session_id,
+		       scheduled_plan, current_period_end, cancel_at_period_end, billed_quantity, created_at, updated_at
 		FROM subscriptions
 		WHERE workspace_id = ?
 		ORDER BY updated_at DESC
@@ -545,8 +560,9 @@ func (s *SQLiteStore) GetSubscriptionForWorkspace(workspaceID string) (*Subscrip
 	row := s.db.QueryRow(query, workspaceID)
 
 	var subscription Subscription
-	var orgID, provider, customerID, subscriptionID sql.NullString
+	var orgID, provider, customerID, subscriptionID, subscriptionItemID, checkoutSessionID, scheduledPlan sql.NullString
 	var currentPeriodEnd, createdAt, updatedAt sql.NullInt64
+	var cancelAtPeriodEnd, billedQuantity int
 	var plan string
 	if err := row.Scan(
 		&subscription.ID,
@@ -557,7 +573,12 @@ func (s *SQLiteStore) GetSubscriptionForWorkspace(workspaceID string) (*Subscrip
 		&provider,
 		&customerID,
 		&subscriptionID,
+		&subscriptionItemID,
+		&checkoutSessionID,
+		&scheduledPlan,
 		&currentPeriodEnd,
+		&cancelAtPeriodEnd,
+		&billedQuantity,
 		&createdAt,
 		&updatedAt,
 	); err != nil {
@@ -576,8 +597,23 @@ func (s *SQLiteStore) GetSubscriptionForWorkspace(workspaceID string) (*Subscrip
 	if subscriptionID.Valid {
 		subscription.ProviderSubscriptionID = subscriptionID.String
 	}
+	if subscriptionItemID.Valid {
+		subscription.ProviderSubscriptionItemID = subscriptionItemID.String
+	}
+	if checkoutSessionID.Valid {
+		subscription.ProviderCheckoutSessionID = checkoutSessionID.String
+	}
+	if scheduledPlan.Valid {
+		subscription.ScheduledPlan = parsePlan(scheduledPlan.String)
+	}
 	if currentPeriodEnd.Valid {
 		subscription.CurrentPeriodEnd = time.Unix(currentPeriodEnd.Int64, 0)
+	}
+	subscription.CancelAtPeriodEnd = cancelAtPeriodEnd == 1
+	if billedQuantity > 0 {
+		subscription.BilledQuantity = billedQuantity
+	} else {
+		subscription.BilledQuantity = 1
 	}
 	if createdAt.Valid {
 		subscription.CreatedAt = time.Unix(createdAt.Int64, 0)
@@ -592,7 +628,8 @@ func (s *SQLiteStore) GetSubscriptionForWorkspace(workspaceID string) (*Subscrip
 func (s *SQLiteStore) GetSubscriptionForOrganization(organizationID string) (*Subscription, error) {
 	row := s.db.QueryRow(`
 		SELECT id, workspace_id, organization_id, plan, status, provider, provider_customer_id,
-		       provider_subscription_id, current_period_end, created_at, updated_at
+		       provider_subscription_id, provider_subscription_item_id, provider_checkout_session_id,
+		       scheduled_plan, current_period_end, cancel_at_period_end, billed_quantity, created_at, updated_at
 		FROM subscriptions
 		WHERE organization_id = ?
 		ORDER BY updated_at DESC
@@ -600,8 +637,9 @@ func (s *SQLiteStore) GetSubscriptionForOrganization(organizationID string) (*Su
 	`, organizationID)
 
 	var subscription Subscription
-	var workspaceID, provider, customerID, subscriptionID sql.NullString
+	var workspaceID, provider, customerID, subscriptionID, subscriptionItemID, checkoutSessionID, scheduledPlan sql.NullString
 	var currentPeriodEnd, createdAt, updatedAt sql.NullInt64
+	var cancelAtPeriodEnd, billedQuantity int
 	var plan string
 	if err := row.Scan(
 		&subscription.ID,
@@ -612,7 +650,12 @@ func (s *SQLiteStore) GetSubscriptionForOrganization(organizationID string) (*Su
 		&provider,
 		&customerID,
 		&subscriptionID,
+		&subscriptionItemID,
+		&checkoutSessionID,
+		&scheduledPlan,
 		&currentPeriodEnd,
+		&cancelAtPeriodEnd,
+		&billedQuantity,
 		&createdAt,
 		&updatedAt,
 	); err != nil {
@@ -631,8 +674,181 @@ func (s *SQLiteStore) GetSubscriptionForOrganization(organizationID string) (*Su
 	if subscriptionID.Valid {
 		subscription.ProviderSubscriptionID = subscriptionID.String
 	}
+	if subscriptionItemID.Valid {
+		subscription.ProviderSubscriptionItemID = subscriptionItemID.String
+	}
+	if checkoutSessionID.Valid {
+		subscription.ProviderCheckoutSessionID = checkoutSessionID.String
+	}
+	if scheduledPlan.Valid {
+		subscription.ScheduledPlan = parsePlan(scheduledPlan.String)
+	}
 	if currentPeriodEnd.Valid {
 		subscription.CurrentPeriodEnd = time.Unix(currentPeriodEnd.Int64, 0)
+	}
+	subscription.CancelAtPeriodEnd = cancelAtPeriodEnd == 1
+	if billedQuantity > 0 {
+		subscription.BilledQuantity = billedQuantity
+	} else {
+		subscription.BilledQuantity = 1
+	}
+	if createdAt.Valid {
+		subscription.CreatedAt = time.Unix(createdAt.Int64, 0)
+	}
+	if updatedAt.Valid {
+		subscription.UpdatedAt = time.Unix(updatedAt.Int64, 0)
+	}
+	subscription.Plan = parsePlan(plan)
+	return &subscription, nil
+}
+
+func (s *SQLiteStore) GetSubscriptionByProviderSubscriptionID(providerSubscriptionID string) (*Subscription, error) {
+	row := s.db.QueryRow(`
+		SELECT id, workspace_id, organization_id, plan, status, provider, provider_customer_id,
+		       provider_subscription_id, provider_subscription_item_id, provider_checkout_session_id,
+		       scheduled_plan, current_period_end, cancel_at_period_end, billed_quantity, created_at, updated_at
+		FROM subscriptions
+		WHERE provider_subscription_id = ?
+		ORDER BY updated_at DESC
+		LIMIT 1
+	`, providerSubscriptionID)
+
+	var subscription Subscription
+	var workspaceID, organizationID, provider, customerID, subscriptionID, subscriptionItemID, checkoutSessionID, scheduledPlan sql.NullString
+	var currentPeriodEnd, createdAt, updatedAt sql.NullInt64
+	var cancelAtPeriodEnd, billedQuantity int
+	var plan string
+	if err := row.Scan(
+		&subscription.ID,
+		&workspaceID,
+		&organizationID,
+		&plan,
+		&subscription.Status,
+		&provider,
+		&customerID,
+		&subscriptionID,
+		&subscriptionItemID,
+		&checkoutSessionID,
+		&scheduledPlan,
+		&currentPeriodEnd,
+		&cancelAtPeriodEnd,
+		&billedQuantity,
+		&createdAt,
+		&updatedAt,
+	); err != nil {
+		return nil, err
+	}
+	if workspaceID.Valid {
+		subscription.WorkspaceID = workspaceID.String
+	}
+	if organizationID.Valid {
+		subscription.OrganizationID = organizationID.String
+	}
+	if provider.Valid {
+		subscription.Provider = provider.String
+	}
+	if customerID.Valid {
+		subscription.ProviderCustomerID = customerID.String
+	}
+	if subscriptionID.Valid {
+		subscription.ProviderSubscriptionID = subscriptionID.String
+	}
+	if subscriptionItemID.Valid {
+		subscription.ProviderSubscriptionItemID = subscriptionItemID.String
+	}
+	if checkoutSessionID.Valid {
+		subscription.ProviderCheckoutSessionID = checkoutSessionID.String
+	}
+	if scheduledPlan.Valid {
+		subscription.ScheduledPlan = parsePlan(scheduledPlan.String)
+	}
+	if currentPeriodEnd.Valid {
+		subscription.CurrentPeriodEnd = time.Unix(currentPeriodEnd.Int64, 0)
+	}
+	subscription.CancelAtPeriodEnd = cancelAtPeriodEnd == 1
+	if billedQuantity > 0 {
+		subscription.BilledQuantity = billedQuantity
+	} else {
+		subscription.BilledQuantity = 1
+	}
+	if createdAt.Valid {
+		subscription.CreatedAt = time.Unix(createdAt.Int64, 0)
+	}
+	if updatedAt.Valid {
+		subscription.UpdatedAt = time.Unix(updatedAt.Int64, 0)
+	}
+	subscription.Plan = parsePlan(plan)
+	return &subscription, nil
+}
+
+func (s *SQLiteStore) GetSubscriptionByProviderCheckoutSessionID(providerCheckoutSessionID string) (*Subscription, error) {
+	row := s.db.QueryRow(`
+		SELECT id, workspace_id, organization_id, plan, status, provider, provider_customer_id,
+		       provider_subscription_id, provider_subscription_item_id, provider_checkout_session_id,
+		       scheduled_plan, current_period_end, cancel_at_period_end, billed_quantity, created_at, updated_at
+		FROM subscriptions
+		WHERE provider_checkout_session_id = ?
+		ORDER BY updated_at DESC
+		LIMIT 1
+	`, providerCheckoutSessionID)
+
+	var subscription Subscription
+	var workspaceID, organizationID, provider, customerID, subscriptionID, subscriptionItemID, checkoutSessionID, scheduledPlan sql.NullString
+	var currentPeriodEnd, createdAt, updatedAt sql.NullInt64
+	var cancelAtPeriodEnd, billedQuantity int
+	var plan string
+	if err := row.Scan(
+		&subscription.ID,
+		&workspaceID,
+		&organizationID,
+		&plan,
+		&subscription.Status,
+		&provider,
+		&customerID,
+		&subscriptionID,
+		&subscriptionItemID,
+		&checkoutSessionID,
+		&scheduledPlan,
+		&currentPeriodEnd,
+		&cancelAtPeriodEnd,
+		&billedQuantity,
+		&createdAt,
+		&updatedAt,
+	); err != nil {
+		return nil, err
+	}
+	if workspaceID.Valid {
+		subscription.WorkspaceID = workspaceID.String
+	}
+	if organizationID.Valid {
+		subscription.OrganizationID = organizationID.String
+	}
+	if provider.Valid {
+		subscription.Provider = provider.String
+	}
+	if customerID.Valid {
+		subscription.ProviderCustomerID = customerID.String
+	}
+	if subscriptionID.Valid {
+		subscription.ProviderSubscriptionID = subscriptionID.String
+	}
+	if subscriptionItemID.Valid {
+		subscription.ProviderSubscriptionItemID = subscriptionItemID.String
+	}
+	if checkoutSessionID.Valid {
+		subscription.ProviderCheckoutSessionID = checkoutSessionID.String
+	}
+	if scheduledPlan.Valid {
+		subscription.ScheduledPlan = parsePlan(scheduledPlan.String)
+	}
+	if currentPeriodEnd.Valid {
+		subscription.CurrentPeriodEnd = time.Unix(currentPeriodEnd.Int64, 0)
+	}
+	subscription.CancelAtPeriodEnd = cancelAtPeriodEnd == 1
+	if billedQuantity > 0 {
+		subscription.BilledQuantity = billedQuantity
+	} else {
+		subscription.BilledQuantity = 1
 	}
 	if createdAt.Valid {
 		subscription.CreatedAt = time.Unix(createdAt.Int64, 0)
@@ -646,7 +862,7 @@ func (s *SQLiteStore) GetSubscriptionForOrganization(organizationID string) (*Su
 
 func (s *SQLiteStore) CreateSubscriptionEvent(event *SubscriptionEvent) error {
 	query := `
-		INSERT INTO subscription_events (id, subscription_id, event_type, provider_event_id, payload, created_at)
+		INSERT OR IGNORE INTO subscription_events (id, subscription_id, event_type, provider_event_id, payload, created_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
 	_, err := s.db.Exec(
@@ -659,6 +875,18 @@ func (s *SQLiteStore) CreateSubscriptionEvent(event *SubscriptionEvent) error {
 		event.CreatedAt.Unix(),
 	)
 	return err
+}
+
+func (s *SQLiteStore) CountActiveOrganizationMembers(organizationID string) (int, error) {
+	var count int
+	if err := s.db.QueryRow(`
+		SELECT COUNT(1)
+		FROM organization_members
+		WHERE organization_id = ? AND status = 'active'
+	`, organizationID).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 func (s *SQLiteStore) CreateDeckShareRecord(share *DeckShare) error {

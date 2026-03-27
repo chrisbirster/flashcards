@@ -274,9 +274,9 @@ const pricingTiers: PricingTier[] = [
     name: 'Team',
     price: '$8',
     cadence: '/user/month',
-    description: 'For study groups, shared libraries, and organization workflows.',
-    features: ['Org workspaces', 'Shared libraries', 'Study group creation', 'Member management', 'Central billing'],
-    cta: 'Contact Team Sales',
+    description: 'For study groups, shared libraries, and organization workflows with a 3-seat minimum.',
+    features: ['Org workspaces', 'Shared libraries', 'Study group creation', 'Member management', '3-seat minimum'],
+    cta: 'Start Team',
   },
   {
     name: 'Enterprise',

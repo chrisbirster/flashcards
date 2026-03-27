@@ -41,11 +41,13 @@ const planOptions: Array<{
     plan: "team",
     title: "Team",
     price: "$8/user/mo",
-    description: "Adds a real team workspace, member roles, and group workflows.",
+    description:
+      "Adds a real team workspace, member roles, and group workflows with a 3-seat minimum.",
     bullets: [
       "Creates a team-backed workspace",
       "Team roles and member management",
       "Study groups and shared publishing flows",
+      "3 billed seats minimum at launch",
     ],
   },
   {
@@ -71,17 +73,50 @@ export function OnboardingPlanPage() {
   });
 
   const selectPlanMutation = useMutation({
-    mutationFn: (plan: UpdateWorkspacePlanRequest["plan"]) =>
-      repository.completeOnboardingPlan({ plan }),
-    onSuccess: async (session) => {
-      queryClient.setQueryData(["auth-session"], session);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["auth-session"] }),
-        queryClient.invalidateQueries({ queryKey: ["entitlements"] }),
-        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-        queryClient.invalidateQueries({ queryKey: ["decks"] }),
-      ]);
-      navigate("/", { replace: true });
+    mutationFn: async (plan: UpdateWorkspacePlanRequest["plan"]) => {
+      if (plan === "enterprise") {
+        throw new Error(
+          "Enterprise onboarding is handled manually. Contact sales@vutadex.com to continue.",
+        );
+      }
+      if (plan === "free") {
+        const session = await repository.completeOnboardingPlan({ plan });
+        return { mode: "session" as const, session };
+      }
+      const response = await repository.startBillingCheckout({ plan });
+      return { mode: "billing" as const, response };
+    },
+    onSuccess: async (result) => {
+      if (result.mode === "session") {
+        queryClient.setQueryData(["auth-session"], result.session);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["auth-session"] }),
+          queryClient.invalidateQueries({ queryKey: ["entitlements"] }),
+          queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+          queryClient.invalidateQueries({ queryKey: ["decks"] }),
+        ]);
+        navigate("/", { replace: true });
+        return;
+      }
+
+      if (result.response.completed && result.response.session) {
+        queryClient.setQueryData(["auth-session"], result.response.session);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["auth-session"] }),
+          queryClient.invalidateQueries({ queryKey: ["entitlements"] }),
+          queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+          queryClient.invalidateQueries({ queryKey: ["decks"] }),
+        ]);
+        navigate("/", { replace: true });
+        return;
+      }
+
+      if (result.response.checkoutUrl) {
+        window.location.assign(result.response.checkoutUrl);
+        return;
+      }
+
+      throw new Error("Billing checkout did not return a redirect URL.");
     },
   });
 
@@ -166,23 +201,34 @@ export function OnboardingPlanPage() {
               </ul>
 
               <div className="mt-auto pt-6">
-                <button
-                  type="button"
-                  onClick={() => selectPlanMutation.mutate(option.plan)}
-                  disabled={selectPlanMutation.isPending}
-                  className={[
-                    "inline-flex min-h-11 w-full items-center justify-center rounded-2xl px-4 text-center text-sm font-semibold transition disabled:opacity-60",
-                    isCurrent
-                      ? "border border-[var(--app-line-strong)] bg-[var(--app-card)] text-[var(--app-text)]"
-                      : "bg-[var(--app-accent)] text-[var(--app-accent-ink)] hover:brightness-105",
-                  ].join(" ")}
-                >
-                  {isPending
-                    ? "Saving..."
-                    : isCurrent
-                      ? "Continue with this plan"
-                      : `Choose ${option.title}`}
-                </button>
+                {option.plan === "enterprise" ? (
+                  <a
+                    href="mailto:sales@vutadex.com?subject=Vutadex%20Enterprise"
+                    className="inline-flex min-h-11 w-full items-center justify-center rounded-2xl border border-[var(--app-line-strong)] bg-[var(--app-card)] px-4 text-center text-sm font-semibold text-[var(--app-text)] transition hover:border-[var(--app-accent)]"
+                  >
+                    Contact sales
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => selectPlanMutation.mutate(option.plan)}
+                    disabled={selectPlanMutation.isPending}
+                    className={[
+                      "inline-flex min-h-11 w-full items-center justify-center rounded-2xl px-4 text-center text-sm font-semibold transition disabled:opacity-60",
+                      isCurrent
+                        ? "border border-[var(--app-line-strong)] bg-[var(--app-card)] text-[var(--app-text)]"
+                        : "bg-[var(--app-accent)] text-[var(--app-accent-ink)] hover:brightness-105",
+                    ].join(" ")}
+                  >
+                    {isPending
+                      ? "Saving..."
+                      : isCurrent
+                        ? "Continue with this plan"
+                        : option.plan === "free"
+                          ? "Choose Free"
+                          : `Start ${option.title}`}
+                  </button>
+                )}
               </div>
             </SurfaceCard>
           );

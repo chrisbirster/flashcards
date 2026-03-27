@@ -60,7 +60,7 @@ export function StatCard({
   accent?: CSSProperties
 }) {
   return (
-    <SurfaceCard className="min-h-[10rem]">
+    <SurfaceCard className="min-h-[10rem] border-[var(--app-stat-line)] bg-[var(--app-stat-surface)]">
       <p className="text-[11px] uppercase tracking-[0.24em] text-[var(--app-muted)]">{label}</p>
       <p className="mt-4 text-3xl font-semibold tracking-tight text-[var(--app-text)]" style={accent}>
         {value}

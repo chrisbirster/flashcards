@@ -3,6 +3,7 @@ import {
   addField,
   addOrganizationMember,
   answerCard,
+  openBillingPortal,
   checkDuplicate,
   checkoutMarketplaceListing,
   completeOnboardingPlan,
@@ -66,7 +67,9 @@ import {
   requestOTP,
   setFieldOptions,
   setSortField,
+  startBillingCheckout,
   startMarketplaceCreatorAccount,
+  syncBillingCheckoutSession,
   syncMarketplaceCheckoutSession,
   updateCard,
   updateDeck,
@@ -87,6 +90,9 @@ import {
   type AICardSuggestionsResponse,
   type AnswerCardRequest,
   type AuthSessionResponse,
+  type BillingCheckoutResponse,
+  type BillingCheckoutSyncResponse,
+  type BillingPortalResponse,
   type Card,
   type CheckDuplicateRequest,
   type CreateDeckRequest,
@@ -248,6 +254,15 @@ export interface AppRepository {
   completeOnboardingPlan(
     req: UpdateWorkspacePlanRequest,
   ): Promise<AuthSessionResponse>;
+  startBillingCheckout(req: {
+    plan: UpdateWorkspacePlanRequest["plan"];
+  }): Promise<BillingCheckoutResponse>;
+  openBillingPortal(req?: {
+    plan?: UpdateWorkspacePlanRequest["plan"];
+  }): Promise<BillingPortalResponse>;
+  syncBillingCheckoutSession(
+    sessionId: string,
+  ): Promise<BillingCheckoutSyncResponse>;
   fetchEntitlements(): Promise<Entitlements>;
   createOrganization(req: CreateOrganizationRequest): Promise<OrganizationDetail>;
   fetchOrganization(orgId: string): Promise<OrganizationDetail>;
@@ -385,6 +400,9 @@ export const remoteRepository: AppRepository = {
   requestOTP,
   verifyOTP,
   completeOnboardingPlan,
+  startBillingCheckout,
+  openBillingPortal,
+  syncBillingCheckoutSession,
   fetchEntitlements,
   createOrganization,
   fetchOrganization,
@@ -523,6 +541,10 @@ export function createLocalRepository(): AppRepository {
       }),
     verifyOTP: () => notImplemented("verifyOTP"),
     completeOnboardingPlan: () => notImplemented("completeOnboardingPlan"),
+    startBillingCheckout: () => notImplemented("startBillingCheckout"),
+    openBillingPortal: () => notImplemented("openBillingPortal"),
+    syncBillingCheckoutSession: () =>
+      notImplemented("syncBillingCheckoutSession"),
     fetchEntitlements: () =>
       Promise.resolve({
         plan: "guest",

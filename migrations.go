@@ -39,6 +39,7 @@ func (s *SQLiteStore) migrate() error {
 		{13, "add_phase5a_account_team_schema", s.runMigration013_AddPhase5AAccountTeamSchema},
 		{14, "add_deck_priority_order", s.runMigration014_AddDeckPriorityOrder},
 		{15, "add_focus_session_protocol_fields", s.runMigration015_AddFocusSessionProtocolFields},
+		{16, "add_subscription_billing_fields", s.runMigration016_AddSubscriptionBillingFields},
 	}
 
 	for _, m := range migrations {
@@ -1188,6 +1189,27 @@ func (s *SQLiteStore) runMigration013_AddPhase5AAccountTeamSchema() error {
 	for _, statement := range statements {
 		if _, err := s.db.Exec(statement); err != nil && !isIgnorableMigrationError(err) {
 			return fmt.Errorf("failed to apply phase 5A account/team migration statement: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *SQLiteStore) runMigration016_AddSubscriptionBillingFields() error {
+	statements := []string{
+		`ALTER TABLE subscriptions ADD COLUMN scheduled_plan TEXT`,
+		`ALTER TABLE subscriptions ADD COLUMN provider_subscription_item_id TEXT`,
+		`ALTER TABLE subscriptions ADD COLUMN provider_checkout_session_id TEXT`,
+		`ALTER TABLE subscriptions ADD COLUMN cancel_at_period_end INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE subscriptions ADD COLUMN billed_quantity INTEGER NOT NULL DEFAULT 1`,
+		`CREATE INDEX IF NOT EXISTS idx_subscriptions_provider_customer ON subscriptions(provider_customer_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_subscriptions_provider_subscription ON subscriptions(provider_subscription_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_subscriptions_provider_checkout ON subscriptions(provider_checkout_session_id)`,
+	}
+
+	for _, statement := range statements {
+		if _, err := s.db.Exec(statement); err != nil && !isIgnorableMigrationError(err) {
+			return fmt.Errorf("failed to apply subscription billing migration statement: %w", err)
 		}
 	}
 

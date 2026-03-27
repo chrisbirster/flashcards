@@ -2,28 +2,40 @@ export interface AppNavigationItem {
   to: string;
   label: string;
   description: string;
+  icon:
+    | "home"
+    | "stats"
+    | "focus"
+    | "notes"
+    | "marketplace"
+    | "templates"
+    | "decks"
+    | "study-groups";
 }
 
 export const appNavigation: AppNavigationItem[] = [
-  { to: "/", label: "Home", description: "Overview and usage" },
-  { to: "/stats", label: "Stats", description: "Study analytics and trends" },
-  { to: "/focus", label: "Focus", description: "Pomodoro and timed sessions" },
-  { to: "/notes/view", label: "Notes", description: "Browse and edit notes" },
+  { to: "/", label: "Home", description: "Overview and usage", icon: "home" },
+  { to: "/stats", label: "Stats", description: "Study analytics and trends", icon: "stats" },
+  { to: "/focus", label: "Focus", description: "Pomodoro and timed sessions", icon: "focus" },
+  { to: "/notes/view", label: "Notes", description: "Browse and edit notes", icon: "notes" },
   {
     to: "/marketplace",
     label: "Marketplace",
     description: "Browse and publish listings",
+    icon: "marketplace",
   },
   {
     to: "/templates",
     label: "Templates",
     description: "Manage card templates",
+    icon: "templates",
   },
-  { to: "/decks", label: "Decks", description: "Organize study decks" },
+  { to: "/decks", label: "Decks", description: "Organize study decks", icon: "decks" },
   {
     to: "/study-groups",
     label: "Study Groups",
     description: "Source decks and member installs",
+    icon: "study-groups",
   },
 ];
 

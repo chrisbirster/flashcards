@@ -1,6 +1,6 @@
 # Vutadex Phases
 
-Last updated: 2026-03-26
+Last updated: 2026-03-29
 
 This file tracks delivery status for the current app roadmap. Update it whenever a phase meaningfully changes state.
 
@@ -76,6 +76,7 @@ Status legend:
 - Implemented true cross-collection installs for personal Study Group copies.
 - Scoped note type identities by collection and rewired request handlers so deck, note, template, and study flows resolve the active workspace collection correctly.
 - Added regression coverage for cross-collection Study Group installs and preserved per-user review isolation after install.
+- User-facing rollout is intentionally deferred in the app UI. The current product surface now shows a `Coming June 2026` placeholder until the collaboration experience is launch-ready.
 
 ### Phase 3
 
@@ -132,6 +133,7 @@ Status legend:
   - settings cleanup:
     - remove workspace slug
     - remove collection id
+  - Study Groups remain hidden behind a public placeholder until the June 2026 rollout window
   - launch billing rules:
     - Free: `$0`
     - Pro: `$12/month`
@@ -170,6 +172,7 @@ Status legend:
 
 - The marketing site can evolve independently, but the app roadmap above is the current implementation priority.
 - Every new feature should be specified mobile-first before desktop expansion.
+- Study Groups are implemented in the repo foundation, but they are not considered launch-ready for users today. The app intentionally shows a `Coming June 2026` placeholder instead of exposing the unfinished collaboration surface.
 - When a phase is started or completed, update both the table and the detailed section in this file.
 
 ## Detailed Phase Definitions

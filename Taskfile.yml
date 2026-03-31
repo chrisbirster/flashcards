@@ -9,7 +9,12 @@ tasks:
   env:hydrate:turso:
     desc: Populate an env file with Turso URL/token and remote app origins
     cmds:
-      - bash ./scripts/env/hydrate-turso.sh "${ENV_FILE:-.env.staging}" "${TURSO_DB:?set TURSO_DB}" "${APP_ORIGIN:-https://app.vutadex.com}" "${MARKETING_ORIGIN:-https://vutadex.com}" "${VUTADEX_ENV:-staging}"
+      - bash ./scripts/env/hydrate-turso.sh "${ENV_FILE:-.env.production}" "${TURSO_DB:?set TURSO_DB}" "${APP_ORIGIN:-https://app.vutadex.com}" "${MARKETING_ORIGIN:-https://vutadex.com}" "${VUTADEX_ENV:-production}"
+
+  env:hydrate:production:
+    desc: Populate .env.production with Turso URL/token and production origins
+    cmds:
+      - bash ./scripts/env/hydrate-turso.sh ".env.production" "${TURSO_DB:?set TURSO_DB}" "https://app.vutadex.com" "https://vutadex.com" "production"
 
   secrets:fly:import:
     desc: Push VUTADEX_* values from an env file into Fly secrets
@@ -20,7 +25,7 @@ tasks:
     desc: Create or find the Stripe subscription product and monthly prices, then write price IDs into ENV_FILE
     cmds:
       - |
-        ENV_FILE="${ENV_FILE:-.env.staging}"
+        ENV_FILE="${ENV_FILE:-.env.production}"
         if [ -f "$ENV_FILE" ]; then
           set -a
           . "$ENV_FILE"
@@ -163,12 +168,12 @@ tasks:
         wait
 
   dev:turso:app:
-    desc: Run the Go app and app frontend locally against Turso using ENV_FILE
+    desc: Run the Go app and app frontend locally against Turso using ENV_FILE (defaults to .env.production)
     cmds:
       - task: _ports:check:sqlite:app
       - task: build:app-web
       - |
-        ENV_FILE="${ENV_FILE:-.env.staging}"
+        ENV_FILE="${ENV_FILE:-.env.production}"
         if [ ! -f "$ENV_FILE" ]; then
           echo "Env file not found: $ENV_FILE"
           exit 1
@@ -182,12 +187,12 @@ tasks:
         wait
 
   dev:turso:
-    desc: Run backend, app frontend, and marketing locally against Turso using ENV_FILE
+    desc: Run backend, app frontend, and marketing locally against Turso using ENV_FILE (defaults to .env.production)
     cmds:
       - task: _ports:check:sqlite
       - task: build:app-web
       - |
-        ENV_FILE="${ENV_FILE:-.env.staging}"
+        ENV_FILE="${ENV_FILE:-.env.production}"
         if [ ! -f "$ENV_FILE" ]; then
           echo "Env file not found: $ENV_FILE"
           exit 1

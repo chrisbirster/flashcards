@@ -6,7 +6,7 @@ ENV_FILE="${1:?usage: hydrate-turso.sh <env_file> <turso_db> [app_origin] [marke
 TURSO_DB="${2:?turso db name is required}"
 APP_ORIGIN="${3:-https://app.vutadex.com}"
 MARKETING_ORIGIN="${4:-https://vutadex.com}"
-VUTADEX_ENVIRONMENT="${5:-staging}"
+VUTADEX_ENVIRONMENT="${5:-production}"
 UPSERTER="$ROOT_DIR/scripts/env/upsert_env.py"
 
 if ! command -v turso >/dev/null 2>&1; then
@@ -33,7 +33,19 @@ if db_url="$(turso db show --url "$TURSO_DB" 2>/dev/null)"; then
 elif db_url="$(turso db show "$TURSO_DB" --url 2>/dev/null)"; then
   :
 else
-  echo "Failed to resolve Turso database URL for $TURSO_DB" >&2
+  echo "Failed to resolve Turso database URL for '$TURSO_DB'." >&2
+  echo >&2
+  echo "Most likely causes:" >&2
+  echo "  1. The database name is different from what you passed." >&2
+  echo "  2. You are not logged into Turso in this shell." >&2
+  echo "  3. Your current Turso org/account context does not include that database." >&2
+  echo >&2
+  echo "Try these commands:" >&2
+  echo "  turso auth login" >&2
+  echo "  turso db list" >&2
+  echo "  turso db show --url $TURSO_DB" >&2
+  echo >&2
+  echo "If your database is named something else, rerun with that exact name." >&2
   exit 1
 fi
 

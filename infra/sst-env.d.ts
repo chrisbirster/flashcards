@@ -6,11 +6,6 @@
 
 declare module "sst" {
   export interface Resource {
-    "VutadexEmail": {
-      "configSet": string
-      "sender": string
-      "type": "sst.aws.Email"
-    }
     "EmailApi": {
       "name": string
       "type": "sst.aws.Function"

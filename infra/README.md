@@ -3,23 +3,29 @@
 This directory provisions two things with [SST](https://sst.dev/docs/):
 
 1. AWS SES-backed email API used by the Go backend.
-2. Cloudflare-hosted Vutadex web app (`vutadex.com`) from the Vite build in `web/`.
+2. A Cloudflare-hosted marketing `StaticSite` built from `../marketing`.
 
 ## What gets created
 
-- `sst.aws.Email` identity (`VutadexEmail`)
 - `sst.Secret` auth key (`EmailApiKey`)
 - `sst.aws.Function` URL (`EmailApi`) that sends via SES
-- `sst.cloudflare.StaticSite` (`WebSite`) for the browser app
+- `sst.cloudflare.StaticSite` (`WebSite`) that serves the marketing site
+
+When `VUTADEX_MANUAL_SES_IDENTITY=true` (the default), SST only deploys the
+email API Lambda and uses the SES identity you already created manually in AWS.
+That is the recommended mode for Squarespace-managed DNS.
+
+When valid Cloudflare credentials are present, SST deploys the marketing site to
+Cloudflare and attaches it to `vutadex.com`.
 
 ## Prerequisites
 
 1. AWS credentials configured locally.
 2. SES configured in the same AWS region as the SST stack.
-3. Turso CLI installed and authenticated if you want remote non-prod/prod env hydration.
+3. Turso CLI installed and authenticated if you want production env hydration.
 4. Fly CLI installed and authenticated for secret sync + deploy.
 5. Stripe CLI installed if you want local webhook forwarding.
-3. Cloudflare API token and account ID:
+3. Cloudflare API token and account ID if you want SST to deploy the marketing site to `vutadex.com`:
    - `CLOUDFLARE_API_TOKEN`
    - `CLOUDFLARE_DEFAULT_ACCOUNT_ID`
 6. `npm` installed (used to build the Vite app during deploy).
@@ -53,8 +59,19 @@ Required AWS + DNS steps:
 
 Recommended sender settings:
 
-- `VUTADEX_EMAIL_SENDER=no-reply@vutadex.com`
+- `VUTADEX_EMAIL_SENDER=vutadex.com`
 - `VUTADEX_EMAIL_FROM=no-reply@vutadex.com`
+
+If your DNS is on Squarespace, the simplest path is:
+
+1. Create and verify the SES identity for `vutadex.com` manually in AWS.
+2. Add the DKIM CNAME records manually in Squarespace.
+3. Request SES production access.
+4. Deploy SST with `VUTADEX_MANUAL_SES_IDENTITY=true` so SST does not try to recreate the identity or manage DNS.
+
+If you want SST to deploy the root marketing site to `vutadex.com`, that part
+does require valid Cloudflare credentials and Cloudflare-managed DNS for the
+site domain.
 
 If SES verification or sandbox removal is incomplete, the SST function may
 deploy successfully but production OTP mail will not send reliably.
@@ -70,7 +87,6 @@ The simplest pattern for this repo is:
 Recommended env files:
 
 - `.env.local` for SQLite-only local dev
-- `.env.staging` for Turso-backed staging / non-prod
 - `.env.production` for Turso-backed production
 
 Important reality check:
@@ -87,20 +103,22 @@ Important reality check:
 Required:
 
 ```bash
-export CLOUDFLARE_API_TOKEN="<cloudflare-api-token>"
-export CLOUDFLARE_DEFAULT_ACCOUNT_ID="<cloudflare-account-id>"
+export AWS_REGION=us-east-1
 ```
 
 Optional:
 
 ```bash
-export AWS_REGION=us-east-1
-export VUTADEX_EMAIL_SENDER=no-reply@vutadex.com
+export VUTADEX_EMAIL_SENDER=vutadex.com
 export VUTADEX_EMAIL_FROM=no-reply@vutadex.com
 export VUTADEX_EMAIL_API_AUTH_HEADER=Authorization
-
-# Defaults to vutadex.com on production, <stage>.vutadex.com otherwise
+export VUTADEX_MANUAL_SES_IDENTITY=true
+export VUTADEX_ENABLE_MARKETING_SITE=true
 export VUTADEX_WEB_DOMAIN=vutadex.com
+
+# Needed if SST is attaching the marketing site domain in Cloudflare
+export CLOUDFLARE_API_TOKEN="<cloudflare-api-token>"
+export CLOUDFLARE_DEFAULT_ACCOUNT_ID="<cloudflare-account-id>"
 ```
 
 ## Local SQLite dev
@@ -123,20 +141,15 @@ Run backend + app + marketing locally with SQLite:
 ENV_FILE=.env.local task dev:sqlite
 ```
 
-## Staging / production env hydration with Turso
+## Production env hydration with Turso
 
-Hydrate a remote env file directly from Turso without opening the dashboard:
+Hydrate `.env.production` directly from Turso without opening the dashboard:
 
 ```bash
-ENV_FILE=.env.staging \
-TURSO_DB=vutadex-staging \
-APP_ORIGIN=https://staging.app.vutadex.com \
-MARKETING_ORIGIN=https://staging.vutadex.com \
-VUTADEX_ENV=staging \
-task env:hydrate:turso
+TURSO_DB=vutadex-prod task env:hydrate:production
 ```
 
-Production example:
+If you want to override the defaults manually, you can still use the generic task:
 
 ```bash
 ENV_FILE=.env.production \
@@ -160,13 +173,13 @@ That task writes:
 Run the app locally against Turso:
 
 ```bash
-ENV_FILE=.env.staging task dev:turso:app
+ENV_FILE=.env.production task dev:turso:app
 ```
 
 Or with marketing too:
 
 ```bash
-ENV_FILE=.env.staging task dev:turso
+ENV_FILE=.env.production task dev:turso
 ```
 
 ## First-time setup
@@ -180,6 +193,14 @@ npx sst secret set EmailApiKey "<strong-random-token>" --stage production
 
 Before production deploy, verify the SES identity and publish the SES + DKIM
 records in DNS for `vutadex.com`.
+
+If you are using Squarespace DNS and already verified the SES domain manually,
+leave `VUTADEX_MANUAL_SES_IDENTITY=true` and deploy without Cloudflare credentials.
+
+If you want the marketing site on `vutadex.com` through SST, make sure the
+Cloudflare credentials are valid before deploy. Otherwise the email API can
+still deploy, but the marketing site deploy will fail fast with a clear
+Cloudflare configuration error.
 
 ## Stripe setup for subscription billing
 
@@ -206,7 +227,7 @@ Billing behavior:
 
 ### Step 1: put the Stripe secret key into your env file
 
-Add this manually once to `.env.staging` or `.env.production`:
+Add this manually once to `.env.production`:
 
 ```bash
 VUTADEX_STRIPE_SECRET_KEY=sk_live_...
@@ -220,7 +241,7 @@ The repo can create or find the billing product and monthly prices for you and
 write the resulting price IDs back into the same env file:
 
 ```bash
-ENV_FILE=.env.staging task stripe:billing:bootstrap
+ENV_FILE=.env.production task stripe:billing:bootstrap
 ```
 
 That fills:
@@ -307,12 +328,6 @@ fly deploy
 Instead of copying secrets one by one, use the env file as the source of truth:
 
 ```bash
-ENV_FILE=.env.staging FLY_APP=vutadex-staging task secrets:fly:import
-```
-
-Production example:
-
-```bash
 ENV_FILE=.env.production FLY_APP=vutadex-app task secrets:fly:import
 ```
 
@@ -384,7 +399,7 @@ Recommended Stripe webhook targets:
 - `POST /api/marketplace/webhook` for marketplace checkout/account events
 - `POST /api/billing/webhook` for subscription billing events
 
-Because Fly secrets are write-only, prefer updating `.env.staging` / `.env.production`
+Because Fly secrets are write-only, prefer updating `.env.production`
 and re-importing with `task secrets:fly:import` instead of trying to treat Fly as
 the canonical source for configuration.
 

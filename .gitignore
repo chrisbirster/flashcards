@@ -11,6 +11,5 @@ marketing/node_modules
 marketing/dist
 .env
 .env.local
-.env.staging
 .env.production
 **/*/__pycache__/

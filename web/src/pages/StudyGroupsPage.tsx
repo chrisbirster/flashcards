@@ -83,3 +83,12 @@ export function StudyGroupDetailPage() {
     />
   )
 }
+
+export function StudyGroupJoinPage() {
+  return (
+    <StudyGroupsPlaceholder
+      title="Study Group invites are coming soon."
+      description="Invite-based group joins are part of the June 2026 Study Groups release. Until then, direct invite links stay disabled for public users."
+    />
+  )
+}

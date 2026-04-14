@@ -5,6 +5,9 @@ This directory provisions two things with [SST](https://sst.dev/docs/):
 1. AWS SES-backed email API used by the Go backend.
 2. A Cloudflare-hosted marketing `StaticSite` built from `../marketing`.
 
+Quick reference:
+- [Infra Cheatsheet](./CHEATSHEET.md)
+
 ## What gets created
 
 - `sst.Secret` auth key (`EmailApiKey`)

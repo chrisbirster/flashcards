@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router'
 import { APIError, type ImportNotesResponse, type ImportSource } from '#/lib/api'
 import { useAppRepository } from '#/lib/app-repository'
 import { DeckItem } from '#/components/deck-item'
@@ -36,6 +37,7 @@ function SectionToggle({
 export function DecksPage() {
   const repository = useAppRepository()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [newDeckName, setNewDeckName] = useState('')
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importSource, setImportSource] = useState<ImportSource>('auto')
@@ -53,12 +55,13 @@ export function DecksPage() {
 
   const createDeckMutation = useMutation({
     mutationFn: (req: { name: string }) => repository.createDeck(req),
-    onSuccess: () => {
+    onSuccess: (deck) => {
       queryClient.invalidateQueries({ queryKey: ['decks'] })
       queryClient.invalidateQueries({ queryKey: ['entitlements'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
       setNewDeckName('')
       setShowCreateSection(false)
+      navigate(`/notes/add?deckId=${deck.id}`)
     },
   })
 

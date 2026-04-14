@@ -235,9 +235,9 @@ VUTADEX_STRIPE_SECRET_KEY=sk_live_...
 
 This is the one part that still starts in Stripe itself.
 
-### Step 2: bootstrap the Stripe billing product and prices
+### Step 2: bootstrap the Stripe billing products and prices
 
-The repo can create or find the billing product and monthly prices for you and
+The repo can create or find the billing products and monthly prices for you and
 write the resulting price IDs back into the same env file:
 
 ```bash
@@ -249,15 +249,24 @@ That fills:
 - `VUTADEX_STRIPE_BILLING_PRICE_PRO_MONTHLY`
 - `VUTADEX_STRIPE_BILLING_PRICE_TEAM_MONTHLY`
 
+The bootstrap script models plans as separate Stripe products so the customer
+portal can switch between them cleanly:
+
+- `Vutadex Pro`
+- `Vutadex Team`
+
 ### Step 3: configure the Customer Portal in Stripe
 
 In Stripe Dashboard:
 
 1. Turn on subscription management in the Customer Portal.
-2. Allow plan switching between prices on the same product.
-3. Set downgrades to happen **at period end**.
-4. Turn on payment method management and invoice history.
-5. Leave seat quantity changes out of the portal. Team seat counts are managed by the app.
+2. Allow plan switching.
+3. Add both products as eligible switch targets:
+   - `Vutadex Pro`
+   - `Vutadex Team`
+4. Set downgrades to happen **at period end**.
+5. Turn on payment method management and invoice history.
+6. Leave seat quantity changes out of the portal. Team seat counts are managed by the app.
 
 ### Step 4: create the production webhook endpoint in Stripe
 

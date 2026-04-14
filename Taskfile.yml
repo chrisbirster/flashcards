@@ -278,11 +278,30 @@ tasks:
       - task: secrets:fly:import
       - task: deploy:fly
 
-  deploy:marketing:
-    desc: Build and push the marketing site to Cloudflare Pages via Wrangler
+  deploy:infra:
+    desc: Deploy the SST infra stack using ENV_FILE (defaults to .env.production)
     cmds:
-      - cd marketing && bun run build
-      - cd marketing && bunx wrangler pages deploy dist --project-name ${VUTADEX_MARKETING_PAGES_PROJECT}
+      - |
+        ENV_FILE="${ENV_FILE:-.env.production}"
+        if [ ! -f "$ENV_FILE" ]; then
+          echo "Env file not found: $ENV_FILE"
+          exit 1
+        fi
+        set -a
+        . "$ENV_FILE"
+        set +a
+        cd infra
+        bunx sst deploy --stage "${SST_STAGE:-production}"
+
+  deploy:email:
+    desc: Deploy the email/SST infra using ENV_FILE (defaults to .env.production)
+    cmds:
+      - task: deploy:infra
+
+  deploy:marketing:
+    desc: Deploy the marketing site via SST using ENV_FILE (defaults to .env.production)
+    cmds:
+      - task: deploy:infra
 
   deploy:
     desc: Deploy Fly app and marketing site

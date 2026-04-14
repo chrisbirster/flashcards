@@ -10,16 +10,27 @@ import urllib.request
 from pathlib import Path
 
 
-PRODUCT_ID = "vutadex_subscription"
-PRODUCT_NAME = "Vutadex Subscription"
-PRODUCT_DESCRIPTION = "Workspace subscription for Vutadex"
+PRODUCTS = {
+    "pro": {
+        "id": "vutadex_pro_subscription",
+        "name": "Vutadex Pro",
+        "description": "Pro monthly subscription for solo Vutadex learners.",
+    },
+    "team": {
+        "id": "vutadex_team_subscription",
+        "name": "Vutadex Team",
+        "description": "Team monthly subscription for shared Vutadex workspaces.",
+    },
+}
 PRICES = {
     "VUTADEX_STRIPE_BILLING_PRICE_PRO_MONTHLY": {
+        "product_key": "pro",
         "lookup_key": "vutadex_pro_monthly",
         "nickname": "Pro Monthly",
         "unit_amount": "1200",
     },
     "VUTADEX_STRIPE_BILLING_PRICE_TEAM_MONTHLY": {
+        "product_key": "team",
         "lookup_key": "vutadex_team_monthly",
         "nickname": "Team Monthly",
         "unit_amount": "800",
@@ -82,9 +93,9 @@ class StripeAPI:
             message = payload.get("error", {}).get("message", f"Stripe API error {exc.code}")
             raise RuntimeError(message) from exc
 
-    def ensure_product(self) -> dict:
+    def ensure_product(self, product_id: str, name: str, description: str) -> dict:
         try:
-            return self.request("GET", f"/v1/products/{urllib.parse.quote(PRODUCT_ID, safe='')}")
+            return self.request("GET", f"/v1/products/{urllib.parse.quote(product_id, safe='')}")
         except RuntimeError as exc:
             if "No such product" not in str(exc):
                 raise
@@ -92,9 +103,9 @@ class StripeAPI:
             "POST",
             "/v1/products",
             [
-                ("id", PRODUCT_ID),
-                ("name", PRODUCT_NAME),
-                ("description", PRODUCT_DESCRIPTION),
+                ("id", product_id),
+                ("name", name),
+                ("description", description),
             ],
         )
 
@@ -104,25 +115,37 @@ class StripeAPI:
             "/v1/prices",
             [
                 ("lookup_keys[]", lookup_key),
-                ("active", "true"),
                 ("limit", "1"),
             ],
         )
         data = payload.get("data") or []
         return data[0] if data else None
 
-    def create_price(self, lookup_key: str, nickname: str, unit_amount: str) -> dict:
+    def create_price(
+        self,
+        product_id: str,
+        lookup_key: str,
+        nickname: str,
+        unit_amount: str,
+        transfer_lookup_key: bool = False,
+    ) -> dict:
+        params = [
+            ("product", product_id),
+            ("currency", "usd"),
+            ("unit_amount", unit_amount),
+            ("nickname", nickname),
+            ("lookup_key", lookup_key),
+            ("recurring[interval]", "month"),
+        ]
+        if transfer_lookup_key:
+            params.append(("transfer_lookup_key", "true"))
+        return self.request("POST", "/v1/prices", params)
+
+    def set_price_active(self, price_id: str, active: bool) -> dict:
         return self.request(
             "POST",
-            "/v1/prices",
-            [
-                ("product", PRODUCT_ID),
-                ("currency", "usd"),
-                ("unit_amount", unit_amount),
-                ("nickname", nickname),
-                ("lookup_key", lookup_key),
-                ("recurring[interval]", "month"),
-            ],
+            f"/v1/prices/{urllib.parse.quote(price_id, safe='')}",
+            [("active", "true" if active else "false")],
         )
 
 
@@ -149,17 +172,39 @@ def main() -> int:
         return 1
 
     stripe = StripeAPI(secret_key)
-    product = stripe.ensure_product()
+    products = {}
+    for product_key, product_def in PRODUCTS.items():
+        product = stripe.ensure_product(
+            product_def["id"],
+            product_def["name"],
+            product_def["description"],
+        )
+        products[product_key] = product
+        print(f"Using Stripe product {product['id']} ({product.get('name', product_def['name'])})")
 
-    print(f"Using Stripe product {product['id']} ({product.get('name', PRODUCT_NAME)})")
     for env_key, price_def in PRICES.items():
+        desired_product = products[price_def["product_key"]]
         price = stripe.find_price(price_def["lookup_key"])
         if price is None:
             price = stripe.create_price(
+                desired_product["id"],
                 price_def["lookup_key"],
                 price_def["nickname"],
                 price_def["unit_amount"],
             )
+        elif price.get("product") != desired_product["id"]:
+            legacy_price = price
+            price = stripe.create_price(
+                desired_product["id"],
+                price_def["lookup_key"],
+                price_def["nickname"],
+                price_def["unit_amount"],
+                transfer_lookup_key=True,
+            )
+            if legacy_price.get("active", True):
+                stripe.set_price_active(legacy_price["id"], False)
+        elif not price.get("active", True):
+            price = stripe.set_price_active(price["id"], True)
         price_id = price["id"]
         upsert_env(env_file, env_key, price_id)
         print(f"{env_key}={price_id}")

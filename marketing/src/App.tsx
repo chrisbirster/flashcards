@@ -66,6 +66,7 @@ type PricingTier = {
   description: string
   features: string[]
   cta: string
+  href?: string
   featured?: boolean
 }
 
@@ -75,15 +76,26 @@ type Testimonial = {
   role: string
 }
 
+type PublicPage = {
+  title: string
+  href: string
+  description: string
+  icon: IconName
+}
+
 const appOrigin = (
   import.meta.env.VITE_APP_ORIGIN ??
   (import.meta.env.DEV ? 'http://localhost:8000' : 'https://app.vutadex.com')
 ).replace(/\/$/, '')
 
+const supportEmail = 'sales@vutadex.com'
+const supportMailto = `mailto:${supportEmail}?subject=Vutadex%20Support`
+
 const navLinks = [
   {label: 'Features', href: '#features'},
   {label: 'Marketplace', href: '#marketplace'},
   {label: 'Pricing', href: '#pricing'},
+  {label: 'Support', href: '/support/'},
   {label: 'FAQ', href: '#faq'},
 ] as const
 
@@ -114,9 +126,8 @@ const featureCards: FeatureCard[] = [
   },
   {
     title: 'Marketplace',
-    description: 'Publish decks with descriptions, creator identity, and pricing so high-quality collections can travel further.',
+    description: 'Browse, publish, and sell flashcard decks with creator identity, pricing, and install-ready listings.',
     icon: 'market',
-    status: 'Roadmap',
   },
   {
     title: 'Spaced Repetition',
@@ -129,10 +140,9 @@ const featureCards: FeatureCard[] = [
     icon: 'mail',
   },
   {
-    title: 'Study Groups',
-    description: 'Bring deck sharing, member management, and group workflows into the product as Vutadex expands to teams.',
+    title: 'Team Workspaces',
+    description: 'Run role-based workspaces with member management, plan administration, and shared study operations for teams.',
     icon: 'users',
-    status: 'Coming soon',
   },
   {
     title: 'Analytics',
@@ -158,8 +168,8 @@ const steps = [
     icon: 'repeat',
   },
   {
-    title: 'Grow into groups',
-    description: 'Share decks, invite collaborators, and give serious learners a team workflow when they need it.',
+    title: 'Add a team workspace',
+    description: 'Move from solo study into member-managed workspaces when a cohort, school, or organization needs shared operations.',
     icon: 'users',
   },
   {
@@ -229,25 +239,25 @@ const scienceCards: ScienceCard[] = [
   },
 ]
 
-const studyGroupBenefits = [
+const teamBenefits = [
   {
-    title: 'Shared decks',
-    description: 'Pool contributions into a common collection instead of copying files around.',
+    title: 'Role-based access',
+    description: 'Give owners, admins, editors, and readers the right amount of control for the workspace.',
     icon: 'deck',
   },
   {
-    title: 'Leaderboards',
-    description: 'Turn accountability into a visible habit, not a vague intention.',
+    title: 'Member management',
+    description: 'Add and remove members, review access, and keep team ownership clear.',
     icon: 'trophy',
   },
   {
-    title: 'Reminders',
-    description: 'Keep the group moving with nudges, streaks, and lightweight coordination.',
+    title: 'Plan administration',
+    description: 'Manage Team subscriptions, billing status, and member count from the browser.',
     icon: 'bell',
   },
   {
-    title: 'Discussion',
-    description: 'Tie difficult concepts back to the deck and clarify them where the study work lives.',
+    title: 'Shared operating model',
+    description: 'Keep note creation, deck structure, and study operations aligned in one workspace.',
     icon: 'message',
   },
 ] as const
@@ -265,8 +275,8 @@ const pricingTiers: PricingTier[] = [
     name: 'Pro',
     price: '$12',
     cadence: '/month',
-    description: 'For serious learners who need larger limits and publishing paths.',
-    features: ['100 decks', '50,000 notes', 'Deck sharing', 'Backups', 'Marketplace publishing'],
+    description: 'For serious learners who need higher limits, analytics, and publishing paths.',
+    features: ['100 decks', '50,000 notes', 'Analytics and focus tracking', 'Marketplace publishing', 'Priority email support'],
     cta: 'Start Pro',
     featured: true,
   },
@@ -285,6 +295,7 @@ const pricingTiers: PricingTier[] = [
     description: 'For high-scale rollouts, governance controls, and contract-backed limits.',
     features: ['Custom entitlements', 'SSO-ready path', 'Admin controls', 'Volume planning', 'Priority support'],
     cta: 'Talk to Sales',
+    href: `mailto:${supportEmail}?subject=Vutadex%20Enterprise`,
   },
 ]
 
@@ -308,29 +319,56 @@ const testimonials: Testimonial[] = [
 
 const faqItems = [
   {
-    question: 'What makes Vutadex different from a basic flashcard app?',
+    question: 'What does Vutadex sell?',
     answer:
-      'Vutadex is built around note-centric card creation, deck-aware workflows, and a browser-first product path that can grow into marketplace, teams, and sync instead of starting as a one-off local tool.',
+      'Vutadex sells browser-based study workspace subscriptions. Users create notes, generate flashcards, organize decks, review with spaced repetition, and optionally move onto Pro or Team plans.',
   },
   {
-    question: 'Can I start for free?',
+    question: 'How do paid plans work?',
     answer:
-      'Yes. The free tier is intentionally small so you can validate the workflow before committing to larger limits or collaboration features.',
+      'Vutadex offers a Free plan, a Pro plan at $12 per month, a Team plan at $8 per user per month with a 3-seat minimum, and a manual Enterprise path through sales.',
   },
   {
-    question: 'Will deck publishing and marketplace support be part of the product?',
+    question: 'How do cancellation and downgrades work?',
     answer:
-      'Yes. The marketing direction already accounts for marketplace publishing, creator identity, and free or paid deck distribution as the next product layers roll out.',
+      'When a paid plan is canceled or downgraded, paid access remains active through the end of the current billing period. The public cancellation and refund page explains what is already defined and what policy language still needs owner confirmation.',
   },
   {
-    question: 'Are study groups available yet?',
+    question: 'How do I get support?',
     answer:
-      'Study Groups are part of the near-term direction. The marketing site positions them clearly, while the app currently exposes the placeholder route and the team-oriented product path.',
+      `Use ${supportEmail} for support, billing questions, OTP login issues, and enterprise planning. The public contact and support pages are linked in the footer and support section below.`,
   },
   {
-    question: 'How does login work?',
+    question: 'Where can I read privacy, terms, and refund details?',
     answer:
-      'The app uses one-time passcodes sent by email with secure HttpOnly cookies managed by the server. In local development, the code is exposed directly in the UI.',
+      'The site now includes dedicated Privacy Policy, Terms of Service, Contact / Support, and Cancellation / Refund Policy pages so reviewers and customers can reach them directly.',
+  },
+] as const
+
+const publicPages: PublicPage[] = [
+  {
+    title: 'Privacy Policy',
+    href: '/privacy/',
+    description: 'How Vutadex handles account, study, and subscription data.',
+    icon: 'shield',
+  },
+  {
+    title: 'Terms of Service',
+    href: '/terms/',
+    description: 'How the browser-based study workspace and paid plans work.',
+    icon: 'note',
+  },
+  {
+    title: 'Contact / Support',
+    href: '/support/',
+    description: `Public support details and the main support email at ${supportEmail}.`,
+    icon: 'mail',
+  },
+  {
+    title: 'Cancellation / Refund Policy',
+    href: '/refunds/',
+    description: 'What the current billing flow already supports and what final policy text still needs owner confirmation.',
+    icon: 'repeat',
   },
 ] as const
 
@@ -740,7 +778,7 @@ export function App() {
                 </h1>
 
                 <p className="mt-8 max-w-2xl text-xl leading-9 text-[var(--muted)]">
-                  Turn notes into structured decks, keep recent context visible while you create, and grow into marketplace and team workflows without leaving the browser.
+                  Vutadex is a browser-based flashcard and study workspace. Create notes, turn them into cards, review with spaced repetition, and subscribe to Free, Pro, or Team plans without leaving the browser.
                 </p>
 
                 <div className="mt-10 flex flex-col gap-4 sm:flex-row">
@@ -785,7 +823,7 @@ export function App() {
                       </div>
                       <div className="inline-flex items-center gap-2 rounded-full bg-[rgba(112,214,108,0.12)] px-3 py-1 text-sm text-[var(--accent)]">
                         <Icon name="users" className="h-4 w-4" />
-                        Study Group
+                        Team-ready
                       </div>
                     </div>
 
@@ -838,7 +876,7 @@ export function App() {
                     </div>
                     <div>
                       <p className="text-base font-semibold text-white">Team-ready path</p>
-                      <p className="text-sm text-[var(--muted)]">Study groups and shared decks</p>
+                      <p className="text-sm text-[var(--muted)]">Team workspaces and shared operations</p>
                     </div>
                   </div>
                 </div>
@@ -898,7 +936,7 @@ export function App() {
             <SectionHeading
               eyebrow="How It Works"
               title="From notes to mastery in five clean steps"
-              description="The flow stays simple: capture, template, review, collaborate, and keep refining the collection instead of starting over."
+              description="The flow stays simple: capture, template, review, add team operations when needed, and keep refining the collection instead of starting over."
               center
             />
 
@@ -1014,13 +1052,13 @@ export function App() {
             <div className="grid gap-12 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">
               <div>
                 <SectionHeading
-                  eyebrow="Study Groups"
-                  title="A collaboration layer that fits the deck model"
-                  description="Study Groups are the natural extension of Vutadex: shared decks, member roles, accountability, and collaborative study surfaces built around the same collection model."
+                  eyebrow="Team Workspaces"
+                  title="A team layer that matches the study workspace model"
+                  description="Vutadex can grow from solo use into team workspaces with member roles, plan administration, and shared operating surfaces built around the same note and deck model."
                 />
 
                 <div className="mt-10 grid gap-6 sm:grid-cols-2">
-                  {studyGroupBenefits.map((benefit) => (
+                  {teamBenefits.map((benefit) => (
                     <div key={benefit.title} className="flex gap-4">
                       <span className="mt-1 inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[rgba(112,214,108,0.1)] text-[var(--accent)]">
                         <Icon name={benefit.icon} className="h-6 w-6" />
@@ -1034,8 +1072,8 @@ export function App() {
                 </div>
 
                 <div className="mt-10">
-                  <ButtonLink href={primaryHref} variant="primary">
-                    Create a Study Group
+                  <ButtonLink href={`mailto:${supportEmail}?subject=Vutadex%20Team%20Plan`} variant="primary">
+                    Talk to sales about Team
                   </ButtonLink>
                 </div>
               </div>
@@ -1045,22 +1083,22 @@ export function App() {
                   <div className="flex items-center gap-4">
                     <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--accent)] text-xl font-black text-black">MS</div>
                     <div>
-                      <h3 className="text-2xl font-bold text-white">Med School Study Group</h3>
-                      <p className="text-base text-[var(--muted)]">12 members • 8 online</p>
+                      <h3 className="text-2xl font-bold text-white">Clinical Skills Team Workspace</h3>
+                      <p className="text-base text-[var(--muted)]">12 members • Team plan • 8 online</p>
                     </div>
                   </div>
-                  <ButtonLink href={primaryHref} variant="secondary" className="px-4 py-2.5">
-                    Invite
+                  <ButtonLink href={supportMailto} variant="secondary" className="px-4 py-2.5">
+                    Contact
                   </ButtonLink>
                 </div>
 
                 <div className="mt-6 rounded-[1.5rem] border border-[var(--line)] bg-black/35 p-5">
-                  <h4 className="text-xl font-bold text-white">Weekly leaderboard</h4>
+                  <h4 className="text-xl font-bold text-white">Workspace activity</h4>
                   <div className="mt-4 space-y-4">
                     {[
-                      {rank: '1', name: 'Alex K.', cards: '847 cards', streak: '14 day streak'},
-                      {rank: '2', name: 'Sarah M.', cards: '723 cards', streak: '9 day streak'},
-                      {rank: '3', name: 'Jordan P.', cards: '651 cards', streak: '7 day streak'},
+                      {rank: '1', name: 'Alex K.', cards: '847 cards reviewed', streak: 'Owner'},
+                      {rank: '2', name: 'Sarah M.', cards: '723 cards reviewed', streak: 'Admin'},
+                      {rank: '3', name: 'Jordan P.', cards: '651 cards reviewed', streak: 'Editor'},
                     ].map((person) => (
                       <div key={person.name} className="flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
@@ -1079,19 +1117,19 @@ export function App() {
                 </div>
 
                 <div className="mt-6 rounded-[1.5rem] border border-[var(--line)] bg-black/35 p-5">
-                  <h4 className="text-xl font-bold text-white">Shared decks</h4>
+                  <h4 className="text-xl font-bold text-white">Team workspace controls</h4>
                   <div className="mt-4 space-y-4">
                     {[
-                      {name: 'Anatomy - Upper Limb', meta: '234 cards • updated 2h ago'},
-                      {name: 'Pharmacology Basics', meta: '189 cards • updated 1d ago'},
+                      {name: 'Member roles', meta: 'Owner, admin, edit, and read controls'},
+                      {name: 'Plan management', meta: 'Workspace billing and seat-aware administration'},
                     ].map((deck) => (
                       <div key={deck.name} className="flex items-center justify-between rounded-2xl border border-[var(--line)] bg-white/4 px-4 py-4">
                         <div>
                           <p className="text-lg font-semibold text-white">{deck.name}</p>
                           <p className="mt-1 text-sm text-[var(--muted)]">{deck.meta}</p>
                         </div>
-                        <ButtonLink href={primaryHref} variant="ghost" className="px-4 py-2">
-                          Study
+                        <ButtonLink href={supportMailto} variant="ghost" className="px-4 py-2">
+                          Ask
                         </ButtonLink>
                       </div>
                     ))}
@@ -1107,7 +1145,7 @@ export function App() {
             <SectionHeading
               eyebrow="Pricing"
               title="Simple pricing that maps to how the product grows"
-              description="Start small, unlock more when the collection deserves it, and move into organization workflows without switching tools."
+              description="Vutadex sells monthly browser-based study workspace subscriptions: Free, Pro at $12 per month, Team at $8 per user per month with a 3-seat minimum, and Enterprise through sales."
               center
             />
 
@@ -1142,12 +1180,76 @@ export function App() {
                   </ul>
 
                   <div className="mt-8">
-                    <ButtonLink href={primaryHref} variant={tier.featured ? 'primary' : 'secondary'} className="w-full justify-center">
+                    <ButtonLink href={tier.href ?? primaryHref} variant={tier.featured ? 'primary' : 'secondary'} className="w-full justify-center">
                       {tier.cta}
                     </ButtonLink>
                   </div>
                 </article>
               ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="border-b border-[var(--line)] py-24">
+          <div className="mx-auto max-w-7xl px-6">
+            <div className="grid gap-10 lg:grid-cols-[1.02fr_0.98fr] lg:items-start">
+              <div>
+                <SectionHeading
+                  eyebrow="Support & Policies"
+                  title="Public details reviewers and buyers can verify quickly"
+                  description="The core product is a browser-based flashcard and study workspace at app.vutadex.com. Paid plans are sold as subscriptions, support is handled by email, and public policy pages are linked directly below."
+                />
+
+                <div className="mt-10 rounded-[2rem] border border-[var(--line)] bg-[var(--card)] p-8">
+                  <h3 className="text-2xl font-bold tracking-tight text-white">What Vutadex sells</h3>
+                  <ul className="mt-6 space-y-4 text-base text-[var(--text-soft)]">
+                    <li className="flex items-start gap-3">
+                      <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(112,214,108,0.1)] text-[var(--accent)]">
+                        <Icon name="check" className="h-3.5 w-3.5" />
+                      </span>
+                      <span>Browser-based flashcard and study workspace access at {appOrigin}.</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(112,214,108,0.1)] text-[var(--accent)]">
+                        <Icon name="check" className="h-3.5 w-3.5" />
+                      </span>
+                      <span>Free, Pro ($12/month), Team ($8/user/month with a 3-seat minimum), and Enterprise sales-led plans.</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(112,214,108,0.1)] text-[var(--accent)]">
+                        <Icon name="check" className="h-3.5 w-3.5" />
+                      </span>
+                      <span>Support, billing, and enterprise questions handled at <a href={supportMailto} className="text-[var(--accent)] hover:text-white">{supportEmail}</a>.</span>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <span className="mt-0.5 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[rgba(112,214,108,0.1)] text-[var(--accent)]">
+                        <Icon name="check" className="h-3.5 w-3.5" />
+                      </span>
+                      <span>Cancellation timing is documented publicly, and the remaining refund-policy language that still needs owner input is called out explicitly.</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="grid gap-5 sm:grid-cols-2">
+                {publicPages.map((page) => (
+                  <a
+                    key={page.title}
+                    href={page.href}
+                    className="group rounded-[1.8rem] border border-[var(--line)] bg-[var(--card)] p-6 transition hover:-translate-y-1 hover:border-[var(--accent)] hover:bg-[var(--card-strong)]"
+                  >
+                    <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-[rgba(112,214,108,0.1)] text-[var(--accent)] transition group-hover:bg-[var(--accent)] group-hover:text-black">
+                      <Icon name={page.icon} className="h-7 w-7" />
+                    </span>
+                    <h3 className="mt-5 text-2xl font-bold tracking-tight text-white">{page.title}</h3>
+                    <p className="mt-3 text-base leading-8 text-[var(--muted)]">{page.description}</p>
+                    <div className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[var(--accent)]">
+                      Open page
+                      <Icon name="arrow-right" className="h-4 w-4" />
+                    </div>
+                  </a>
+                ))}
+              </div>
             </div>
           </div>
         </section>
@@ -1235,18 +1337,18 @@ export function App() {
                   Start building with Vutadex
                 </h2>
                 <p className="mx-auto mt-6 max-w-3xl text-xl leading-9 text-[var(--muted)]">
-                  Launch from the browser today, use the free tier to test the workflow, and grow into publishing, teams, and sync as the product expands.
+                  Start on the free plan, upgrade to Pro or Team when the workspace needs more, and use the public policy and support pages when you need billing or account clarity.
                 </p>
                 <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
                   <ButtonLink href={primaryHref} variant="primary" className="sm:px-6 sm:py-3.5">
                     Start Studying Free
                     <Icon name="arrow-right" className="h-4 w-4" />
                   </ButtonLink>
-                  <ButtonLink href="#marketplace" variant="secondary" className="sm:px-6 sm:py-3.5">
-                    Explore Marketplace
+                  <ButtonLink href="/support/" variant="secondary" className="sm:px-6 sm:py-3.5">
+                    Contact support
                   </ButtonLink>
                 </div>
-                <p className="mt-8 text-sm text-[var(--muted)]">Free tier available • OTP login • Browser-first • Team path ready</p>
+                <p className="mt-8 text-sm text-[var(--muted)]">Free tier available • OTP login • Public pricing • Privacy, terms, contact, and refund pages linked below</p>
               </div>
             </div>
           </div>
@@ -1274,20 +1376,21 @@ export function App() {
             </div>
 
             <div>
-              <h3 className="text-lg font-semibold text-white">Platform</h3>
+              <h3 className="text-lg font-semibold text-white">Support</h3>
               <ul className="mt-4 space-y-3 text-[var(--muted)]">
-                <li><a href={`${appOrigin}/notes/view`} className="transition hover:text-white">Notes</a></li>
-                <li><a href={`${appOrigin}/templates`} className="transition hover:text-white">Templates</a></li>
-                <li><a href={`${appOrigin}/decks`} className="transition hover:text-white">Decks</a></li>
-                <li><a href={`${appOrigin}/study-groups`} className="transition hover:text-white">Study Groups</a></li>
+                <li><a href="/contact/" className="transition hover:text-white">Contact</a></li>
+                <li><a href="/support/" className="transition hover:text-white">Support</a></li>
+                <li><a href={supportMailto} className="transition hover:text-white">{supportEmail}</a></li>
+                <li><a href="#faq" className="transition hover:text-white">FAQ</a></li>
               </ul>
             </div>
 
             <div>
               <h3 className="text-lg font-semibold text-white">Legal</h3>
               <ul className="mt-4 space-y-3 text-[var(--muted)]">
-                <li><a href="#faq" className="transition hover:text-white">FAQ</a></li>
-                <li><a href={primaryHref} className="transition hover:text-white">Log in</a></li>
+                <li><a href="/privacy/" className="transition hover:text-white">Privacy Policy</a></li>
+                <li><a href="/terms/" className="transition hover:text-white">Terms of Service</a></li>
+                <li><a href="/refunds/" className="transition hover:text-white">Cancellation / Refunds</a></li>
                 <li><a href={primaryHref} className="transition hover:text-white">Start free</a></li>
               </ul>
             </div>
@@ -1297,6 +1400,10 @@ export function App() {
             <p>© 2026 Vutadex. All rights reserved.</p>
             <div className="flex items-center gap-6">
               <a href="#pricing" className="transition hover:text-white">Pricing</a>
+              <a href="/support/" className="transition hover:text-white">Support</a>
+              <a href="/privacy/" className="transition hover:text-white">Privacy</a>
+              <a href="/terms/" className="transition hover:text-white">Terms</a>
+              <a href="/refunds/" className="transition hover:text-white">Refunds</a>
               <a href="#faq" className="transition hover:text-white">FAQ</a>
             </div>
           </div>

@@ -194,4 +194,63 @@ describe("StudyScreen", () => {
     );
     await waitFor(() => expect(onExit).toHaveBeenCalled());
   });
+
+  it("shows the next card instead of erroring when the queue shrinks after an answer", async () => {
+    const repository = {
+      fetchDueCards: vi.fn().mockResolvedValue([
+        {
+          id: 10,
+          noteId: 20,
+          deckId: 1,
+          templateName: "Card 1",
+          ordinal: 0,
+          front: "<p>Question 1</p>",
+          back: "<p>Answer 1</p>",
+          flag: 0,
+          marked: false,
+          suspended: false,
+        },
+        {
+          id: 11,
+          noteId: 21,
+          deckId: 1,
+          templateName: "Card 1",
+          ordinal: 0,
+          front: "<p>Question 2</p>",
+          back: "<p>Answer 2</p>",
+          flag: 0,
+          marked: false,
+          suspended: false,
+        },
+      ]),
+      createStudySession: vi.fn().mockResolvedValue(buildStudySession()),
+      answerCard: vi.fn().mockResolvedValue({
+        id: 10,
+        noteId: 20,
+        deckId: 1,
+        templateName: "Card 1",
+        ordinal: 0,
+        front: "<p>Question 1</p>",
+        back: "<p>Answer 1</p>",
+        flag: 0,
+        marked: false,
+        suspended: false,
+      }),
+      updateStudySession: vi.fn().mockResolvedValue(buildStudySession()),
+      updateCard: vi.fn(),
+    } as unknown as AppRepository;
+
+    renderStudyScreen(repository);
+
+    expect(
+      await screen.findByRole("button", { name: "Show Answer" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Question 1/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show Answer" }));
+    fireEvent.click(screen.getByRole("button", { name: /Good/i }));
+
+    expect(await screen.findByText(/Question 2/i)).toBeInTheDocument();
+    expect(screen.queryByText("Error loading card.")).not.toBeInTheDocument();
+  });
 });

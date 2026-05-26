@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import DOMPurify from "dompurify";
 import { useAppRepository } from "#/lib/app-repository";
+import type { Card } from "#/lib/api";
 import { ActionBar } from "#/components/action-bar";
 import {
   EmptyState,
@@ -134,11 +135,6 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
       rating: number;
       timeTakenMs: number;
     }) => repository.answerCard(cardId, { rating, timeTakenMs }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["due-cards", deckId] });
-      queryClient.invalidateQueries({ queryKey: ["deck-stats", deckId] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
   });
 
   const updateCardMutation = useMutation({
@@ -153,8 +149,22 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
       marked?: boolean;
       suspended?: boolean;
     }) => repository.updateCard(cardId, { flag, marked, suspended }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["due-cards", deckId] });
+    onSuccess: (updatedCard, variables) => {
+      queryClient.setQueryData<Card[] | undefined>(
+        ["due-cards", deckId],
+        (currentCards) => {
+          if (!currentCards) {
+            return currentCards;
+          }
+          if (variables.suspended) {
+            return currentCards.filter((card) => card.id !== variables.cardId);
+          }
+          return currentCards.map((card) =>
+            card.id === updatedCard.id ? updatedCard : card,
+          );
+        },
+      );
+      queryClient.invalidateQueries({ queryKey: ["deck-stats", deckId] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       setShowFlagMenu(false);
     },
@@ -181,7 +191,9 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
   });
 
   const currentCard = cards?.[currentCardIndex];
-  const progress = `${currentCardIndex + 1} / ${cards?.length ?? 0}`;
+  const totalCards = sessionProgress.cardsReviewed + (cards?.length ?? 0);
+  const progress =
+    totalCards > 0 ? `${sessionProgress.cardsReviewed + 1} / ${totalCards}` : "0 / 0";
 
   const ensureStudySession = useCallback(async () => {
     if (studySessionId) {
@@ -256,11 +268,19 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
       const isLastCard = Boolean(cards && currentCardIndex >= cards.length - 1);
 
       try {
-        await answerMutation.mutateAsync({
+        const answeredCard = await answerMutation.mutateAsync({
           cardId: currentCard.id,
           rating,
           timeTakenMs,
         });
+        queryClient.setQueryData<Card[] | undefined>(
+          ["due-cards", deckId],
+          (currentCards) =>
+            currentCards?.filter((card) => card.id !== answeredCard.id) ??
+            currentCards,
+        );
+        queryClient.invalidateQueries({ queryKey: ["deck-stats", deckId] });
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       } catch (error) {
         console.error("Failed to answer card", error);
         return;
@@ -278,18 +298,19 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
         return;
       }
 
-      setCurrentCardIndex((index) => index + 1);
       setShowAnswer(false);
       questionStartTimeRef.current = Date.now();
       void persistPromise;
     },
     [
       answerMutation,
+      deckId,
       cards,
       currentCard,
       currentCardIndex,
       onExit,
       persistStudySessionProgress,
+      queryClient,
       sessionProgress,
     ],
   );
@@ -359,6 +380,15 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
       questionStartTimeRef.current = Date.now();
     }
   }, [currentCard]);
+
+  useEffect(() => {
+    if (!cards || cards.length === 0) {
+      return;
+    }
+    if (currentCardIndex >= cards.length) {
+      setCurrentCardIndex(cards.length - 1);
+    }
+  }, [cards, currentCardIndex]);
 
   useEffect(() => {
     if (

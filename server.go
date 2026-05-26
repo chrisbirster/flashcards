@@ -171,10 +171,6 @@ func (h *APIHandler) ListDecks(w http.ResponseWriter, r *http.Request) {
 	}
 	userID := h.userIDFromRequest(r)
 	session := h.sessionFromRequest(r)
-	if err := h.store.EnsureReviewStatesForUser(userID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
 	workspaceID := ""
 	if session != nil {
 		workspaceID = session.WorkspaceID
@@ -661,12 +657,6 @@ func (h *APIHandler) GetCard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *APIHandler) AnswerCard(w http.ResponseWriter, r *http.Request) {
-	col, _, err := h.collectionForRequest(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
 	id, err := parseIDParam(r, "id")
 	if err != nil {
 		http.Error(w, "Invalid card ID", http.StatusBadRequest)
@@ -691,7 +681,11 @@ func (h *APIHandler) AnswerCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sched := fsrs.NewFSRS(col.Params).Repeat(card.SRS, time.Now())
+	params := defaultFSRSParameters()
+	if h.collection != nil {
+		params = h.collection.Params
+	}
+	sched := fsrs.NewFSRS(params).Repeat(card.SRS, time.Now())
 	info, ok := sched[fsrs.Rating(req.Rating)]
 	if !ok {
 		http.Error(w, "Unable to schedule card review", http.StatusInternalServerError)

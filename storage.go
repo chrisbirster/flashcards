@@ -983,6 +983,29 @@ func (s *SQLiteStore) EnsureReviewStatesForUser(userID string) error {
 	return err
 }
 
+func (s *SQLiteStore) EnsureReviewStatesForDeck(userID string, deckID int64) error {
+	if strings.TrimSpace(userID) == "" {
+		return nil
+	}
+
+	now := time.Now()
+	initialCard := defaultReviewStateCard(now)
+	fsrsJSON, err := json.Marshal(initialCard)
+	if err != nil {
+		return err
+	}
+
+	_, err = s.db.Exec(`
+		INSERT OR IGNORE INTO card_review_states (
+			user_id, card_id, due, state, fsrs_data, flag, marked, suspended, updated_at
+		)
+		SELECT ?, c.id, ?, ?, ?, 0, 0, 0, ?
+		FROM cards c
+		WHERE c.deck_id = ?
+	`, userID, initialCard.Due.Unix(), int(initialCard.State), fsrsJSON, now.Unix(), deckID)
+	return err
+}
+
 func (s *SQLiteStore) applyReviewStateToCard(userID string, card *Card) error {
 	if strings.TrimSpace(userID) == "" {
 		return nil
@@ -1031,6 +1054,143 @@ func (s *SQLiteStore) GetCardForUser(userID string, id int64) (*Card, error) {
 		return nil, err
 	}
 	return card, nil
+}
+
+func (s *SQLiteStore) GetCardsByIDs(ids []int64) ([]*Card, error) {
+	if len(ids) == 0 {
+		return []*Card{}, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	query := fmt.Sprintf(`
+		SELECT id, note_id, deck_id, template_name, ordinal, front, back,
+		       due, state, fsrs_data, flag, marked, suspended, usn
+		FROM cards
+		WHERE id IN (%s)
+	`, placeholders)
+
+	args := make([]interface{}, 0, len(ids))
+	for _, id := range ids {
+		args = append(args, id)
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cardsByID := make(map[int64]*Card, len(ids))
+	for rows.Next() {
+		var (
+			card      Card
+			dueUnix   int64
+			state     int
+			fsrsJSON  []byte
+			marked    int
+			suspended int
+		)
+
+		if err := rows.Scan(&card.ID, &card.NoteID, &card.DeckID, &card.TemplateName, &card.Ordinal,
+			&card.Front, &card.Back, &dueUnix, &state, &fsrsJSON, &card.Flag, &marked, &suspended, &card.USN); err != nil {
+			return nil, err
+		}
+
+		card.Marked = marked == 1
+		card.Suspended = suspended == 1
+		if err := json.Unmarshal(fsrsJSON, &card.SRS); err != nil {
+			return nil, err
+		}
+		card.SRS.Due = time.Unix(dueUnix, 0)
+		card.SRS.State = fsrs.State(state)
+
+		cardCopy := card
+		cardsByID[card.ID] = &cardCopy
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	cards := make([]*Card, 0, len(ids))
+	for _, id := range ids {
+		card, ok := cardsByID[id]
+		if !ok {
+			return nil, sql.ErrNoRows
+		}
+		cards = append(cards, card)
+	}
+	return cards, nil
+}
+
+func (s *SQLiteStore) GetCardsForUserByIDs(userID string, ids []int64) ([]*Card, error) {
+	if strings.TrimSpace(userID) == "" {
+		return s.GetCardsByIDs(ids)
+	}
+	if len(ids) == 0 {
+		return []*Card{}, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	query := fmt.Sprintf(`
+		SELECT c.id, c.note_id, c.deck_id, c.template_name, c.ordinal, c.front, c.back,
+		       rs.due, rs.state, rs.fsrs_data, rs.flag, rs.marked, rs.suspended, c.usn
+		FROM cards c
+		JOIN card_review_states rs ON rs.card_id = c.id
+		WHERE rs.user_id = ? AND c.id IN (%s)
+	`, placeholders)
+
+	args := make([]interface{}, 0, len(ids)+1)
+	args = append(args, userID)
+	for _, id := range ids {
+		args = append(args, id)
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cardsByID := make(map[int64]*Card, len(ids))
+	for rows.Next() {
+		var (
+			card      Card
+			dueUnix   int64
+			state     int
+			fsrsJSON  []byte
+			marked    int
+			suspended int
+		)
+
+		if err := rows.Scan(&card.ID, &card.NoteID, &card.DeckID, &card.TemplateName, &card.Ordinal,
+			&card.Front, &card.Back, &dueUnix, &state, &fsrsJSON, &card.Flag, &marked, &suspended, &card.USN); err != nil {
+			return nil, err
+		}
+
+		card.Marked = marked == 1
+		card.Suspended = suspended == 1
+		if err := json.Unmarshal(fsrsJSON, &card.SRS); err != nil {
+			return nil, err
+		}
+		card.SRS.Due = time.Unix(dueUnix, 0)
+		card.SRS.State = fsrs.State(state)
+
+		cardCopy := card
+		cardsByID[card.ID] = &cardCopy
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	cards := make([]*Card, 0, len(ids))
+	for _, id := range ids {
+		card, ok := cardsByID[id]
+		if !ok {
+			return nil, sql.ErrNoRows
+		}
+		cards = append(cards, card)
+	}
+	return cards, nil
 }
 
 func (s *SQLiteStore) UpdateCard(c *Card) error {
@@ -1222,6 +1382,67 @@ func (s *SQLiteStore) getTodayReviewedCountsForUser(userID string, deckID int64,
 	return newReviewed, reviewed, nil
 }
 
+func (s *SQLiteStore) countDueCardsByStates(deckID, now int64, states []int) (int, error) {
+	if len(states) == 0 {
+		return 0, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(states)), ",")
+	query := fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM cards
+		WHERE deck_id = ?
+		  AND due <= ?
+		  AND suspended = 0
+		  AND state IN (%s)
+	`, placeholders)
+
+	args := make([]interface{}, 0, 2+len(states))
+	args = append(args, deckID, now)
+	for _, state := range states {
+		args = append(args, state)
+	}
+
+	var count int
+	if err := s.db.QueryRow(query, args...).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (s *SQLiteStore) countDueCardsByStatesForUser(userID string, deckID, now int64, states []int) (int, error) {
+	if strings.TrimSpace(userID) == "" {
+		return s.countDueCardsByStates(deckID, now, states)
+	}
+	if len(states) == 0 {
+		return 0, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(states)), ",")
+	query := fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM cards c
+		JOIN card_review_states rs ON rs.card_id = c.id
+		WHERE rs.user_id = ?
+		  AND c.deck_id = ?
+		  AND rs.due <= ?
+		  AND rs.suspended = 0
+		  AND rs.state IN (%s)
+	`, placeholders)
+
+	args := make([]interface{}, 0, 3+len(states))
+	args = append(args, userID, deckID, now)
+	for _, state := range states {
+		args = append(args, state)
+	}
+
+	var count int
+	if err := s.db.QueryRow(query, args...).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (s *SQLiteStore) getDueCardIDsByStates(deckID, now int64, states []int, limit int) ([]int64, error) {
 	if len(states) == 0 || limit <= 0 {
 		return []int64{}, nil
@@ -1333,7 +1554,11 @@ func (s *SQLiteStore) GetDueCards(deckID int64, limit int) ([]*Card, error) {
 	if reviewRemaining < 0 {
 		reviewRemaining = 0
 	}
-	if stats, err := s.GetDeckStats(deckID); err == nil && stats.DueReviewBacklog > reviewLimit {
+	reviewBacklog, err := s.countDueCardsByStates(deckID, now, []int{int(fsrs.Review), int(fsrs.Relearning)})
+	if err != nil {
+		return nil, err
+	}
+	if reviewBacklog > reviewLimit {
 		newRemaining = 0
 	}
 
@@ -1369,16 +1594,7 @@ func (s *SQLiteStore) GetDueCards(deckID int64, limit int) ([]*Card, error) {
 		return nil, err
 	}
 
-	cards := make([]*Card, 0, len(cardIDs))
-	for _, cardID := range cardIDs {
-		card, err := s.GetCard(cardID)
-		if err != nil {
-			return nil, err
-		}
-		cards = append(cards, card)
-	}
-
-	return cards, nil
+	return s.GetCardsByIDs(cardIDs)
 }
 
 func (s *SQLiteStore) GetDueCardsForUser(userID string, deckID int64, limit int) ([]*Card, error) {
@@ -1389,7 +1605,7 @@ func (s *SQLiteStore) GetDueCardsForUser(userID string, deckID int64, limit int)
 		return []*Card{}, nil
 	}
 
-	if err := s.EnsureReviewStatesForUser(userID); err != nil {
+	if err := s.EnsureReviewStatesForDeck(userID, deckID); err != nil {
 		return nil, err
 	}
 
@@ -1413,7 +1629,11 @@ func (s *SQLiteStore) GetDueCardsForUser(userID string, deckID int64, limit int)
 	if reviewRemaining < 0 {
 		reviewRemaining = 0
 	}
-	if stats, err := s.GetDeckStatsForUser(userID, deckID); err == nil && stats.DueReviewBacklog > reviewLimit {
+	reviewBacklog, err := s.countDueCardsByStatesForUser(userID, deckID, now, []int{int(fsrs.Review), int(fsrs.Relearning)})
+	if err != nil {
+		return nil, err
+	}
+	if reviewBacklog > reviewLimit {
 		newRemaining = 0
 	}
 
@@ -1445,16 +1665,7 @@ func (s *SQLiteStore) GetDueCardsForUser(userID string, deckID int64, limit int)
 		return nil, err
 	}
 
-	cards := make([]*Card, 0, len(cardIDs))
-	for _, cardID := range cardIDs {
-		card, err := s.GetCardForUser(userID, cardID)
-		if err != nil {
-			return nil, err
-		}
-		cards = append(cards, card)
-	}
-
-	return cards, nil
+	return s.GetCardsForUserByIDs(userID, cardIDs)
 }
 
 func (s *SQLiteStore) ListCardsInDeck(deckID int64) ([]*Card, error) {
@@ -1629,7 +1840,7 @@ func (s *SQLiteStore) GetDeckStatsForUser(userID string, deckID int64) (*DeckSta
 	if strings.TrimSpace(userID) == "" {
 		return s.GetDeckStats(deckID)
 	}
-	if err := s.EnsureReviewStatesForUser(userID); err != nil {
+	if err := s.EnsureReviewStatesForDeck(userID, deckID); err != nil {
 		return nil, err
 	}
 

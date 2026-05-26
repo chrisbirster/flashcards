@@ -267,12 +267,13 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
       }
 
       setSessionProgress(nextProgress);
-      await persistStudySessionProgress(
+      const persistPromise = persistStudySessionProgress(
         nextProgress,
         isLastCard ? "completed" : undefined,
       );
 
       if (isLastCard) {
+        await persistPromise;
         onExit();
         return;
       }
@@ -280,6 +281,7 @@ export function StudyScreen({ deckId, deckName, onExit }: StudyScreenProps) {
       setCurrentCardIndex((index) => index + 1);
       setShowAnswer(false);
       questionStartTimeRef.current = Date.now();
+      void persistPromise;
     },
     [
       answerMutation,

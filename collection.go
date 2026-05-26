@@ -168,12 +168,6 @@ type Collection struct {
 }
 
 func NewCollection() *Collection {
-	p := fsrs.DefaultParam()
-	// Match Anki conceptually: desired retention ~ 0.90-0.95 common starting points
-	p.RequestRetention = 0.90
-	// MaximumInterval is in days in go-fsrs params
-	p.MaximumInterval = 36500 // ~100 years; tune later
-
 	return &Collection{
 		nextNoteID: 1,
 		nextCardID: 1,
@@ -182,12 +176,21 @@ func NewCollection() *Collection {
 		Notes:      make(map[int64]Note),
 		Cards:      make(map[int64]*Card),
 		Decks:      make(map[int64]*Deck),
-		Params:     p,
+		Params:     defaultFSRSParameters(),
 		Revlog:     nil,
 		Media:      make(map[string]*MediaRef),
 		USN:        0,
 		LastSync:   time.Time{}, // zero time = never synced
 	}
+}
+
+func defaultFSRSParameters() fsrs.Parameters {
+	p := fsrs.DefaultParam()
+	// Match Anki conceptually: desired retention ~ 0.90-0.95 common starting points
+	p.RequestRetention = 0.90
+	// MaximumInterval is in days in go-fsrs params
+	p.MaximumInterval = 36500 // ~100 years; tune later
+	return p
 }
 
 func (c *Collection) NewDeck(name string) *Deck {

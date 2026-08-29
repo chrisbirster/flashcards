@@ -1,25 +1,11 @@
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite";
-import path from "path";
+import solid from "@solidjs/vite-plugin";
+import stylex from "@stylexjs/unplugin/vite";
 
-// https://vite.dev/config/
 export default defineConfig({
-  plugins: [
-    react({
-      babel: {
-        plugins: [["babel-plugin-react-compiler"]],
-      },
-    }),
-    tailwindcss(),
-  ],
-  resolve: {
-    alias: {
-      '#': path.resolve(__dirname, './src'),
-    },
-  },
+  plugins: [stylex(), solid()],
   server: {
-    port: 3000,
+    port: 5173,
     strictPort: true,
     proxy: {
       "/api": "http://localhost:8000",

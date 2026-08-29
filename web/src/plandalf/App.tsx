@@ -1,4 +1,5 @@
-import { For, Show, createSignal, onMount } from "solid-js";
+import { createSignal, onSettled } from "solid-js";
+import { For, Show } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import {
   ApiError,
@@ -109,7 +110,9 @@ export default function App() {
     void refreshDecks();
   }
 
-  onMount(() => void refreshDecks());
+  onSettled(() => {
+    void refreshDecks();
+  });
 
   return (
     <main {...stylex.props(styles.app)}>

@@ -1,8 +1,7 @@
-import type { JSX } from "solid-js";
 import * as stylex from "@stylexjs/stylex";
 
 export type StackProps = {
-  children: JSX.Element;
+  children?: unknown;
   direction?: "row" | "column";
   gap?: "xs" | "sm" | "md" | "lg";
   align?: "start" | "center" | "stretch";
@@ -29,7 +28,7 @@ export function Stack(props: StackProps) {
 }
 
 export type TextProps = {
-  children: JSX.Element;
+  children?: unknown;
   tone?: "default" | "muted" | "accent";
   size?: "sm" | "md" | "lg" | "xl";
   weight?: "regular" | "medium" | "bold";
@@ -56,7 +55,7 @@ export function Text(props: TextProps) {
 }
 
 export type ButtonProps = {
-  children: JSX.Element;
+  children?: unknown;
   onClick?: () => void;
   disabled?: boolean;
   tone?: "primary" | "secondary" | "danger";
@@ -82,7 +81,7 @@ export function Button(props: ButtonProps) {
   );
 }
 
-export function Surface(props: { children: JSX.Element }) {
+export function Surface(props: { children?: unknown }) {
   return <section {...stylex.props(styles.surface)}>{props.children}</section>;
 }
 

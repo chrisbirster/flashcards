@@ -1,0 +1,27 @@
+name: plandalf-web
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.3.6'
+      - name: Build Solid 2 web app
+        working-directory: web
+        run: |
+          bun install
+          bun run build
+      - name: Test Go server
+        run: go test ./...
+      - name: Build Go server
+        run: go build ./...

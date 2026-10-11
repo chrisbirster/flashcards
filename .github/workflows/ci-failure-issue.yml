@@ -1,0 +1,36 @@
+name: CI failure to issue
+
+on:
+  workflow_run:
+    workflows: ["plandalf-web"]
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  report:
+    if: github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const title = `CI failure: ${run.name} on ${run.head_branch}`;
+            const body = [
+              `Workflow **${run.name}** failed on \`${run.head_branch}\`.`,
+              ``,
+              `- Run: ${run.html_url}`,
+              `- Commit: ${run.head_sha}`,
+              `- Event: ${run.event}`,
+            ].join('\n');
+            const { owner, repo } = context.repo;
+            const open = await github.paginate(github.rest.issues.listForRepo, { owner, repo, state: 'open', per_page: 100 });
+            const existing = open.find((i) => !i.pull_request && i.title === title);
+            if (existing) {
+              await github.rest.issues.createComment({ owner, repo, issue_number: existing.number, body });
+            } else {
+              await github.rest.issues.create({ owner, repo, title, body });
+            }
